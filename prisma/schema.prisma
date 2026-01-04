@@ -779,7 +779,7 @@ model customerOrders {
   versorgung_laut_arzt   String?
   einlagentyp            String?
   überzug               String?
-  quantity Int?
+  quantity               Int?
   versorgung_note        String? //Hast du sonstige Anmerkungen oder Notizen zur Versorgung... ?
   schuhmodell_wählen    String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
   kostenvoranschlag      Boolean? @default(false)
@@ -787,7 +787,6 @@ model customerOrders {
   bezahlt paymnentStatus?
 
   discount Float?
-
 
   // Privet          String? // Bezahlt - string naw
   // bezahltInsurance       String? // Bezahlt - string naw
@@ -912,30 +911,32 @@ enum OrderStatus {
   Abholbereit_Versandt
   Ausgeführt
 }
-/*Store model---------------------------------------------------------
-----------------------------------------------------------------------*/
+
+/**
+ * Store model---------------------------------------------------------
+ * ----------------------------------------------------------------------
+ */
 
 model admin_store {
   id String @id @default(uuid())
 
   // Bild Preis Länge/Größe Marke Produktname Artikelnummer Eigenschaften
 
-  image String?
-  price Int
-  length Float
-  size String
-  brand String
-  productName String
+  image         String?
+  price         Int
+  length        Float
+  size          String
+  brand         String
+  productName   String
   artikelnummer String
   eigenschaften String?
 
-  storeId String
-  store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  groessenMengen Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  stores    Stores[]
 }
-
 
 model Stores {
   id String @id @default(uuid())
@@ -972,6 +973,9 @@ model Stores {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  adminStoreId String
+  adminStore   admin_store @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
 
   storesHistory StoresHistory[] // History of stock changes
 
@@ -1060,8 +1064,11 @@ enum ChangeType {
   createStock
   updateStock
 }
-/*---------------------------------------------------------
-----------------------------------------------------------------------*/
+
+/**
+ * ---------------------------------------------------------
+ * ----------------------------------------------------------------------
+ */
 model Bestellubersicht {
   id     String @id @default(uuid())
   number Int
@@ -1169,7 +1176,7 @@ model massschuhe_order {
   express       Boolean?                @default(false)
 
   //-------------------------------------------------
-  
+
   //
   isByPartner_1 Boolean? @default(false)
   isByPartner_2 Boolean? @default(false)
@@ -1193,7 +1200,7 @@ model massschuhe_order {
   customShafts             custom_shafts[]
   maßschuheTransitions    maßschuhe_transitions[]
 
-  isPanding     Boolean? @default(false)
+  isPanding Boolean? @default(false)
 
   @@unique([userId, orderNumber]) // Unique per partner
   @@index([createdAt])
