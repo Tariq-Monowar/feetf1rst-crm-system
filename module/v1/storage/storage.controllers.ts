@@ -250,7 +250,37 @@ export const createStorage = async (req: Request, res: Response) => {
 export const buyStorage = async (req, res) => {
   try {
     const { id } = req.user;
+    const {
+      admin_store_id,
+      lagerort, // এটা স্টর লোকেশন।
+    } = req.body;
+
+    const missingField = ["admin_store_id", "lagerort"].find(
+      (field) => !req.body[field]
+    );
+
+    if (missingField) {
+      res.status(400).json({
+        message: `${missingField} is required!`,
+      });
+      return;
+    }
+
+    const adminStore = await prisma.admin_store.findUnique({
+      where: {
+        id: admin_store_id,
+      },
+    });
     
+    if (!adminStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin store not found",
+      });
+    } 
+
+   
+
   } catch (error) {
     console.error("error:", error);
     res.status(500).json({

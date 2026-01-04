@@ -999,6 +999,8 @@ model Stores {
 
   /// Minimum stock level এটা দিয়ে স্টক ওইয়ারনিং দিবে যদি groessenMengen json এর কোন ভেলু এই int এর নিচে নামে তাহলে এটা স্টকে "Niedriger Bestand" এই wormning দবে যদি এই int এর উপরে নামে তাহলে এটা স্টকে "Voller Bestand" এই wormning দবে
   mindestbestand Int?
+
+  image String?
  
   /**
    * @groessenMengen এর ডাটা টাইপ
