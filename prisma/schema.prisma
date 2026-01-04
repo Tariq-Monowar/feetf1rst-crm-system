@@ -63,6 +63,7 @@ model User {
   orderSettings            order_settings?
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
   maßschuheTransitions    maßschuhe_transitions[]
+  adminStoreTrackings      admin_store_tracking[]
 
   @@map("users")
 }
@@ -914,33 +915,49 @@ enum OrderStatus {
 
 /**
  * Store model---------------------------------------------------------
- * ----------------------------------------------------------------------
+ * @samaty{
+ * -এখানে অ্যাাডমিনের কাছেই সব স্টর থাকবে পার্টনাররা এখান থেকে স্টর কিনে নিবে
+ * -কিনে নেওইয়ার সমইয় admin_store রিমভ হইয়ে যাবে তার থেকে ডাটা Stores এ ডুকবে
+ * -ট্রেক রাখার জন্য admin_store_tracking তৌরি করা হইয়েছে।
+ * }
+ * ====================================================================
  */
 
 model admin_store {
+  /**
+   * - এর দুইটা উদ্দেশ্য/
+   * 1.অ্যাাডমিন কে এক টা ক্লিন ট্রাংজিকশনের ডাটা বা স্টরি দেওয়া।
+   * 2.পার্টনারের ব্যালেন্স ট্রেক করা।
+   */
   id String @id @default(uuid())
 
-  // Bild Preis Länge/Größe Marke Produktname Artikelnummer Eigenschaften
-
   image         String?
-  price         Int
+  price         Int?
   // length        Float
   // size          String
-  brand         String
-  productName   String
-  artikelnummer String
+  brand         String?
+  productName   String?
+  artikelnummer String?
   eigenschaften String?
 
   groessenMengen Json?
 
   stores Stores[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  adminStoreTrackings admin_store_tracking[]
 }
 
-model Stores {
+model admin_store_tracking {
   id String @id @default(uuid())
+
+  storeId String
+  store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  //relation
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   /// Product name
   produktname String
@@ -960,7 +977,45 @@ model Stores {
   /// Sizes & quantities (e.g., {"S": 10, "M": 20, "L": 15})
   groessenMengen Json
 
-  purchase_price Int
+  parcessAt     DateTime     @default(now())
+  adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
+  admin_storeId String?
+}
+
+model Stores {
+  id String @id @default(uuid())
+
+  /// Product name
+  produktname String //productName
+
+  ///  প্রোডাক্টের প্রস্তুতকারক Manufacturer 
+  hersteller String //brand
+
+  /// Article number / SKU
+  artikelnummer String //artikelnummer
+
+  /// Storage location / warehouse location এটা আসবে ইউজার মডেলের hauptstandort[] এই অ্যাারে অফ স্ট্রিং থেকে
+  lagerort String?
+
+  /// Minimum stock level এটা দিয়ে স্টক ওইয়ারনিং দিবে যদি groessenMengen json এর কোন ভেলু এই int এর নিচে নামে তাহলে এটা স্টকে "Niedriger Bestand" এই wormning দবে যদি এই int এর উপরে নামে তাহলে এটা স্টকে "Voller Bestand" এই wormning দবে
+  mindestbestand Int?
+ 
+  /**
+   * @groessenMengen এর ডাটা টাইপ
+   * "35": {   //এখানে 35 হচ্ছে জুতার সাইজ
+   * "length": 87,
+   * "quantity": 27,
+   * "mindestmenge": 70, //স্টক ওয়ানিং এটা
+   * "auto_order_limit": 92,
+   * "auto_order_quantity": 88,
+   * "warningStatus": "Niedriger Bestand" //এটা mindestmenge এর সাথে সর্পকিতো স্টক ওয়ানিং
+   * },
+   *
+   * এটাই স্টরের মুল বিষয়, আমার কাছে কোন সাইজের কয়টা প্রডাক্ট আছে এখানথেকে আমি জানতে পারবো
+   */
+  groessenMengen Json
+
+  purchase_price Int //price
   selling_price  Int
 
   /// এই স্টাটাস ডিপেন্ড করে mindestbestand এর উপর যদি mindestbestand এর উপরে থাকে তাহলে এটা "Voller Bestand" এই স্ট্রিং দিবে যদি mindestbestand এর নিচে থাকে তাহলে এটা "Niedriger Bestand" এই স্ট্রিং দিবে
@@ -985,6 +1040,7 @@ model Stores {
   customerOrders        customerOrders[]
   customerVersorgungens customer_versorgungen[]
   storeOrderOverviews   StoreOrderOverview[]
+  adminStoreTrackings   admin_store_tracking[]
 
   @@index([id, produktname])
   @@map("stores")
@@ -1067,8 +1123,8 @@ enum ChangeType {
 }
 
 /**
- * ---------------------------------------------------------
  * ----------------------------------------------------------------------
+ * ============================Store end=================================
  */
 model Bestellubersicht {
   id     String @id @default(uuid())

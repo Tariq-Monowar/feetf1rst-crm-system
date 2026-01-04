@@ -242,7 +242,21 @@ export const createStorage = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error.message,
+    });
+  }
+};
+
+export const buyStorage = async (req, res) => {
+  try {
+    const { id } = req.user;
+    
+  } catch (error) {
+    console.error("error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
     });
   }
 };
@@ -323,51 +337,6 @@ export const getSingleStorage = async (req: Request, res: Response) => {
     });
   }
 };
-
-// export const updateStorage = async (req: Request, res: Response) => {
-//   try {
-//     const { id } = req.params;
-//     const userId = req.user.id;
-//     if (!userId) {
-//       return res.status(401).json({ message: "Unauthorized" });
-//     }
-//     const updatedStorageData = Object.fromEntries(
-//       Object.entries(req.body).filter(([_, value]) => value !== undefined)
-//     );
-
-//     // Remove Status from update data if present (it's calculated dynamically)
-//     delete updatedStorageData.Status;
-//     // { user: { id: userId }
-//     const updatedStorage = await prisma.stores.update({
-//       where: { id, user: { id: userId } },
-//       data: updatedStorageData,
-//     });
-
-//     // Add calculated Status to response
-//     const storageWithStatus = addStatusToStore(updatedStorage);
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Storage updated successfully",
-//       data: storageWithStatus,
-//     });
-//   } catch (error: any) {
-//     console.error("updateStorage error:", error);
-
-//     if (error.code === "P2025") {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Storage not found",
-//       });
-//     }
-
-//     res.status(500).json({
-//       success: false,
-//       message: "Something went wrong",
-//       error: error instanceof Error ? error.message : "Unknown error",
-//     });
-//   }
-// };
 
 export const updateStorage = async (req: Request, res: Response) => {
   try {
