@@ -167,6 +167,7 @@ export const createStorage = async (req: Request, res: Response) => {
       groessenMengen,
       purchase_price,
       selling_price,
+      adminStoreId,
     } = req.body;
 
     const userId = req.user.id;
@@ -184,6 +185,7 @@ export const createStorage = async (req: Request, res: Response) => {
       "groessenMengen",
       "purchase_price",
       "selling_price",
+      "adminStoreId",
     ].find((field) => !req.body[field]);
 
     if (missingField) {
@@ -218,11 +220,12 @@ export const createStorage = async (req: Request, res: Response) => {
         hersteller,
         artikelnummer,
         lagerort,
-        mindestbestand,
+        mindestbestand: mindestbestand ? parseInt(mindestbestand) : undefined,
         groessenMengen: cleanedGroessenMengen,
-        purchase_price,
-        selling_price,
+        purchase_price: parseInt(purchase_price),
+        selling_price: parseInt(selling_price),
         userId,
+        adminStoreId,
       },
     });
 
