@@ -973,9 +973,9 @@ model Stores {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  adminStoreId String
-  adminStore   admin_store @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
+  
+ adminStoreId String?
+  adminStore   admin_store? @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
 
   storesHistory StoresHistory[] // History of stock changes
 
