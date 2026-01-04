@@ -933,7 +933,7 @@ model admin_store {
 
   groessenMengen Json?
 
-  stores    Stores[]
+  stores Stores[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -975,8 +975,8 @@ model Stores {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  adminStoreId String
-  adminStore   admin_store @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
+  adminStoreId String?
+  adminStore   admin_store? @relation(fields: [adminStoreId], references: [id])
 
   storesHistory StoresHistory[] // History of stock changes
 
