@@ -924,8 +924,8 @@ model admin_store {
 
   image         String?
   price         Int
-  length        Float
-  size          String
+  // length        Float
+  // size          String
   brand         String
   productName   String
   artikelnummer String
@@ -933,9 +933,10 @@ model admin_store {
 
   groessenMengen Json?
 
+  stores    Stores[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  stores    Stores[]
 }
 
 model Stores {
@@ -973,9 +974,9 @@ model Stores {
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
- adminStoreId String?
-  adminStore   admin_store? @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
+
+  adminStoreId String
+  adminStore   admin_store @relation(fields: [adminStoreId], references: [id], onDelete: Cascade)
 
   storesHistory StoresHistory[] // History of stock changes
 

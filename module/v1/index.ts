@@ -28,6 +28,7 @@ import customer_files from "./customer_files/customer_files.routes";
 import massschuhe_order from "./massschuhe_order/massschuhe_order.routes";
 import admin_order from "./massschuhe_order/admin_order/admin_order.routes";
 import customer_settings from "./customer_settings/customer_settings.routes";
+import admin_store from "./storage/admin_store/admin_store.routes";
 
 const router = express.Router();
 
@@ -54,7 +55,10 @@ const moduleRoutes = [
 
   { path: "/customer-price", route: customerPrice },
   { path: "/workshop-note", route: workeshopNote },
+
   { path: "/store", route: storage },
+  { path: "/store/admin-store", route: admin_store },
+
   { path: "/bestellubersicht", route: bestellubersicht },
   { path: "/custom_shafts", route: custom_shafts },
   { path: "/customer-files", route: customer_files },
