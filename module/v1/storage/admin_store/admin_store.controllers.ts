@@ -463,12 +463,31 @@ export const trackStorage = async (req, res) => {
       skip,
       take: limit,
       orderBy: { parcessAt: "desc" },
+      include: {
+        partner:{
+          select: {
+            name: true,
+            email: true,
+            image: true,
+            phone: true,
+            busnessName: true,
+          },
+        }
+      }
     });
+
+    const formattedAdminStoreTracking = adminStoreTracking.map((item) => ({
+      ...item,
+      partner: item.partner ? {
+        ...item.partner,
+        image: item.partner.image ? getImageUrl(`/uploads/${item.partner.image}`) : null,
+      } : null,
+    }));
 
     res.status(200).json({
       success: true,
       message: "Admin store tracking fetched successfully",
-      data: adminStoreTracking,
+      data: formattedAdminStoreTracking,
       pagination: {
         totalItems,
         totalPages,
