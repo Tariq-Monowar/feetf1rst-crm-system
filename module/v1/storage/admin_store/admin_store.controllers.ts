@@ -478,6 +478,7 @@ export const trackStorage = async (req, res) => {
 
     const formattedAdminStoreTracking = adminStoreTracking.map((item) => ({
       ...item,
+      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
       partner: item.partner ? {
         ...item.partner,
         image: item.partner.image ? getImageUrl(`/uploads/${item.partner.image}`) : null,

@@ -291,13 +291,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
-    if (isOrderSent) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Order already sent to production. Please wait for complete the order.",
-      });
-    }
+    // if (isOrderSent) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message:
+    //       "Order already sent to production. Please wait for complete the order.",
+    //   });
+    // }
 
     // Get customer from order
     if (!order.customerId) {
@@ -393,6 +393,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       image3d_2: files.image3d_2?.[0]?.filename || null,
       paintImage: files.paintImage?.[0]?.filename || null,
       invoice2: files.invoice2?.[0]?.filename || null,
+      invoice: files.invoice?.[0]?.filename || null,
       other_customer_number: order.customer?.customerNumber
         ? String(order.customer.customerNumber)
         : null,
@@ -487,6 +488,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       image3d_2: formatImage(customShaft.image3d_2),
       paintImage: formatImage(customShaft.paintImage),
       invoice2: formatImage(customShaft.invoice2),
+      invoice: formatImage(customShaft.invoice),
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
             ...customShaft.maßschaft_kollektion,

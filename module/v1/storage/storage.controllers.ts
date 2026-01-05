@@ -346,16 +346,17 @@ export const buyStorage = async (req, res) => {
         lagerort: lagerort,
         groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
         admin_storeId: admin_store_id,
-        price: adminStore.price || 0
+        price: adminStore.price || 0,
+        image: adminStore.image
       },
     });
 
-    // Delete the admin_store record
-    await prisma.admin_store.delete({
-      where: {
-        id: admin_store_id,
-      },
-    });
+    // // Delete the admin_store record
+    // await prisma.admin_store.delete({
+    //   where: {
+    //     id: admin_store_id,
+    //   },
+    // });
 
     // Add calculated Status to response
     const storeWithStatus = addStatusToStore(createdStore);

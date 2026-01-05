@@ -978,6 +978,7 @@ model admin_store_tracking {
   groessenMengen Json
 
   price Float?
+  image String?
 
   parcessAt     DateTime     @default(now())
   adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
