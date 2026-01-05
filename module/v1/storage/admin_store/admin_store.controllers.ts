@@ -436,3 +436,82 @@ export const deleteAdminStore = async (req, res) => {
     });
   }
 };
+
+export const trackStorage = async (req, res) => {
+  try {
+    //pagination
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    const search = (req.query.search as string) || "";
+
+    const where: any = {};
+
+    if (search) {
+      where.OR = [
+        { produktname: { contains: search, mode: "insensitive" } },
+        { hersteller: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    const totalItems = await prisma.admin_store_tracking.count({ where });
+
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const adminStoreTracking = await prisma.admin_store_tracking.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { parcessAt: "desc" },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Admin store tracking fetched successfully",
+      data: adminStoreTracking,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
+
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const getTrackStoragePrice = async (req, res) => {
+  try {
+    
+    const adminStoreTracking = await prisma.admin_store_tracking.findMany({
+      select: {
+        price: true,
+      },
+    });
+
+    const totalPrice = adminStoreTracking.reduce((acc, curr) => acc + curr.price, 0);
+
+    res.status(200).json({
+      success: true,
+      message: "Admin store tracking price fetched successfully",
+      data: totalPrice,
+    });
+
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}

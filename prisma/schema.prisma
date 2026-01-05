@@ -977,6 +977,8 @@ model admin_store_tracking {
   /// Sizes & quantities (e.g., {"S": 10, "M": 20, "L": 15})
   groessenMengen Json
 
+  price Float?
+
   parcessAt     DateTime     @default(now())
   adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
   admin_storeId String?

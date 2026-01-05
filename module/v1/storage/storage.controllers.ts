@@ -346,6 +346,7 @@ export const buyStorage = async (req, res) => {
         lagerort: lagerort,
         groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
         admin_storeId: admin_store_id,
+        price: adminStore.price || 0
       },
     });
 
