@@ -1001,7 +1001,7 @@ model Stores {
   mindestbestand Int?
 
   image String?
- 
+
   /**
    * @groessenMengen এর ডাটা টাইপ
    * "35": {   //এখানে 35 হচ্ছে জুতার সাইজ
@@ -1012,7 +1012,6 @@ model Stores {
    * "auto_order_quantity": 88,
    * "warningStatus": "Niedriger Bestand" //এটা mindestmenge এর সাথে সর্পকিতো স্টক ওয়ানিং
    * },
-   *
    * এটাই স্টরের মুল বিষয়, আমার কাছে কোন সাইজের কয়টা প্রডাক্ট আছে এখানথেকে আমি জানতে পারবো
    */
   groessenMengen Json
@@ -1340,7 +1339,7 @@ model custom_shafts {
   id String @id @default(uuid())
 
   /**
-   * common info
+   * common info এটা সব খানে আছে
    * -------------------------------------------------------------------------------------------
    * -------------------------------------------------------------------------------------------
    */
@@ -1355,35 +1354,7 @@ model custom_shafts {
   image3d_2 String? // 3D ভিউ দ্বিতীয় ছবি
 
   /**
-   * Massschafterstellung Started
-   * --------------------------------------------------------------------------
-   * --------------------------------------------------------------------------
-   */
-  lederfarbe        String? // চামড়ার রঙ
-  innenfutter       String? // ভিতরের লাইনিং
-  schafthohe        String? // শ্যাফটের উচ্চতা
-  polsterung        String? // কুশনিং
-  vestarkungen      String? // শক্তকরণ/সাপোর্ট
-  vestarkungen_text String? // শক্তকরণের বিস্তারিত বিবরণ
-  polsterung_text   String? // কুশনিংয়ের বিস্তারিত বিবরণ
-
-  osen_einsetzen_price         Float? // লেস হোল বসানোর খরচ
-  Passenden_schnursenkel_price Float? // উপযুক্ত লেস ক্রয় খরচ
-
-  nahtfarbe      String? // সেলাইয়ের রঙ
-  nahtfarbe_text String? // সেলাইয়ের রঙের বিবরণ
-
-  lederType String? // চামড়ার ধরন
-
-  maßschaftKollektionId String? // বেস জুতার রেফারেন্স আইডি
-  /**
-   * Massschafterstellung Ended
-   * --------------------------------------------------------------------------
-   * --------------------------------------------------------------------------
-   */
-
-  /**
-   * Halbprobenerstellung Started
+   * Halbprobenerstellung Started ওইয়ার্ডার ১
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
@@ -1445,10 +1416,40 @@ model custom_shafts {
    */
 
   /**
-   * Bodenkonstruktion Started
+   * Massschafterstellung Started ওইয়ার্ডার ২
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
+  lederfarbe        String? // চামড়ার রঙ
+  innenfutter       String? // ভিতরের লাইনিং
+  schafthohe        String? // শ্যাফটের উচ্চতা
+  polsterung        String? // কুশনিং
+  vestarkungen      String? // শক্তকরণ/সাপোর্ট
+  vestarkungen_text String? // শক্তকরণের বিস্তারিত বিবরণ
+  polsterung_text   String? // কুশনিংয়ের বিস্তারিত বিবরণ
+
+  osen_einsetzen_price         Float? // লেস হোল বসানোর খরচ
+  Passenden_schnursenkel_price Float? // উপযুক্ত লেস ক্রয় খরচ
+
+  nahtfarbe      String? // সেলাইয়ের রঙ
+  nahtfarbe_text String? // সেলাইয়ের রঙের বিবরণ
+
+  lederType String? // চামড়ার ধরন
+
+  maßschaftKollektionId String? // বেস জুতার রেফারেন্স আইডি
+
+  // নতুন অ্যাড হইছে
+  paintImage  String?
+  leatherType Json?
+  invoice2    String?
+  /**
+   * Massschafterstellung Ended
+   * --------------------------------------------------------------------------
+   * --------------------------------------------------------------------------
+   */
+
+  // ওইয়ার্ডার ১ আর ২ এর জন্য কমন
+  //===========Common for Massschafterstellung and Bodenkonstruktion Started ===========
   Konstruktionsart              String? // "Әeklebt", "Rohmengendht (Maschine)"
   Fersenkappe                   String? // "Normal", "Verstärkt"
   Farbauswahl_Bodenkonstruktion String? // "Nach Produktfoto", "Nach Personal (passendstes)", "Eigene Angabe"
@@ -1459,6 +1460,18 @@ model custom_shafts {
   Laufsohle_Profil_Art          String? // From "Select" dropdown
   Sohlenstärke                 String? // "4 mm", "6 mm"
   Besondere_Hinweise            String? // Textfield
+
+  //===========Common for Massschafterstellung and Bodenkonstruktion Ended ===========
+
+  /**
+   * Bodenkonstruktion Started ওইয়ার্ডার ৩
+   * --------------------------------------------------------------------------
+   * --------------------------------------------------------------------------
+   */
+  staticImage String?
+  staticName  String?
+  description String?
+
   /**
    * Bodenkonstruktion Ended
    * --------------------------------------------------------------------------

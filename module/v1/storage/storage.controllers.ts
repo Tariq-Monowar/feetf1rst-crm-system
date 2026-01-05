@@ -249,10 +249,11 @@ export const createStorage = async (req: Request, res: Response) => {
 
 export const buyStorage = async (req, res) => {
   try {
-    const { id } = req.user;
+    const { id: userId } = req.user;
     const {
       admin_store_id,
       lagerort, // এটা স্টর লোকেশন।
+      selling_price = 0,
     } = req.body;
 
     const missingField = ["admin_store_id", "lagerort"].find(
@@ -260,29 +261,110 @@ export const buyStorage = async (req, res) => {
     );
 
     if (missingField) {
-      res.status(400).json({
+      return res.status(400).json({
+        success: false,
         message: `${missingField} is required!`,
       });
-      return;
     }
 
+    // Get admin store data
     const adminStore = await prisma.admin_store.findUnique({
       where: {
         id: admin_store_id,
       },
     });
-    
+
     if (!adminStore) {
       return res.status(404).json({
         success: false,
         message: "Admin store not found",
       });
-    } 
+    }
 
-   
+    // Validate required fields from admin_store
+    if (!adminStore.productName || !adminStore.brand || !adminStore.artikelnummer || !adminStore.groessenMengen) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
+      });
+    }
 
-  } catch (error) {
-    console.error("error:", error);
+    // Transform groessenMengen from admin_store format to Stores format
+    // Admin format: {"35": {"length": 225, "quantity": 5}}
+    // Stores format: {"35": {"length": 225, "quantity": 5, "mindestmenge": 0, "auto_order_limit": 0, "auto_order_quantity": 0}}
+    let transformedGroessenMengen: any = {};
+    if (adminStore.groessenMengen && typeof adminStore.groessenMengen === 'object') {
+      const sizes = adminStore.groessenMengen as Record<string, any>;
+      for (const sizeKey of Object.keys(sizes)) {
+        const sizeData = sizes[sizeKey];
+        if (sizeData && typeof sizeData === 'object') {
+          transformedGroessenMengen[sizeKey] = {
+            length: sizeData.length || 0,
+            quantity: sizeData.quantity || 0,
+            mindestmenge: 0,
+            auto_order_limit: 0,
+            auto_order_quantity: 0,
+          };
+        } else {
+          // Fallback if format is different
+          transformedGroessenMengen[sizeKey] = {
+            length: 0,
+            quantity: typeof sizeData === 'number' ? sizeData : 0,
+            mindestmenge: 0,
+            auto_order_limit: 0,
+            auto_order_quantity: 0,
+          };
+        }
+      }
+    }
+
+    // Create Stores record from admin_store data
+    const createdStore = await prisma.stores.create({
+      data: {
+        produktname: adminStore.productName,
+        hersteller: adminStore.brand,
+        artikelnummer: adminStore.artikelnummer,
+        lagerort: lagerort,
+        groessenMengen: transformedGroessenMengen,
+        purchase_price: adminStore.price || 0,
+        selling_price: 0,
+        image: adminStore.image,
+        userId: userId,
+        adminStoreId: admin_store_id,
+      },
+    });
+
+    // Create tracking record
+    await prisma.admin_store_tracking.create({
+      data: {
+        storeId: createdStore.id,
+        partnerId: userId,
+        produktname: adminStore.productName,
+        hersteller: adminStore.brand,
+        artikelnummer: adminStore.artikelnummer,
+        lagerort: lagerort,
+        groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
+        admin_storeId: admin_store_id,
+      },
+    });
+
+    // Delete the admin_store record
+    await prisma.admin_store.delete({
+      where: {
+        id: admin_store_id,
+      },
+    });
+
+    // Add calculated Status to response
+    const storeWithStatus = addStatusToStore(createdStore);
+
+    res.status(201).json({
+      success: true,
+      message: "Storage purchased and created successfully",
+      data: storeWithStatus,
+    });
+  } catch (error: any) {
+    console.error("buyStorage error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",

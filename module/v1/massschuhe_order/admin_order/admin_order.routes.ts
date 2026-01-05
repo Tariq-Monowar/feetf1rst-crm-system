@@ -40,6 +40,8 @@ router.post(
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
     { name: "invoice", maxCount: 1 },
+    { name: "paintImage", maxCount: 1 },
+    { name: "invoice2", maxCount: 1 },
   ]),
   sendToAdminOrder_2
 );
@@ -47,7 +49,10 @@ router.post(
 router.post(
   "/send-to-admin-3-order/:orderId",
   verifyUser("PARTNER", "ADMIN"),
-  upload.fields([{ name: "invoice", maxCount: 1 }]),
+  upload.fields([
+    { name: "invoice", maxCount: 1 },
+    { name: "staticImage", maxCount: 1 },
+  ]),
   sendToAdminOrder_3
 );
 

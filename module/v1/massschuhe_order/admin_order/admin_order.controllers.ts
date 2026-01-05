@@ -322,7 +322,18 @@ export const sendToAdminOrder_2 = async (req, res) => {
       osen_einsetzen_price,
       Passenden_schnursenkel_price,
       maßschaftKollektionId,
-
+      leatherType,
+      // Common fields for Massschafterstellung and Bodenkonstruktion
+      Konstruktionsart,
+      Fersenkappe,
+      Farbauswahl_Bodenkonstruktion,
+      Sohlenmaterial,
+      Absatz_Höhe,
+      Absatz_Form,
+      Abrollhilfe_Rolle,
+      Laufsohle_Profil_Art,
+      Sohlenstärke,
+      Besondere_Hinweise,
       totalPrice,
     } = req.body;
 
@@ -359,6 +370,20 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
+    // Parse leatherType if it's a string (JSON)
+    let parsedLeatherType = null;
+    if (leatherType) {
+      try {
+        parsedLeatherType =
+          typeof leatherType === "string"
+            ? JSON.parse(leatherType)
+            : leatherType;
+      } catch (e) {
+        console.warn("Failed to parse leatherType as JSON:", e);
+        parsedLeatherType = leatherType;
+      }
+    }
+
     // Prepare data object
     const shaftData: any = {
       massschuhe_order_id: orderId,
@@ -366,6 +391,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
       customerId: order.customerId,
       image3d_1: files.image3d_1?.[0]?.filename || null,
       image3d_2: files.image3d_2?.[0]?.filename || null,
+      paintImage: files.paintImage?.[0]?.filename || null,
+      invoice2: files.invoice2?.[0]?.filename || null,
       other_customer_number: order.customer?.customerNumber
         ? String(order.customer.customerNumber)
         : null,
@@ -379,6 +406,18 @@ export const sendToAdminOrder_2 = async (req, res) => {
       nahtfarbe: nahtfarbe || null,
       nahtfarbe_text: nahtfarbe_text || null,
       lederType: lederType || null,
+      leatherType: parsedLeatherType,
+      // Common fields for Massschafterstellung and Bodenkonstruktion
+      Konstruktionsart: Konstruktionsart || null,
+      Fersenkappe: Fersenkappe || null,
+      Farbauswahl_Bodenkonstruktion: Farbauswahl_Bodenkonstruktion || null,
+      Sohlenmaterial: Sohlenmaterial || null,
+      Absatz_Höhe: Absatz_Höhe || null,
+      Absatz_Form: Absatz_Form || null,
+      Abrollhilfe_Rolle: Abrollhilfe_Rolle || null,
+      Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
+      Sohlenstärke: Sohlenstärke || null,
+      Besondere_Hinweise: Besondere_Hinweise || null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000
@@ -439,30 +478,25 @@ export const sendToAdminOrder_2 = async (req, res) => {
     });
 
     // Format response (non-blocking)
+    const formatImage = (filename: string | null) =>
+      filename ? getImageUrl(`/uploads/${filename}`) : null;
+
     const formattedCustomShaft = {
       ...customShaft,
-      image3d_1: customShaft.image3d_1
-        ? getImageUrl(`/uploads/${customShaft.image3d_1}`)
-        : null,
-      image3d_2: customShaft.image3d_2
-        ? getImageUrl(`/uploads/${customShaft.image3d_2}`)
-        : null,
+      image3d_1: formatImage(customShaft.image3d_1),
+      image3d_2: formatImage(customShaft.image3d_2),
+      paintImage: formatImage(customShaft.paintImage),
+      invoice2: formatImage(customShaft.invoice2),
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
             ...customShaft.maßschaft_kollektion,
-            image: customShaft.maßschaft_kollektion.image
-              ? getImageUrl(
-                  `/uploads/${customShaft.maßschaft_kollektion.image}`
-                )
-              : null,
+            image: formatImage(customShaft.maßschaft_kollektion.image),
           }
         : null,
       partner: customShaft.user
         ? {
             ...customShaft.user,
-            image: customShaft.user.image
-              ? getImageUrl(`/uploads/${customShaft.user.image}`)
-              : null,
+            image: formatImage(customShaft.user.image),
           }
         : null,
     };
@@ -510,6 +544,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
     const { id } = req.user;
     const files = req.files as any;
     const invoice = files?.invoice?.[0]?.filename || null;
+    const staticImage = files?.staticImage?.[0]?.filename || null;
     const orderId = req.params.orderId;
 
     const {
@@ -523,6 +558,8 @@ export const sendToAdminOrder_3 = async (req, res) => {
       Laufsohle_Profil_Art,
       Sohlenstärke,
       Besondere_Hinweise,
+      staticName,
+      description,
       totalPrice,
     } = req.body;
 
@@ -541,6 +578,9 @@ export const sendToAdminOrder_3 = async (req, res) => {
         massschuhe_order_id: orderId,
         partnerId: id,
         invoice: invoice,
+        staticImage: staticImage,
+        staticName: staticName || null,
+        description: description || null,
         Konstruktionsart: Konstruktionsart || null,
         Fersenkappe: Fersenkappe || null,
         Farbauswahl_Bodenkonstruktion: Farbauswahl_Bodenkonstruktion || null,
@@ -558,6 +598,9 @@ export const sendToAdminOrder_3 = async (req, res) => {
       select: {
         id: true,
         invoice: true,
+        staticImage: true,
+        staticName: true,
+        description: true,
         Konstruktionsart: true,
         Fersenkappe: true,
         Farbauswahl_Bodenkonstruktion: true,
@@ -574,11 +617,15 @@ export const sendToAdminOrder_3 = async (req, res) => {
       },
     });
 
+    const formatImage = (filename: string | null) =>
+      filename ? getImageUrl(`/uploads/${filename}`) : null;
+
     const formattedAdminOrder = {
       id: adminOrder.id,
-      invoice: adminOrder.invoice
-        ? getImageUrl(`/uploads/${adminOrder.invoice}`)
-        : null,
+      invoice: formatImage(adminOrder.invoice),
+      staticImage: formatImage(adminOrder.staticImage),
+      staticName: adminOrder.staticName,
+      description: adminOrder.description,
       Konstruktionsart: adminOrder.Konstruktionsart,
       Fersenkappe: adminOrder.Fersenkappe,
       Farbauswahl_Bodenkonstruktion: adminOrder.Farbauswahl_Bodenkonstruktion,
@@ -778,7 +825,22 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
           { vestarkungen_text: { contains: search, mode: "insensitive" } },
           { nahtfarbe: { contains: search, mode: "insensitive" } },
           { nahtfarbe_text: { contains: search, mode: "insensitive" } },
-          { lederType: { contains: search, mode: "insensitive" } }
+          { lederType: { contains: search, mode: "insensitive" } },
+          { Konstruktionsart: { contains: search, mode: "insensitive" } },
+          { Fersenkappe: { contains: search, mode: "insensitive" } },
+          {
+            Farbauswahl_Bodenkonstruktion: {
+              contains: search,
+              mode: "insensitive",
+            },
+          },
+          { Sohlenmaterial: { contains: search, mode: "insensitive" } },
+          { Absatz_Höhe: { contains: search, mode: "insensitive" } },
+          { Absatz_Form: { contains: search, mode: "insensitive" } },
+          { Abrollhilfe_Rolle: { contains: search, mode: "insensitive" } },
+          { Laufsohle_Profil_Art: { contains: search, mode: "insensitive" } },
+          { Sohlenstärke: { contains: search, mode: "insensitive" } },
+          { Besondere_Hinweise: { contains: search, mode: "insensitive" } }
         );
       } else if (catagoary === "Bodenkonstruktion") {
         searchConditions.push(
@@ -796,7 +858,9 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
           { Abrollhilfe_Rolle: { contains: search, mode: "insensitive" } },
           { Laufsohle_Profil_Art: { contains: search, mode: "insensitive" } },
           { Sohlenstärke: { contains: search, mode: "insensitive" } },
-          { Besondere_Hinweise: { contains: search, mode: "insensitive" } }
+          { Besondere_Hinweise: { contains: search, mode: "insensitive" } },
+          { staticName: { contains: search, mode: "insensitive" } },
+          { description: { contains: search, mode: "insensitive" } }
         );
       } else {
         // No category filter - search all fields
@@ -881,6 +945,20 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       nahtfarbe_text: true,
       lederType: true,
       maßschaftKollektionId: true,
+      paintImage: true,
+      invoice2: true,
+      leatherType: true,
+      // Common fields for Massschafterstellung and Bodenkonstruktion
+      Konstruktionsart: true,
+      Fersenkappe: true,
+      Farbauswahl_Bodenkonstruktion: true,
+      Sohlenmaterial: true,
+      Absatz_Höhe: true,
+      Absatz_Form: true,
+      Abrollhilfe_Rolle: true,
+      Laufsohle_Profil_Art: true,
+      Sohlenstärke: true,
+      Besondere_Hinweise: true,
     };
 
     const bodenkonstruktionFields = {
@@ -894,6 +972,9 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       Laufsohle_Profil_Art: true,
       Sohlenstärke: true,
       Besondere_Hinweise: true,
+      staticImage: true,
+      staticName: true,
+      description: true,
     };
 
     // Build select object based on category
@@ -986,6 +1067,9 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         // Format common images
         image3d_1: formatImage(shaft.image3d_1),
         image3d_2: formatImage(shaft.image3d_2),
+        paintImage: formatImage(shaft.paintImage),
+        invoice2: formatImage(shaft.invoice2),
+        staticImage: formatImage(shaft.staticImage),
         // Include isPanding from massschuhe_order relation
         isPanding: massschuhe_order?.isPanding || false,
         // Format relations
@@ -1127,6 +1211,20 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       nahtfarbe_text: true,
       lederType: true,
       maßschaftKollektionId: true,
+      paintImage: true,
+      invoice2: true,
+      leatherType: true,
+      // Common fields for Massschafterstellung and Bodenkonstruktion
+      Konstruktionsart: true,
+      Fersenkappe: true,
+      Farbauswahl_Bodenkonstruktion: true,
+      Sohlenmaterial: true,
+      Absatz_Höhe: true,
+      Absatz_Form: true,
+      Abrollhilfe_Rolle: true,
+      Laufsohle_Profil_Art: true,
+      Sohlenstärke: true,
+      Besondere_Hinweise: true,
     };
 
     const bodenkonstruktionFields = {
@@ -1140,6 +1238,9 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       Laufsohle_Profil_Art: true,
       Sohlenstärke: true,
       Besondere_Hinweise: true,
+      staticImage: true,
+      staticName: true,
+      description: true,
     };
 
     // Build select fields based on category
@@ -1231,6 +1332,9 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       // Format common images
       image3d_1: formatImage(shaftData.image3d_1),
       image3d_2: formatImage(shaftData.image3d_2),
+      paintImage: formatImage(shaftData.paintImage),
+      invoice2: formatImage(shaftData.invoice2),
+      staticImage: formatImage(shaftData.staticImage),
       // Include isPanding from massschuhe_order relation
       isPanding: shaftData.massschuhe_order?.isPanding || false,
       // Format relations

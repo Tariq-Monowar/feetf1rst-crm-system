@@ -365,6 +365,38 @@ export const getAllAdminStore = async (req, res) => {
   }
 };
 
+export const getSingleAdminStore = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const adminStore = await prisma.admin_store.findUnique({
+      where: { id },
+    });
+    if (!adminStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin store not found",
+      });
+    }
+    const formattedAdminStore = {
+      ...adminStore,
+      image: adminStore.image ? getImageUrl(`/uploads/${adminStore.image}`) : null,
+    };
+    res.status(200).json({
+      success: true,
+      message: "Admin store fetched successfully",
+      data: formattedAdminStore,
+    });
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
 export const deleteAdminStore = async (req, res) => {
   try {
     const { id } = req.params;
