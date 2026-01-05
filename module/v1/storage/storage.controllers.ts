@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, StoreOrderOverviewStatus } from "@prisma/client";
+import { getImageUrl } from "../../../utils/base_utl";
 
 const prisma = new PrismaClient();
 
@@ -382,15 +383,25 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
+    const search = req.query.search as string;
+    const whereCondition: any = {};
+    if (search) {
+      whereCondition.OR = [
+        { produktname: { contains: search, mode: "insensitive" } },
+        { hersteller: { contains: search, mode: "insensitive" } },
+        { artikelnummer: { contains: search, mode: "insensitive" } },
 
+      ];
+    }
     const totalItems = await prisma.stores.count({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, ...whereCondition },
     });
 
     const allStorage = await prisma.stores.findMany({
-      where: { user: { id: userId } },
+      where: { user: { id: userId }, ...whereCondition },
       skip,
       take: limit,
+      orderBy: { createdAt: "desc" },
     });
 
     const totalPages = Math.ceil(totalItems / limit);
@@ -398,10 +409,15 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     // Add calculated Status to all stores
     const storageWithStatus = addStatusToStores(allStorage);
 
+    const formattedStorage = storageWithStatus.map((item) => ({
+      ...item,
+      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
+    }));
+
     res.status(200).json({
       success: true,
       message: "All storage fetched successfully",
-      data: storageWithStatus,
+      data: formattedStorage,
       pagination: {
         totalItems,
         totalPages,
