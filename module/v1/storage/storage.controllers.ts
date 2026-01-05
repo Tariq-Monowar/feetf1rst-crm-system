@@ -253,11 +253,11 @@ export const buyStorage = async (req, res) => {
     const { id: userId } = req.user;
     const {
       admin_store_id,
-      lagerort, // এটা স্টর লোকেশন।
+      lagerort = null as string | null, // এটা স্টর লোকেশন।
       selling_price = 0,
     } = req.body;
 
-    const missingField = ["admin_store_id", "lagerort"].find(
+    const missingField = ["admin_store_id"].find(
       (field) => !req.body[field]
     );
 
