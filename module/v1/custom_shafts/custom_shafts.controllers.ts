@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 
-import fs from "fs";
 import { getImageUrl } from "../../../utils/base_utl";
 import { notificationSend } from "../../../utils/notification.utils";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -34,6 +34,9 @@ export const createMaßschaftKollektion = async (
 
     const randomIde = Math.floor(1000 + Math.random() * 9000).toString();
 
+    // With S3, req.files[].location is the full S3 URL
+    const imageUrl = files?.image?.[0]?.location || null;
+
     const kollektion = await prisma.maßschaft_kollektion.create({
       data: {
         ide: randomIde,
@@ -42,15 +45,13 @@ export const createMaßschaftKollektion = async (
         catagoary,
         gender,
         description,
-        image: files?.image?.[0]?.filename || "",
+        image: imageUrl || "",
       },
     });
 
     const formattedKollektion = {
       ...kollektion,
-      image: kollektion.image
-        ? getImageUrl(`/uploads/${kollektion.image}`)
-        : null,
+      image: kollektion.image || null,
     };
 
     res.status(201).json({
@@ -61,12 +62,9 @@ export const createMaßschaftKollektion = async (
   } catch (error: any) {
     console.error("Create Maßschaft Kollektion Error:", error);
 
-    if (files?.image?.[0]?.path) {
-      try {
-        fs.unlinkSync(files.image[0].path);
-      } catch (err) {
-        console.error("Failed to delete file:", err);
-      }
+    // Delete uploaded file from S3 if creation fails
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
     }
 
     res.status(500).json({
@@ -132,7 +130,7 @@ export const getAllMaßschaftKollektion = async (
 
     const formattedKollektion = kollektion.map((item) => ({
       ...item,
-      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
+      image: item.image || null,
     }));
 
     const totalPages = Math.ceil(totalCount / limit);
@@ -169,22 +167,16 @@ export const updateMaßschaftKollektion = async (
   const files = req.files as any;
   const { id } = req.params;
 
-  const cleanupFiles = () => {
-    if (!files?.image?.[0]?.path) return;
-    try {
-      fs.unlinkSync(files.image[0].path);
-    } catch (err) {
-      console.error(`Failed to delete file ${files.image[0].path}`, err);
-    }
-  };
-
   try {
     const existingKollektion = await prisma.maßschaft_kollektion.findUnique({
       where: { id },
     });
 
     if (!existingKollektion) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if kollektion not found
+      if (files?.image?.[0]?.location) {
+        await deleteFileFromS3(files.image[0].location);
+      }
       res.status(404).json({
         success: false,
         message: "Maßschaft Kollektion not found",
@@ -202,23 +194,27 @@ export const updateMaßschaftKollektion = async (
     if (gender !== undefined) updateData.gender = gender;
     if (description !== undefined) updateData.description = description;
 
-    if (files?.image?.[0]) {
+    // Handle new image upload
+    if (files?.image?.[0]?.location) {
+      const newImageUrl = files.image[0].location;
+      
+      // Delete old image from S3 if it exists and is an S3 URL
       if (existingKollektion.image) {
-        const oldImagePath = `uploads/${existingKollektion.image}`;
-        if (fs.existsSync(oldImagePath)) {
-          try {
-            fs.unlinkSync(oldImagePath);
-            console.log(`Deleted old image: ${oldImagePath}`);
-          } catch (err) {
-            console.error(`Failed to delete old image: ${oldImagePath}`, err);
-          }
+        if (existingKollektion.image.startsWith("http")) {
+          // It's an S3 URL, delete it
+          await deleteFileFromS3(existingKollektion.image);
         }
+        // If it's a legacy local file path, it's already been handled or doesn't exist
       }
-      updateData.image = files.image[0].filename;
+      
+      updateData.image = newImageUrl;
     }
 
     if (Object.keys(updateData).length === 0) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if no update data
+      if (files?.image?.[0]?.location) {
+        await deleteFileFromS3(files.image[0].location);
+      }
       res.status(400).json({
         success: false,
         message: "No valid fields provided for update",
@@ -233,9 +229,7 @@ export const updateMaßschaftKollektion = async (
 
     const formattedKollektion = {
       ...updatedKollektion,
-      image: updatedKollektion.image
-        ? getImageUrl(`/uploads/${updatedKollektion.image}`)
-        : null,
+      image: updatedKollektion.image || null,
     };
 
     res.status(200).json({
@@ -245,7 +239,11 @@ export const updateMaßschaftKollektion = async (
     });
   } catch (error: any) {
     console.error("Update Maßschaft Kollektion Error:", error);
-    cleanupFiles();
+    
+    // Delete uploaded file from S3 on error
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
 
     if (error.code === "P2002") {
       res.status(400).json({
@@ -283,9 +281,7 @@ export const getMaßschaftKollektionById = async (
 
     const formattedKollektion = {
       ...kollektion,
-      image: kollektion.image
-        ? getImageUrl(`/uploads/${kollektion.image}`)
-        : null,
+      image: kollektion.image || null,
     };
 
     res.status(200).json({
@@ -324,16 +320,9 @@ export const deleteMaßschaftKollektion = async (
       });
     }
 
-    if (existingKollektion.image) {
-      const imagePath = `uploads/${existingKollektion.image}`;
-      if (fs.existsSync(imagePath)) {
-        try {
-          fs.unlinkSync(imagePath);
-          console.log(`Deleted image file: ${imagePath}`);
-        } catch (err) {
-          console.error(`Failed to delete image file: ${imagePath}`, err);
-        }
-      }
+    // Delete image from S3 if it's an S3 URL
+    if (existingKollektion.image && existingKollektion.image.startsWith("http")) {
+      await deleteFileFromS3(existingKollektion.image);
     }
 
     await prisma.maßschaft_kollektion.delete({
@@ -465,10 +454,10 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    // Prepare data object
+    // Prepare data object - use S3 location URLs
     const shaftData: any = {
-      image3d_1: files.image3d_1?.[0]?.filename || null,
-      image3d_2: files.image3d_2?.[0]?.filename || null,
+      image3d_1: files.image3d_1?.[0]?.location || null,
+      image3d_2: files.image3d_2?.[0]?.location || null,
       other_customer_number: !customer ? other_customer_number || null : null,
       lederfarbe: lederfarbe || null,
       innenfutter: innenfutter || null,
@@ -546,29 +535,21 @@ export const createTustomShafts = async (req, res) => {
       },
     });
 
-    // Format response (non-blocking)
+    // Format response
     const formattedCustomShaft = {
       ...customShaft,
-      image3d_1: customShaft.image3d_1
-        ? getImageUrl(`/uploads/${customShaft.image3d_1}`)
-        : null,
-      image3d_2: customShaft.image3d_2
-        ? getImageUrl(`/uploads/${customShaft.image3d_2}`)
-        : null,
+      image3d_1: customShaft.image3d_1 || null,
+      image3d_2: customShaft.image3d_2 || null,
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
             ...customShaft.maßschaft_kollektion,
-            image: customShaft.maßschaft_kollektion.image
-              ? getImageUrl(`${customShaft.maßschaft_kollektion.image}`)
-              : null,
+            image: customShaft.maßschaft_kollektion.image || null,
           }
         : null,
       partner: customShaft.user
         ? {
             ...customShaft.user,
-            image: customShaft.user.image
-              ? getImageUrl(`/uploads/${customShaft.user.image}`)
-              : null,
+            image: customShaft.user.image || null,
           }
         : null,
     };
@@ -584,16 +565,19 @@ export const createTustomShafts = async (req, res) => {
   } catch (err: any) {
     console.error("Create Custom Shaft Error:", err);
 
-    // File cleanup (non-blocking)
+    // Delete uploaded files from S3 on error
     if (files) {
+      const filesToDelete: string[] = [];
       Object.keys(files).forEach((key) => {
         files[key].forEach((file: any) => {
-          fs.unlink(file.path, (error) => {
-            if (error)
-              console.error(`Failed to delete file ${file.path}`, error);
-          });
+          if (file.location) {
+            filesToDelete.push(file.location);
+          }
         });
       });
+      if (filesToDelete.length > 0) {
+        await deleteMultipleFilesFromS3(filesToDelete);
+      }
     }
 
     if (err.code === "P2003") {
@@ -762,12 +746,8 @@ export const getTustomShafts = async (req: Request, res: Response) => {
 
     const formattedCustomShafts = customShafts.map(({ user, ...shaft }) => ({
       ...shaft,
-      image3d_1: shaft.image3d_1
-        ? getImageUrl(`/uploads/${shaft.image3d_1}`)
-        : null,
-      image3d_2: shaft.image3d_2
-        ? getImageUrl(`/uploads/${shaft.image3d_2}`)
-        : null,
+      image3d_1: shaft.image3d_1 || null,
+      image3d_2: shaft.image3d_2 || null,
       customer: shaft.customer
         ? {
             ...shaft.customer,
@@ -776,15 +756,13 @@ export const getTustomShafts = async (req: Request, res: Response) => {
       maßschaft_kollektion: shaft.maßschaft_kollektion
         ? {
             ...shaft.maßschaft_kollektion,
-            image: shaft.maßschaft_kollektion.image
-              ? getImageUrl(`/uploads/${shaft.maßschaft_kollektion.image}`)
-              : null,
+            image: shaft.maßschaft_kollektion.image || null,
           }
         : null,
       partner: user
         ? {
             ...user,
-            image: user.image ? getImageUrl(`/uploads/${user.image}`) : null,
+            image: user.image || null,
           }
         : null,
     }));
@@ -887,12 +865,8 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
     // Format the response
     const formattedShaft = {
       ...shaftWithoutUser,
-      image3d_1: customShaft.image3d_1
-        ? getImageUrl(`/uploads/${customShaft.image3d_1}`)
-        : null,
-      image3d_2: customShaft.image3d_2
-        ? getImageUrl(`/uploads/${customShaft.image3d_2}`)
-        : null,
+      image3d_1: customShaft.image3d_1 || null,
+      image3d_2: customShaft.image3d_2 || null,
       customer: customShaft.customer
         ? {
             ...customShaft.customer,
@@ -901,15 +875,13 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
             ...customShaft.maßschaft_kollektion,
-            image: customShaft.maßschaft_kollektion.image
-              ? getImageUrl(`${customShaft.maßschaft_kollektion.image}`)
-              : null,
+            image: customShaft.maßschaft_kollektion.image || null,
           }
         : null,
       partner: user
         ? {
             ...user,
-            image: user.image ? getImageUrl(`/uploads/${user.image}`) : null,
+            image: user.image || null,
           }
         : null,
     };
@@ -1126,17 +1098,23 @@ export const deleteCustomShaft = async (req: Request, res: Response) => {
         message: "Custom shaft not found",
       });
     }
+
+    // Delete files from S3 if they are S3 URLs
+    const filesToDelete: string[] = [];
+    if (existingCustomShaft.image3d_1 && existingCustomShaft.image3d_1.startsWith("http")) {
+      filesToDelete.push(existingCustomShaft.image3d_1);
+    }
+    if (existingCustomShaft.image3d_2 && existingCustomShaft.image3d_2.startsWith("http")) {
+      filesToDelete.push(existingCustomShaft.image3d_2);
+    }
+
+    if (filesToDelete.length > 0) {
+      await deleteMultipleFilesFromS3(filesToDelete);
+    }
+
     await prisma.custom_shafts.delete({
       where: { id },
     });
-
-    // also i need to remove the files from the disk
-    if (existingCustomShaft.image3d_1) {
-      fs.unlinkSync(`uploads/${existingCustomShaft.image3d_1}`);
-    }
-    if (existingCustomShaft.image3d_2) {
-      fs.unlinkSync(`uploads/${existingCustomShaft.image3d_2}`);
-    }
 
     res.status(200).json({
       success: true,

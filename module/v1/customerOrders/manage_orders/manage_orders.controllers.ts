@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import { getImageUrl } from "../../../../utils/base_utl";
 import path from "path";
+import { deleteFileFromS3 } from "../../../../utils/s3utils";
 import {
   sendPdfToEmail,
   sendInvoiceEmail,
@@ -276,10 +275,10 @@ export const updateMultipleOrderStatuses = async (
       };
     });
 
-    // Format orders with invoice URLs
+    // Format orders with invoice URLs (already S3 URLs)
     const formattedOrders = result.updatedOrders.map((order) => ({
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
+      invoice: order.invoice || null,
     }));
 
     res.status(200).json({
@@ -301,19 +300,6 @@ export const updateMultipleOrderStatuses = async (
 export const uploadBarcodeLabel = async (req: Request, res: Response) => {
   const files = req.files as any;
 
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
-        }
-      });
-    });
-  };
-
   try {
     const { orderId } = req.params;
 
@@ -325,6 +311,8 @@ export const uploadBarcodeLabel = async (req: Request, res: Response) => {
     }
 
     const imageFile = files.image[0];
+    // With S3, req.files[].location is the full S3 URL
+    const s3Url = imageFile.location;
 
     // Check if order exists and get current barcode label
     const existingOrder = await prisma.customerOrders.findUnique({
@@ -333,38 +321,26 @@ export const uploadBarcodeLabel = async (req: Request, res: Response) => {
     });
 
     if (!existingOrder) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if order not found
+      if (s3Url) {
+        deleteFileFromS3(s3Url);
+      }
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    // Delete old barcode label file if it exists
-    if (existingOrder.barcodeLabel) {
-      const oldBarcodePath = path.join(
-        process.cwd(),
-        "uploads",
-        existingOrder.barcodeLabel
-      );
-      if (fs.existsSync(oldBarcodePath)) {
-        try {
-          fs.unlinkSync(oldBarcodePath);
-          console.log(`Deleted old barcode label file: ${oldBarcodePath}`);
-        } catch (err) {
-          console.error(
-            `Failed to delete old barcode label file: ${oldBarcodePath}`,
-            err
-          );
-        }
-      }
+    // Delete old barcode label from S3 if it exists and is an S3 URL
+    if (existingOrder.barcodeLabel && existingOrder.barcodeLabel.startsWith("http")) {
+      deleteFileFromS3(existingOrder.barcodeLabel);
     }
 
-    // Update order with new barcode label filename
+    // Update order with new S3 URL
     const updatedOrder = await prisma.customerOrders.update({
       where: { id: orderId },
       data: {
-        barcodeLabel: imageFile.filename,
+        barcodeLabel: s3Url,
         barcodeCreatedAt: new Date(),
       },
       select: {
@@ -388,9 +364,7 @@ export const uploadBarcodeLabel = async (req: Request, res: Response) => {
       data: {
         orderId: updatedOrder.id,
         orderNumber: updatedOrder.orderNumber,
-        barcodeLabel: updatedOrder.barcodeLabel
-          ? getImageUrl(`/uploads/${updatedOrder.barcodeLabel}`)
-          : null,
+        barcodeLabel: updatedOrder.barcodeLabel || null,
         barcodeCreatedAt: updatedOrder?.barcodeCreatedAt,
 
         customer: `${updatedOrder.customer.vorname} ${updatedOrder.customer.nachname}`,
@@ -398,7 +372,10 @@ export const uploadBarcodeLabel = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    cleanupFiles();
+    // Delete uploaded file from S3 on error
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
     console.error("Upload Barcode Label Error:", error);
     res.status(500).json({
       success: false,
@@ -445,12 +422,10 @@ export const updateOrderPriority = async (req: Request, res: Response) => {
       },
     });
 
-    // Format order with invoice URL
+    // Format order with invoice URL (already S3 URL)
     const formattedOrder = {
       ...updatedOrder,
-      invoice: updatedOrder.invoice
-        ? getImageUrl(`/uploads/${updatedOrder.invoice}`)
-        : null,
+      invoice: updatedOrder.invoice || null,
     };
 
     res.status(200).json({
@@ -475,19 +450,6 @@ export const uploadInvoice = async (req: Request, res: Response) => {
   const sendToClient = (req.query.sendToClient ??
     (req.body as any)?.sendToClient) as string | boolean | undefined;
 
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
-        }
-      });
-    });
-  };
-
   try {
     const { orderId } = req.params;
 
@@ -501,12 +463,18 @@ export const uploadInvoice = async (req: Request, res: Response) => {
     const invoiceFile = files.invoice[0];
 
     if (!invoiceFile.mimetype.includes("pdf")) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if validation fails
+      if (invoiceFile.location) {
+        await deleteFileFromS3(invoiceFile.location);
+      }
       return res.status(400).json({
         success: false,
         message: "Only PDF files are allowed for invoices",
       });
     }
+
+    // With S3, req.files[].location is the full S3 URL
+    const s3Url = invoiceFile.location;
 
     const existingOrder = await prisma.customerOrders.findUnique({
       where: { id: orderId },
@@ -514,36 +482,25 @@ export const uploadInvoice = async (req: Request, res: Response) => {
     });
 
     if (!existingOrder) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if order not found
+      if (s3Url) {
+        await deleteFileFromS3(s3Url);
+      }
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    if (existingOrder.invoice) {
-      const oldInvoicePath = path.join(
-        process.cwd(),
-        "uploads",
-        existingOrder.invoice
-      );
-      if (fs.existsSync(oldInvoicePath)) {
-        try {
-          fs.unlinkSync(oldInvoicePath);
-          console.log(`Deleted old invoice file: ${oldInvoicePath}`);
-        } catch (err) {
-          console.error(
-            `Failed to delete old invoice file: ${oldInvoicePath}`,
-            err
-          );
-        }
-      }
+    // Delete old invoice from S3 if it exists and is an S3 URL
+    if (existingOrder.invoice && existingOrder.invoice.startsWith("http")) {
+      await deleteFileFromS3(existingOrder.invoice);
     }
 
     const updatedOrder = await prisma.customerOrders.update({
       where: { id: orderId },
       data: {
-        invoice: invoiceFile.filename,
+        invoice: s3Url,
       },
       include: {
         customer: {
@@ -572,15 +529,11 @@ export const uploadInvoice = async (req: Request, res: Response) => {
 
     const formattedOrder = {
       ...updatedOrder,
-      invoice: updatedOrder.invoice
-        ? getImageUrl(`/uploads/${updatedOrder.invoice}`)
-        : null,
+      invoice: updatedOrder.invoice || null,
       partner: updatedOrder.partner
         ? {
             ...updatedOrder.partner,
-            image: updatedOrder.partner.image
-              ? getImageUrl(`/uploads/${updatedOrder.partner.image}`)
-              : null,
+            image: updatedOrder.partner.image || null,
           }
         : null,
     };
@@ -593,7 +546,12 @@ export const uploadInvoice = async (req: Request, res: Response) => {
     let emailSent = false;
     if (shouldSend && updatedOrder.customer?.email) {
       try {
-        sendInvoiceEmail(updatedOrder.customer.email, invoiceFile, {
+        // For email, we need to pass the file object with location
+        const emailFile = {
+          ...invoiceFile,
+          path: s3Url, // S3 URL for email service
+        };
+        sendInvoiceEmail(updatedOrder.customer.email, emailFile, {
           customerName:
             `${updatedOrder.customer.vorname} ${updatedOrder.customer.nachname}`.trim(),
           total: updatedOrder.totalPrice as any,
@@ -611,7 +569,10 @@ export const uploadInvoice = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Upload Invoice Error:", error);
-    cleanupFiles();
+    // Delete uploaded file from S3 on error
+    if (files?.invoice?.[0]?.location) {
+      await deleteFileFromS3(files.invoice[0].location);
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -622,19 +583,6 @@ export const uploadInvoice = async (req: Request, res: Response) => {
 
 export const uploadInvoiceOnly = async (req: Request, res: Response) => {
   const files = req.files as any;
-
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
-        }
-      });
-    });
-  };
 
   try {
     const { orderId } = req.params;
@@ -649,12 +597,18 @@ export const uploadInvoiceOnly = async (req: Request, res: Response) => {
     const invoiceFile = files.invoice[0];
 
     if (!invoiceFile.mimetype.includes("pdf")) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if validation fails
+      if (invoiceFile.location) {
+        await deleteFileFromS3(invoiceFile.location);
+      }
       return res.status(400).json({
         success: false,
         message: "Only PDF files are allowed for invoices",
       });
     }
+
+    // With S3, req.files[].location is the full S3 URL
+    const s3Url = invoiceFile.location;
 
     const existingOrder = await prisma.customerOrders.findUnique({
       where: { id: orderId },
@@ -662,37 +616,25 @@ export const uploadInvoiceOnly = async (req: Request, res: Response) => {
     });
 
     if (!existingOrder) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if order not found
+      if (s3Url) {
+        deleteFileFromS3(s3Url);
+      }
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    // Delete old invoice if exists
-    if (existingOrder.invoice) {
-      const oldInvoicePath = path.join(
-        process.cwd(),
-        "uploads",
-        existingOrder.invoice
-      );
-      if (fs.existsSync(oldInvoicePath)) {
-        try {
-          fs.unlinkSync(oldInvoicePath);
-          console.log(`Deleted old invoice file: ${oldInvoicePath}`);
-        } catch (err) {
-          console.error(
-            `Failed to delete old invoice file: ${oldInvoicePath}`,
-            err
-          );
-        }
-      }
+    // Delete old invoice from S3 if it exists and is an S3 URL
+    if (existingOrder.invoice && existingOrder.invoice.startsWith("http")) {
+      await deleteFileFromS3(existingOrder.invoice);
     }
 
     const updatedOrder = await prisma.customerOrders.update({
       where: { id: orderId },
       data: {
-        invoice: invoiceFile.filename,
+        invoice: s3Url,
       },
       include: {
         customer: {
@@ -721,15 +663,11 @@ export const uploadInvoiceOnly = async (req: Request, res: Response) => {
 
     const formattedOrder = {
       ...updatedOrder,
-      invoice: updatedOrder.invoice
-        ? getImageUrl(`/uploads/${updatedOrder.invoice}`)
-        : null,
+      invoice: updatedOrder.invoice || null,
       partner: updatedOrder.partner
         ? {
             ...updatedOrder.partner,
-            image: updatedOrder.partner.image
-              ? getImageUrl(`/uploads/${updatedOrder.partner.image}`)
-              : null,
+            image: updatedOrder.partner.image || null,
           }
         : null,
     };
@@ -741,7 +679,10 @@ export const uploadInvoiceOnly = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Upload Invoice Only Error:", error);
-    cleanupFiles();
+    // Delete uploaded file from S3 on error
+    if (files?.invoice?.[0]?.location) {
+      deleteFileFromS3(files.invoice[0].location);
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -814,19 +755,17 @@ export const sendInvoiceToCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Get the invoice file
-    const invoicePath = path.join(process.cwd(), "uploads", order.invoice);
-
-    if (!fs.existsSync(invoicePath)) {
+    // Get the invoice file - it's an S3 URL
+    if (!order.invoice) {
       return res.status(404).json({
         success: false,
-        message: "Invoice file not found on server",
+        message: "Invoice URL not found",
       });
     }
 
     const invoiceFile = {
-      path: invoicePath,
-      filename: order.invoice,
+      path: order.invoice, // S3 URL
+      filename: order.invoice.split("/").pop() || "invoice.pdf",
       mimetype: "application/pdf",
     };
 
@@ -840,15 +779,11 @@ export const sendInvoiceToCustomer = async (req: Request, res: Response) => {
 
       const formattedOrder = {
         ...order,
-        invoice: order.invoice
-          ? getImageUrl(`/uploads/${order.invoice}`)
-          : null,
+        invoice: order.invoice || null,
         partner: order.partner
           ? {
               ...order.partner,
-              image: order.partner.image
-                ? getImageUrl(`/uploads/${order.partner.image}`)
-                : null,
+              image: order.partner.image || null,
             }
           : null,
       };

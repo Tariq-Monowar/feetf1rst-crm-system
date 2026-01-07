@@ -2,9 +2,7 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import fs from "fs";
-import path from "path";
-import { baseUrl, getImageUrl } from "../../../utils/base_utl";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 import {
   generateOTP,
   sendForgotPasswordOTP,
@@ -73,7 +71,7 @@ export const createPartnership = async (req: Request, res: Response) => {
         bankNumber: bankNumber ?? undefined,
         busnessName: busnessName ?? undefined,
         hauptstandort: parsedHauptstandort ?? [],
-        image: newImage ? newImage.filename : undefined,
+        image: newImage ? newImage.location : undefined,
       },
     });
 
@@ -85,9 +83,7 @@ export const createPartnership = async (req: Request, res: Response) => {
       message: "Partnership created successfully",
       partnership: {
         ...partnership,
-        image: partnership.image
-          ? getImageUrl(`/uploads/${partnership.image}`)
-          : null,
+        image: partnership.image || null,
       },
     });
   } catch (error) {
@@ -121,37 +117,23 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
     });
 
     if (!existingUser) {
-      // cleanup uploaded image if user doesn't exist
-      if (newImage) {
-        const imagePath = path.join(
-          __dirname,
-          "../../uploads",
-          newImage.filename
-        );
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
+      // cleanup uploaded image from S3 if user doesn't exist (fire-and-forget, no await)
+      if (newImage?.location) {
+        deleteFileFromS3(newImage.location);
       }
       return res.status(404).json({ message: "User not found" });
     }
 
-    // remove old image if new one is uploaded
-    if (newImage && existingUser.image) {
-      const oldImagePath = path.join(
-        __dirname,
-        "../../uploads",
-        existingUser.image
-      );
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+    // remove old image from S3 if new one is uploaded (fire-and-forget, no await)
+    if (newImage && existingUser.image && existingUser.image.startsWith("http")) {
+      deleteFileFromS3(existingUser.image);
     }
 
     const user = await prisma.user.update({
       where: { id: String(id) },
       data: {
         name: name || existingUser.name,
-        image: newImage ? newImage.filename : existingUser.image,
+        image: newImage ? newImage.location : existingUser.image,
         phone: phone || existingUser.phone,
         absenderEmail: absenderEmail || existingUser.absenderEmail,
         bankName: bankName || existingUser.bankName,
@@ -161,27 +143,18 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
       },
     });
 
-    const imageUrl = user.image ? getImageUrl(`/uploads/${user.image}`) : null;
-
     return res.status(200).json({
       success: true,
       message: "Partner profile updated successfully",
       user: {
         ...user,
-        image: imageUrl,
+        image: user.image || null,
       },
     });
   } catch (error) {
-    // cleanup uploaded image if error occurs
-    if (req.file) {
-      const imagePath = path.join(
-        __dirname,
-        "../../uploads",
-        req.file.filename
-      );
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    // cleanup uploaded image from S3 if error occurs (fire-and-forget, no await)
+    if (req.file?.location) {
+      deleteFileFromS3(req.file.location);
     }
 
     return res.status(500).json({
@@ -259,7 +232,7 @@ export const getAllPartners = async (req: Request, res: Response) => {
 
     const partnersWithImageUrls = partners.map((partner) => ({
       ...partner,
-      image: partner.image ? getImageUrl(`/uploads/${partner.image}`) : null,
+      image: partner.image || null,
     }));
 
     res.status(200).json({
@@ -300,7 +273,7 @@ export const getPartnerById = async (req: Request, res: Response) => {
       success: true,
       partner: {
         ...partner,
-        image: partner.image ? getImageUrl(`/uploads/${partner.image}`) : null,
+        image: partner.image || null,
       },
     });
   } catch (error) {
@@ -335,13 +308,9 @@ export const updatePartnerByAdmin = async (
     const user = await prisma.user.findUnique({ where: { id } });
 
     if (!user || user.role !== "PARTNER") {
-      if (newImage) {
-        const filepath = path.join(
-          __dirname,
-          "../../uploads",
-          newImage.filename
-        );
-        if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+      // cleanup uploaded image from S3 if partner not found (fire-and-forget, no await)
+      if (newImage?.location) {
+        deleteFileFromS3(newImage.location);
       }
 
       res.status(404).json({
@@ -380,9 +349,9 @@ export const updatePartnerByAdmin = async (
       updatedPassword = await bcrypt.hash(password, 10);
     }
 
-    if (newImage && user.image) {
-      const oldImagePath = path.join(__dirname, "../../uploads", user.image);
-      if (fs.existsSync(oldImagePath)) fs.unlinkSync(oldImagePath);
+    // remove old image from S3 if new one is uploaded (fire-and-forget, no await)
+    if (newImage && user.image && user.image.startsWith("http")) {
+      deleteFileFromS3(user.image);
     }
 
     // Parse hauptstandort from string or array
@@ -404,7 +373,7 @@ export const updatePartnerByAdmin = async (
         name: name ?? user.name,
         email: email ?? user.email,
         password: updatedPassword,
-        image: newImage ? newImage.filename : user.image,
+        image: newImage ? newImage.location : user.image,
         phone: phone ?? user.phone,
         absenderEmail: absenderEmail ?? user.absenderEmail,
         bankName: bankName ?? user.bankName,
@@ -423,7 +392,7 @@ export const updatePartnerByAdmin = async (
         name: updated.name,
         email: updated.email,
         role: updated.role,
-        image: updated.image ? getImageUrl(`/uploads/${updated.image}`) : null,
+        image: updated.image || null,
         phone: updated.phone,
         absenderEmail: updated.absenderEmail,
         bankName: updated.bankName,
@@ -433,9 +402,9 @@ export const updatePartnerByAdmin = async (
       },
     });
   } catch (error) {
-    if (newImage) {
-      const filepath = path.join(__dirname, "../../uploads", newImage.filename);
-      if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+    // cleanup uploaded image from S3 if error occurs (fire-and-forget, no await)
+    if (newImage?.location) {
+      deleteFileFromS3(newImage.location);
     }
     res.status(500).json({
       success: false,
@@ -461,12 +430,9 @@ export const deletePartner = async (req: Request, res: Response) => {
       return;
     }
 
-    // Delete partner's image if exists
-    if (partner.image) {
-      const imagePath = path.join(__dirname, "../../uploads", partner.image);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    // Delete partner's image from S3 if exists (fire-and-forget, no await)
+    if (partner.image && partner.image.startsWith("http")) {
+      deleteFileFromS3(partner.image);
     }
 
     await prisma.user.delete({

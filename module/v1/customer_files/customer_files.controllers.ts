@@ -1,8 +1,7 @@
-import fs from "fs";
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
-import { getImageUrl } from "../../../utils/base_utl";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -229,24 +228,14 @@ const addFileEntry = (entries, row, field, table, rowId, createdAt) => {
 export const createCustomerFile = async (req: Request, res: Response) => {
   const files = req.files as any;
 
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
-        }
-      });
-    });
-  };
-
   try {
     const { customerId } = req.params;
 
     if (!customerId) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if validation fails
+      if (files?.image?.[0]?.location) {
+        await deleteFileFromS3(files.image[0].location);
+      }
       return res.status(400).json({
         success: false,
         message: "customerId is required",
@@ -259,7 +248,10 @@ export const createCustomerFile = async (req: Request, res: Response) => {
     });
 
     if (!customer) {
-      cleanupFiles();
+      // Delete uploaded file from S3 if customer not found
+      if (files?.image?.[0]?.location) {
+        await deleteFileFromS3(files.image[0].location);
+      }
       return res.status(404).json({
         success: false,
         message: "Customer not found",
@@ -268,7 +260,6 @@ export const createCustomerFile = async (req: Request, res: Response) => {
 
     // Check if file is uploaded
     if (!files || !files.image || !files.image[0]) {
-      cleanupFiles();
       return res.status(400).json({
         success: false,
         message:
@@ -277,29 +268,34 @@ export const createCustomerFile = async (req: Request, res: Response) => {
     }
 
     const uploadedFile = files.image[0];
-    const filename = uploadedFile.filename;
+    // With S3, req.files[].location is the full S3 URL
+    const s3Url = uploadedFile.location;
 
     // Create customer file record
     const customerFile = await prisma.customer_files.create({
       data: {
         customerId,
-        url: filename,
+        url: s3Url,
       },
     });
 
-    // Helper to get file extension
-    const getFileType = (filename: string) => {
+    // Helper to get file extension from URL or filename
+    const getFileType = (urlOrFilename: string) => {
+      // Extract filename from S3 URL or use as-is if it's already a filename
+      const filename = urlOrFilename.includes("/") 
+        ? urlOrFilename.split("/").pop() || urlOrFilename
+        : urlOrFilename;
       const ext = path.extname(filename).toLowerCase();
       return ext.startsWith(".") ? ext.slice(1) : ext;
     };
 
-    const fileType = getFileType(filename);
+    const fileType = getFileType(s3Url);
 
     const formattedEntry = {
       fieldName: "image",
       table: "customer_files",
-      url: filename,
-      fullUrl: getImageUrl(`/uploads/${filename}`),
+      url: s3Url,
+      fullUrl: s3Url, // Already a full S3 URL
       id: customerFile.id,
       fileType,
     };
@@ -311,7 +307,10 @@ export const createCustomerFile = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Create Customer File Error:", error);
-    cleanupFiles();
+    // Delete uploaded file from S3 on error
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -540,12 +539,9 @@ export const getCustomerFiles = async (req, res) => {
     const totalPages = Math.ceil(total / limit);
     const paginatedEntries = allEntries.slice(skip, skip + limit);
 
-    // Add full URL
-    const baseUrl =
-      process.env.APP_URL || req.protocol + "://" + req.get("host");
-
+    // Add full URL - URLs are already S3 URLs, so use directly
     paginatedEntries.forEach((entry) => {
-      entry.fullUrl = `${baseUrl}${entry.url}`;
+      entry.fullUrl = entry.url; // Already S3 URL
     });
 
     // Build exclInfo from barcode or invoice orders
@@ -600,22 +596,13 @@ export const getCustomerFiles = async (req, res) => {
 };
 
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads"); // adjust if needed
-
-// -----------------------------------------------------------------
-// Helper: Delete file from disk
-// -----------------------------------------------------------------
-const deleteFileFromDisk = (filename: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const filePath = path.join(UPLOADS_DIR, filename);
-    fs.unlink(filePath, (err) => {
-      if (err && err.code !== "ENOENT") {
-        console.error(`Failed to delete file: ${filePath}`, err);
-        return reject(err);
-      }
-      resolve();
-    });
-  });
+// Helper: Delete file from S3 (handles both S3 URLs and legacy filenames)
+const deleteFileFromStorage = async (urlOrFilename: string): Promise<void> => {
+  // If it's an S3 URL, delete from S3
+  if (urlOrFilename.startsWith("http")) {
+    await deleteFileFromS3(urlOrFilename);
+  }
+  // Legacy local files are ignored (they may not exist anymore)
 };
 
 // -----------------------------------------------------------------
@@ -668,7 +655,7 @@ export const deleteCustomerFile = async (req: Request, res: Response) => {
         }
 
         await prisma.customer_files.delete({ where: { id } });
-        await deleteFileFromDisk(url);
+        await deleteFileFromStorage(url);
         deleted = true;
         break;
 
@@ -710,7 +697,7 @@ export const deleteCustomerFile = async (req: Request, res: Response) => {
           data: { [fieldName]: null },
         });
 
-        await deleteFileFromDisk(url);
+        await deleteFileFromStorage(url);
         updated = true;
         break;
 
@@ -741,7 +728,7 @@ export const deleteCustomerFile = async (req: Request, res: Response) => {
           data: { [fieldName]: null },
         });
 
-        await deleteFileFromDisk(url);
+        await deleteFileFromStorage(url);
         updated = true;
         break;
 
@@ -785,22 +772,12 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
   const files = req.files as any;
   const { id, table, fieldName, oldUrl } = req.body;
 
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
-        }
-      });
-    });
-  };
-
   // Validate required fields
   if (!id || !table || !fieldName || !oldUrl) {
-    cleanupFiles();
+    // Delete uploaded file from S3 if validation fails
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
     return res.status(400).json({
       success: false,
       message: "id, table, fieldName, and oldUrl are required",
@@ -814,7 +791,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
     "customer_files",
   ] as const;
   if (!allowedTables.includes(table as any)) {
-    cleanupFiles();
+    // Delete uploaded file from S3 if validation fails
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
     return res.status(400).json({
       success: false,
       message: `Invalid table. Allowed: ${allowedTables.join(", ")}`,
@@ -823,7 +803,6 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
 
   // Check if new file is uploaded
   if (!files || !files.image || !files.image[0]) {
-    cleanupFiles();
     return res.status(400).json({
       success: false,
       message:
@@ -833,7 +812,8 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
 
   try {
     const uploadedFile = files.image[0];
-    const newFilename = uploadedFile.filename;
+    // With S3, req.files[].location is the full S3 URL
+    const newS3Url = uploadedFile.location;
 
     // -----------------------------------------------------------------
     // Switch: Handle per table logic
@@ -847,7 +827,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
         });
 
         if (!customerFile) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if record not found
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(404).json({
             success: false,
             message: "File record not found",
@@ -856,32 +839,33 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
 
         // Verify oldUrl matches
         if (customerFile.url !== oldUrl) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if URL mismatch
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(400).json({
             success: false,
             message: "oldUrl does not match the current file URL",
           });
         }
 
-        // Delete old file from disk
-        await deleteFileFromDisk(oldUrl);
+        // Delete old file from S3
+        await deleteFileFromStorage(oldUrl);
 
-        // Update database with new file
+        // Update database with new S3 URL
         const updatedFile = await prisma.customer_files.update({
           where: { id },
-          data: { url: newFilename },
+          data: { url: newS3Url },
         });
 
-        const baseUrl =
-          process.env.APP_URL || req.protocol + "://" + req.get("host");
         const formattedEntry = {
           fieldName: "image",
           table: "customer_files",
-          url: newFilename,
+          url: newS3Url,
           id: updatedFile.id,
-          fileType: getFileType(newFilename),
+          fileType: getFileType(newS3Url),
           createdAt: updatedFile.createdAt,
-          fullUrl: `${baseUrl}${newFilename}`,
+          fullUrl: newS3Url, // Already a full S3 URL
         };
 
         return res.status(200).json({
@@ -906,7 +890,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
         ];
 
         if (!validScreenerFields.includes(fieldName)) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if validation fails
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(400).json({
             success: false,
             message: `Invalid field for screener_file: ${fieldName}`,
@@ -920,7 +907,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
         });
 
         if (!screenerRow || !screenerRow[fieldName]) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if record not found
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(404).json({
             success: false,
             message: "File not found in screener_file",
@@ -929,32 +919,33 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
 
         // Verify oldUrl matches
         if (screenerRow[fieldName] !== oldUrl) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if URL mismatch
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(400).json({
             success: false,
             message: "oldUrl does not match the current file URL",
           });
         }
 
-        // Delete old file from disk
-        await deleteFileFromDisk(oldUrl);
+        // Delete old file from S3
+        await deleteFileFromStorage(oldUrl);
 
-        // Update database with new file
+        // Update database with new S3 URL
         await prisma.screener_file.update({
           where: { id },
-          data: { [fieldName]: newFilename },
+          data: { [fieldName]: newS3Url },
         });
 
-        const baseUrl =
-          process.env.APP_URL || req.protocol + "://" + req.get("host");
         const formattedEntry = {
           fieldName,
           table: "screener_file",
-          url: newFilename,
+          url: newS3Url,
           id,
-          fileType: getFileType(newFilename),
+          fileType: getFileType(newS3Url),
           createdAt: screenerRow.createdAt,
-          fullUrl: `${baseUrl}${newFilename}`,
+          fullUrl: newS3Url, // Already a full S3 URL
         };
 
         return res.status(200).json({
@@ -968,7 +959,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
         // Validate field
         const validShaftFields = ["image3d_1", "image3d_2"];
         if (!validShaftFields.includes(fieldName)) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if validation fails
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(400).json({
             success: false,
             message: `Invalid field for custom_shafts: ${fieldName}`,
@@ -982,7 +976,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
         });
 
         if (!shaftRow || !shaftRow[fieldName]) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if record not found
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(404).json({
             success: false,
             message: "File not found in custom_shafts",
@@ -991,32 +988,33 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
 
         // Verify oldUrl matches
         if (shaftRow[fieldName] !== oldUrl) {
-          cleanupFiles();
+          // Delete uploaded file from S3 if URL mismatch
+          if (files?.image?.[0]?.location) {
+            await deleteFileFromS3(files.image[0].location);
+          }
           return res.status(400).json({
             success: false,
             message: "oldUrl does not match the current file URL",
           });
         }
 
-        // Delete old file from disk
-        await deleteFileFromDisk(oldUrl);
+        // Delete old file from S3
+        await deleteFileFromStorage(oldUrl);
 
-        // Update database with new file
+        // Update database with new S3 URL
         await prisma.custom_shafts.update({
           where: { id },
-          data: { [fieldName]: newFilename },
+          data: { [fieldName]: newS3Url },
         });
 
-        const baseUrl =
-          process.env.APP_URL || req.protocol + "://" + req.get("host");
         const formattedEntry = {
           fieldName,
           table: "custom_shafts",
-          url: newFilename,
+          url: newS3Url,
           id,
-          fileType: getFileType(newFilename),
+          fileType: getFileType(newS3Url),
           createdAt: shaftRow.createdAt,
-          fullUrl: `${baseUrl}${newFilename}`,
+          fullUrl: newS3Url, // Already a full S3 URL
         };
 
         return res.status(200).json({
@@ -1027,7 +1025,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
       }
 
       default:
-        cleanupFiles();
+        // Delete uploaded file from S3 if unsupported table
+        if (files?.image?.[0]?.location) {
+          await deleteFileFromS3(files.image[0].location);
+        }
         return res.status(400).json({
           success: false,
           message: "Unsupported table",
@@ -1035,7 +1036,10 @@ export const updateCustomerFile = async (req: Request, res: Response) => {
     }
   } catch (error: any) {
     console.error("Update Customer File Error:", error);
-    cleanupFiles();
+    // Delete uploaded file from S3 on error
+    if (files?.image?.[0]?.location) {
+      await deleteFileFromS3(files.image[0].location);
+    }
     res.status(500).json({
       success: false,
       message: "Failed to update file",

@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
-import path from "path";
-import fs from "fs";
-import { getImageUrl } from "../../../utils/base_utl";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -65,9 +63,7 @@ export const getAllVersorgungen = async (req: Request, res: Response) => {
         supplyStatus: {
           name: rest.supplyStatus?.name ?? null,
           price: rest.supplyStatus?.price ?? null,
-          image: rest.supplyStatus?.image
-            ? getImageUrl(`/uploads/${rest.supplyStatus.image}`)
-            : null,
+          image: rest.supplyStatus?.image || null,
         },
       })
     );
@@ -582,9 +578,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
       supplyStatus: newVersorgungen.supplyStatus
         ? {
             ...newVersorgungen.supplyStatus,
-            image: newVersorgungen.supplyStatus.image
-              ? getImageUrl(`/uploads/${newVersorgungen.supplyStatus.image}`)
-              : null,
+            image: newVersorgungen.supplyStatus.image || null,
           }
         : null,
       store: newVersorgungen.store
@@ -872,9 +866,7 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
       supplyStatus: updated.supplyStatus
         ? {
             ...updated.supplyStatus,
-            image: updated.supplyStatus.image
-              ? getImageUrl(`/uploads/${updated.supplyStatus.image}`)
-              : null,
+            image: updated.supplyStatus.image || null,
           }
         : null,
       store: updated.store ? updated.store?.groessenMengen : null,
@@ -1138,9 +1130,7 @@ export const getVersorgungenByDiagnosis = async (
       supplyStatus: versorgung.supplyStatus
         ? {
             ...versorgung.supplyStatus,
-            image: versorgung.supplyStatus.image
-              ? getImageUrl(`/uploads/${versorgung.supplyStatus.image}`)
-              : null,
+            image: versorgung.supplyStatus.image || null,
           }
         : null,
       store: versorgung.store
@@ -1210,9 +1200,7 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
       supplyStatus: versorgungen.supplyStatus
         ? {
             ...versorgungen.supplyStatus,
-            image: versorgungen.supplyStatus.image
-              ? getImageUrl(`/uploads/${versorgungen.supplyStatus.image}`)
-              : null,
+            image: versorgungen.supplyStatus.image || null,
           }
         : null,
       store: versorgungen.store ? versorgungen.store.groessenMengen : null,
@@ -1283,7 +1271,7 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
 
     const formattedSupplyStatus = supplyStatus.map((item) => ({
       ...item,
-      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
+      image: item.image || null,
     }));
 
     res.status(200).json({
@@ -1337,15 +1325,11 @@ export const getSingleSupplyStatus = async (req: Request, res: Response) => {
       message: "Supply status fetched successfully",
       data: {
         ...supplyStatus,
-        image: supplyStatus.image
-          ? getImageUrl(`/uploads/${supplyStatus.image}`)
-          : null,
+        image: supplyStatus.image || null,
         partner: supplyStatus.partner
           ? {
               ...supplyStatus.partner,
-              image: supplyStatus.partner.image
-                ? getImageUrl(`/uploads/${supplyStatus.partner.image}`)
-                : null,
+              image: supplyStatus.partner.image || null,
             }
           : null,
       },
@@ -1363,7 +1347,7 @@ export const getSingleSupplyStatus = async (req: Request, res: Response) => {
 export const createSupplyStatus = async (req: Request, res: Response) => {
   try {
     const { name, price, description } = req.body;
-    const image = req.file?.filename;
+    const imageS3Url = req.file?.location;
 
     const priceFloat = parseFloat(price);
     if (isNaN(priceFloat)) {
@@ -1375,22 +1359,16 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
 
     const missingField = ["name", "price"].find((field) => !req.body[field]);
     if (missingField) {
-      if (req.file) {
-        const imagePath = path.join(
-          process.cwd(),
-          "uploads",
-          req.file.filename
-        );
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
+      // Cleanup uploaded image from S3 if validation fails (fire-and-forget, no await)
+      if (req.file?.location) {
+        deleteFileFromS3(req.file.location);
       }
       return res.status(400).json({
         success: false,
         message: `${missingField} is required`,
       });
     }
-    if (!image) {
+    if (!imageS3Url) {
       return res.status(400).json({
         success: false,
         message: "Image is required",
@@ -1403,7 +1381,7 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
       data: {
         name,
         price: priceFloat,
-        image,
+        image: imageS3Url,
         description: description || null,
         partner: {
           connect: { id: partnerId },
@@ -1411,23 +1389,19 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
       },
     });
 
-    const imageUrl = image ? getImageUrl(`/uploads/${image}`) : null;
-
     res.status(201).json({
       success: true,
       message: "Supply status created successfully",
       data: {
         ...supplyStatus,
-        image: imageUrl,
+        image: supplyStatus.image || null,
       },
     });
   } catch (error) {
     console.error("Create Supply Status error:", error);
-    if (req.file) {
-      const imagePath = path.join(process.cwd(), "uploads", req.file.filename);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    // Cleanup uploaded image from S3 on error (fire-and-forget, no await)
+    if (req.file?.location) {
+      deleteFileFromS3(req.file.location);
     }
     res.status(500).json({
       success: false,
@@ -1443,7 +1417,7 @@ export const updateSupplyStatus = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
     const { name, price, description } = req.body;
 
-    const image = req.file?.filename;
+    const imageS3Url = req.file?.location;
 
     const existing = await prisma.supplyStatus.findUnique({ where: { id } });
     if (!existing)
@@ -1468,18 +1442,11 @@ export const updateSupplyStatus = async (req: Request, res: Response) => {
       updateData.price = priceFloat;
     }
 
-    if (image) {
-      updateData.image = image;
-      // Remove old image
-      if (existing.image) {
-        console.log("existing.image", existing.image);
-        const oldPath = path.join(process.cwd(), "uploads", existing.image);
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-          console.log(`Deleted old image: ${oldPath}`); // Debug log
-        } else {
-          console.log(`Old image not found at: ${oldPath}`); // Debug log
-        }
+    if (imageS3Url) {
+      updateData.image = imageS3Url;
+      // Remove old image from S3 (fire-and-forget, no await)
+      if (existing.image && existing.image.startsWith("http")) {
+        deleteFileFromS3(existing.image);
       }
     }
 
@@ -1494,18 +1461,14 @@ export const updateSupplyStatus = async (req: Request, res: Response) => {
       message: "Supply status updated",
       data: {
         ...updated,
-        image: updated.image ? getImageUrl(`/uploads/${updated.image}`) : null,
+        image: updated.image || null,
       },
     });
   } catch (error) {
     console.error("Update error:", error);
-    // Clean up uploaded file on error
-    if (req.file) {
-      const newPath = path.join(process.cwd(), "uploads", req.file.filename);
-      if (fs.existsSync(newPath)) {
-        fs.unlinkSync(newPath);
-        console.log(`Cleaned up new image on error: ${newPath}`); // Debug log
-      }
+    // Clean up uploaded file from S3 on error (fire-and-forget, no await)
+    if (req.file?.location) {
+      deleteFileFromS3(req.file.location);
     }
     res.status(500).json({
       success: false,
@@ -1523,11 +1486,9 @@ export const deleteSupplyStatus = async (req: Request, res: Response) => {
       where: { id },
     });
 
-    if (supplyStatus.image) {
-      const imagePath = path.join(process.cwd(), "uploads", supplyStatus.image);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
+    // Delete image from S3 (fire-and-forget, no await)
+    if (supplyStatus.image && supplyStatus.image.startsWith("http")) {
+      deleteFileFromS3(supplyStatus.image);
     }
 
     res.status(200).json({

@@ -2,13 +2,12 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import fs from "fs";
-import path from "path";
 import { baseUrl, getImageUrl } from "../../../utils/base_utl";
 import {
   sendAdminLoginNotification,
   sendPartnershipWelcomeEmail,
 } from "../../../utils/emailService.utils";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -86,19 +85,13 @@ const prisma = new PrismaClient();
 export const createUser = async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
-    const image = req.file;
+    const image = req.file as any; // S3 file object
 
     const missingField = ["name", "email", "password"].find(
       (field) => !req.body[field]
     );
 
     if (missingField) {
-      if (image) {
-        const imagePath = path.join(__dirname, "../../uploads", image.filename);
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
-      }
       res.status(400).json({
         message: `${missingField} is required!`,
       });
@@ -110,12 +103,6 @@ export const createUser = async (req: Request, res: Response) => {
     });
 
     if (existingUser) {
-      if (image) {
-        const imagePath = path.join(__dirname, "../../uploads", image.filename);
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
-      }
       res.status(400).json({
         message: "Email already exists",
       });
@@ -124,12 +111,15 @@ export const createUser = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // With S3, req.file.location is the full S3 URL
+    const imageUrl = image?.location || null;
+
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password: hashedPassword,
-        image: image ? image.filename : null,
+        image: imageUrl, // Store the full S3 URL
       },
     });
 
@@ -139,8 +129,6 @@ export const createUser = async (req: Request, res: Response) => {
       { expiresIn: "100d" }
     );
 
-    const imageUrl = user.image ? getImageUrl(`/uploads/${user.image}`) : null;
-
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -149,20 +137,10 @@ export const createUser = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        image: imageUrl,
+        image: user.image, // Already a full URL from S3
       },
     });
   } catch (error) {
-    if (req.file) {
-      const imagePath = path.join(
-        __dirname,
-        "../../uploads",
-        req.file.filename
-      );
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -236,6 +214,13 @@ export const loginUser = async (req: Request, res: Response) => {
       sendAdminLoginNotification(user.email, user.name, ipAddress);
     }
 
+    // Check if image is already a full URL (S3) or needs formatting (legacy local file)
+    const imageUrl = user.image
+      ? user.image.startsWith("http")
+        ? user.image
+        : getImageUrl(`/uploads/${user.image}`)
+      : null;
+
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -243,7 +228,7 @@ export const loginUser = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        image: user.image ? getImageUrl(`/uploads/${user.image}`) : null,
+        image: imageUrl,
         role: user.role,
       },
       token,
@@ -261,31 +246,25 @@ export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
     const { name, email } = req.body;
-    const newImage = req.file;
+    const newImage = req.file as any; // S3 file object
 
     const existingUser = await prisma.user.findUnique({
       where: { id: String(id) },
     });
 
     if (!existingUser) {
-      if (newImage) {
-        fs.unlinkSync(path.join(__dirname, "../../uploads", newImage.filename));
-      }
       res.status(404).json({
         message: "User not found",
       });
       return;
     }
 
-    if (newImage && existingUser.image) {
-      const oldImagePath = path.join(
-        __dirname,
-        "../../uploads",
-        existingUser.image
-      );
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+    // With S3, req.file.location is the full S3 URL
+    const newImageUrl = newImage?.location || null;
+
+    // Delete old image from S3 if a new image is being uploaded and old image exists
+    if (newImageUrl && existingUser.image) {
+      await deleteFileFromS3(existingUser.image);
     }
 
     const user = await prisma.user.update({
@@ -293,11 +272,9 @@ export const updateUser = async (req: Request, res: Response) => {
       data: {
         name: name || existingUser.name,
         email: email || existingUser.email,
-        image: newImage ? newImage.filename : existingUser.image,
+        image: newImageUrl || existingUser.image, // Store the full S3 URL
       },
     });
-
-    const imageUrl = user.image ? getImageUrl(`/uploads/${user.image}`) : null;
 
     res.status(200).json({
       success: true,
@@ -306,14 +283,10 @@ export const updateUser = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        image: imageUrl,
+        image: user.image, // Already a full URL from S3
       },
     });
   } catch (error) {
-    if (req.file) {
-      fs.unlinkSync(path.join(__dirname, "../../uploads", req.file.filename));
-    }
-
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -426,49 +399,34 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
     const { name } = req.body;
-    const newImage = req.file;
+    const newImage = req.file as any; // S3 file object
 
     const existingUser = await prisma.user.findUnique({
       where: { id: String(id) },
     });
 
     if (!existingUser) {
-      if (newImage) {
-        const imagePath = path.join(
-          __dirname,
-          "../../uploads",
-          newImage.filename
-        );
-        if (fs.existsSync(imagePath)) {
-          fs.unlinkSync(imagePath);
-        }
-      }
       res.status(404).json({
         message: "User not found",
       });
       return;
     }
 
-    if (newImage && existingUser.image) {
-      const oldImagePath = path.join(
-        __dirname,
-        "../../uploads",
-        existingUser.image
-      );
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+    // With S3, req.file.location is the full S3 URL
+    const newImageUrl = newImage?.location || null;
+
+    // Delete old image from S3 if a new image is being uploaded and old image exists
+    if (newImageUrl && existingUser.image) {
+      await deleteFileFromS3(existingUser.image);
     }
 
     const user = await prisma.user.update({
       where: { id: String(id) },
       data: {
         name: name || existingUser.name,
-        image: newImage ? newImage.filename : existingUser.image,
+        image: newImageUrl || existingUser.image, // Store the full S3 URL
       },
     });
-
-    const imageUrl = user.image ? getImageUrl(`/uploads/${user.image}`) : null;
 
     res.status(200).json({
       success: true,
@@ -477,22 +435,11 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        image: imageUrl,
+        image: user.image, // Already a full URL from S3
         role: user.role,
       },
     });
   } catch (error) {
-    if (req.file) {
-      const imagePath = path.join(
-        __dirname,
-        "../../uploads",
-        req.file.filename
-      );
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -517,7 +464,11 @@ export const getAllPartners = async (req: Request, res: Response) => {
 
     const partnersWithImageUrls = partners.map((partner) => ({
       ...partner,
-      image: partner.image ? getImageUrl(`/uploads/${partner.image}`) : null,
+      image: partner.image
+        ? partner.image.startsWith("http")
+          ? partner.image
+          : getImageUrl(`/uploads/${partner.image}`)
+        : null,
     }));
 
     res.status(200).json({
@@ -585,12 +536,11 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
 
     const { password, ...userData } = user;
 
+  
+
     res.status(200).json({
       success: true,
-      user: {
-        ...userData,
-        image: user.image ? getImageUrl(`/uploads/${user.image}`) : null,
-      },
+      user: userData
     });
   } catch (error) {
     console.error("Auth check error:", error);

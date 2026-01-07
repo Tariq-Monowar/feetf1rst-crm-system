@@ -255,6 +255,8 @@ export const buyStorage = async (req, res) => {
       admin_store_id,
       lagerort = null as string | null, // এটা স্টর লোকেশন।
       selling_price = 0,
+      groessenMengen,
+      price,
     } = req.body;
 
     const missingField = ["admin_store_id"].find(
@@ -294,8 +296,8 @@ export const buyStorage = async (req, res) => {
     // Admin format: {"35": {"length": 225, "quantity": 5}}
     // Stores format: {"35": {"length": 225, "quantity": 5, "mindestmenge": 0, "auto_order_limit": 0, "auto_order_quantity": 0}}
     let transformedGroessenMengen: any = {};
-    if (adminStore.groessenMengen && typeof adminStore.groessenMengen === 'object') {
-      const sizes = adminStore.groessenMengen as Record<string, any>;
+    if (groessenMengen && typeof groessenMengen === 'object') {
+      const sizes = groessenMengen as Record<string, any>;
       for (const sizeKey of Object.keys(sizes)) {
         const sizeData = sizes[sizeKey];
         if (sizeData && typeof sizeData === 'object') {
@@ -328,10 +330,11 @@ export const buyStorage = async (req, res) => {
         lagerort: lagerort,
         groessenMengen: transformedGroessenMengen,
         purchase_price: adminStore.price || 0,
-        selling_price: 0,
+        selling_price: price,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
+        
       },
     });
 
@@ -346,7 +349,7 @@ export const buyStorage = async (req, res) => {
         lagerort: lagerort,
         groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
         admin_storeId: admin_store_id,
-        price: adminStore.price || 0,
+        price: price || 0,
         image: adminStore.image
       },
     });

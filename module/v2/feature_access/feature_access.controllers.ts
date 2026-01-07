@@ -111,6 +111,7 @@ export const manageFeatureAccess = async (req: Request, res: Response) => {
 
 export const partnerFeatureAccess = async (req: Request, res: Response) => {
   try {
+    console.log("partnerFeatureAccess");
     const partnerId = req.user.id;
 
     // Check if partner exists

@@ -1,11 +1,10 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import fs from "fs";
-import path from "path";
 import { data } from "../../../assets/v1/data";
-import { getImageUrl } from "../../../utils/base_utl";
 import { data as characteristicIcons } from "../../../assets/v1/data";
 import { Multer } from "multer";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
+import { getImageUrl } from "../../../utils/base_utl";
 const prisma = new PrismaClient();
 
 // -------------------------------------------
@@ -189,7 +188,7 @@ const formatProductsWithImageUrls = (products: any[]) =>
       ...color,
       images: color.images.map((image) => ({
         ...image,
-        url: getImageUrl(`/uploads/${image.url}`),
+        url: image.url || null,
       })),
     })),
   }));
@@ -292,21 +291,21 @@ export const createProduct = async (req: Request, res: Response) => {
 
     let fileIndex = 0;
     const colorsWithFiles = parsedColors.map((color) => {
-      const imageFilenames: string[] = [];
+      const imageUrls: string[] = [];
 
       for (
         let i = 0;
         i < color.images.length && fileIndex < files.length;
         i++
       ) {
-        imageFilenames.push(files[fileIndex].filename);
+        imageUrls.push((files[fileIndex] as any).location);
         fileIndex++;
       }
 
       return {
         colorName: color.colorName,
         colorCode: color.colorCode,
-        images: imageFilenames,
+        images: imageUrls,
       };
     });
 
@@ -334,8 +333,8 @@ export const createProduct = async (req: Request, res: Response) => {
             colorName: color.colorName,
             colorCode: color.colorCode,
             images: {
-              create: color.images.map((filename) => ({
-                url: filename,
+              create: color.images.map((url) => ({
+                url: url,
               })),
             },
           })),
@@ -449,10 +448,10 @@ export const updateProduct = async (req: Request, res: Response) => {
             Array.isArray(files) && //change naw
             fileIndex < files.length
           ) {
-            colorImages.push(files[fileIndex].filename);
+            colorImages.push((files[fileIndex] as any).location);
             fileIndex++;
-          } else if (!image.isNew && image.filename) {
-            colorImages.push(image.filename);
+          } else if (!image.isNew && image.url) {
+            colorImages.push(image.url);
           }
         }
       }
@@ -521,8 +520,8 @@ export const updateProduct = async (req: Request, res: Response) => {
             colorName: color.colorName,
             colorCode: color.colorCode,
             images: {
-              create: color.images.map((filename: string) => ({
-                url: filename,
+              create: color.images.map((url: string) => ({
+                url: url,
               })),
             },
           })),
@@ -543,7 +542,7 @@ export const updateProduct = async (req: Request, res: Response) => {
         ...color,
         images: color.images.map((image) => ({
           ...image,
-          url: getImageUrl(`/uploads/${image.url}`),
+          url: image.url || null,
         })),
       })),
     };
@@ -621,9 +620,9 @@ export const deleteImage = async (req: Request, res: Response) => {
       return;
     }
 
-    const filePath = path.join(__dirname, "../../../uploads", imageName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // Delete image from S3 (fire-and-forget, no await)
+    if (image.url && image.url.startsWith("http")) {
+      deleteFileFromS3(image.url);
     }
 
     // Delete the image record from database
@@ -801,11 +800,11 @@ export const deleteProduct = async (req: Request, res: Response) => {
       return;
     }
 
+    // Delete all images from S3 (fire-and-forget, no await)
     for (const color of product.colors) {
       for (const image of color.images) {
-        const filePath = path.join(__dirname, "../../../uploads", image.url);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+        if (image.url && image.url.startsWith("http")) {
+          deleteFileFromS3(image.url);
         }
       }
     }
@@ -909,7 +908,7 @@ export const getSingleProduct = async (req: Request, res: Response) => {
         ...color,
         images: color.images.map((image) => ({
           ...image,
-          url: getImageUrl(`/uploads/${image.url}`),
+          url: image.url || null,
         })),
       })),
     };
@@ -1026,10 +1025,10 @@ export const getCategorizedProducts = async (req: Request, res: Response) => {
             ...p,
             colors: p.colors.map(color => ({
               ...color,
-              images: color.images.map(image => ({
-                ...image,
-                url: getImageUrl(`/uploads/${image.url}`)
-              }))
+            images: color.images.map(image => ({
+              ...image,
+              url: image.url || null
+            }))
             }))
           }))
         };
@@ -1080,10 +1079,10 @@ export const getCategorizedProducts = async (req: Request, res: Response) => {
               ...p,
               colors: p.colors.map(color => ({
                 ...color,
-                images: color.images.map(image => ({
-                  ...image,
-                  url: getImageUrl(`/uploads/${image.url}`)
-                }))
+            images: color.images.map(image => ({
+              ...image,
+              url: image.url || null
+            }))
               }))
             }))
           };

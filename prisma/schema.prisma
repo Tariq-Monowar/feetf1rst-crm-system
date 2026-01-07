@@ -6,7 +6,6 @@ generator client {
 // to prisma.config.ts, and the schema only retains the provider.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -947,6 +946,7 @@ model admin_store {
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
   adminStoreTrackings admin_store_tracking[]
+  adminStoreHistories admin_store_history[]
 }
 
 model admin_store_tracking {
@@ -983,6 +983,19 @@ model admin_store_tracking {
   parcessAt     DateTime     @default(now())
   adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
   admin_storeId String?
+}
+
+model admin_store_history {
+  id String @id @default(uuid())
+
+  admin_storeId String
+  admin_store   admin_store @relation(fields: [admin_storeId], references: [id], onDelete: Cascade)
+
+  groessenMengen Json?
+  price          Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Stores {

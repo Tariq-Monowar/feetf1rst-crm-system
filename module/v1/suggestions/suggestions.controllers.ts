@@ -1,13 +1,11 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import validator from "validator";
-import fs from "fs";
-import path from "path";
 import {
   sendImprovementEmail,
   sendNewSuggestionEmail,
 } from "../../../utils/emailService.utils";
-import { getImageUrl } from "../../../utils/base_utl";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -170,10 +168,8 @@ export const createImprovement = async (req: Request, res: Response) => {
     if (!files) return;
     if (Array.isArray(files)) {
       files.forEach((file: any) => {
-        try {
-          if (file && file.path) fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file?.path}`, err);
+        if (file && file.location) {
+          deleteFileFromS3(file.location);
         }
       });
     } else if (files && typeof files === 'object') {
@@ -181,10 +177,8 @@ export const createImprovement = async (req: Request, res: Response) => {
       Object.keys(files).forEach((key) => {
         if (Array.isArray(files[key])) {
           files[key].forEach((file: any) => {
-            try {
-              if (file && file.path) fs.unlinkSync(file.path);
-            } catch (err) {
-              console.error(`Failed to delete file ${file?.path}`, err);
+            if (file && file.location) {
+              deleteFileFromS3(file.location);
             }
           });
         }
@@ -217,20 +211,20 @@ export const createImprovement = async (req: Request, res: Response) => {
 
     // Handle image uploads
     // When using upload.array("images", 100), files come as an array directly
-    let imageFilenames: string[] = [];
+    let imageUrls: string[] = [];
     
     if (files) {
       if (Array.isArray(files) && files.length > 0) {
         // Standard case: files is an array
-        imageFilenames = files
-          .filter((file: any) => file && file.filename)
-          .map((file: any) => file.filename);
+        imageUrls = files
+          .filter((file: any) => file && file.location)
+          .map((file: any) => file.location);
       } else if (typeof files === 'object' && !Array.isArray(files)) {
         // Fallback: files might be an object with field names as keys
         if (files.images && Array.isArray(files.images)) {
-          imageFilenames = files.images
-            .filter((file: any) => file && file.filename)
-            .map((file: any) => file.filename);
+          imageUrls = files.images
+            .filter((file: any) => file && file.location)
+            .map((file: any) => file.location);
         }
       }
     }
@@ -238,13 +232,13 @@ export const createImprovement = async (req: Request, res: Response) => {
     console.log("[createImprovement] req.files:", req.files);
     console.log("[createImprovement] files type:", typeof files);
     console.log("[createImprovement] files is array:", Array.isArray(files));
-    console.log("[createImprovement] image filenames:", imageFilenames);
+    console.log("[createImprovement] image URLs:", imageUrls);
 
     const newImprovement = await prisma.improvementSuggestion.create({
       data: {
         suggestion,
         category: category || null,
-        image: imageFilenames,
+        image: imageUrls,
         user: {
           connect: {
             id: userId,
@@ -253,10 +247,10 @@ export const createImprovement = async (req: Request, res: Response) => {
       },
     });
 
-    // Format response with image URLs
+    // Format response - URLs are already S3 URLs
     const formattedImprovement = {
       ...newImprovement,
-      image: newImprovement.image.map((img) => getImageUrl(`/uploads/${img}`)),
+      image: newImprovement.image || [],
     };
 
     res.status(201).json({
@@ -324,13 +318,13 @@ export const getAllImprovements = async (req: Request, res: Response) => {
       prisma.improvementSuggestion.count({ where }),
     ]);
 
-    // Format improvements with image URLs
+    // Format improvements - URLs are already S3 URLs
     const formattedImprovements = improvements.map((improvement) => ({
       ...improvement,
-      image: improvement.image.map((img) => getImageUrl(`/uploads/${img}`)),
+      image: improvement.image || [],
       user: {
         ...improvement.user,
-        image: improvement.user.image ? getImageUrl(`/uploads/${improvement.user.image}`) : null,
+        image: improvement.user.image || null,
       },
     }));
 
@@ -406,18 +400,12 @@ export const deleteImprovement = async (req: Request, res: Response) => {
       });
     }
 
-    // Delete all image files
+    // Delete all image files from S3 (fire-and-forget, no await)
     existingImprovements.forEach((improvement) => {
       if (improvement.image && improvement.image.length > 0) {
-        improvement.image.forEach((imageFilename) => {
-          const imagePath = path.join(process.cwd(), "uploads", imageFilename);
-          if (fs.existsSync(imagePath)) {
-            try {
-              fs.unlinkSync(imagePath);
-              console.log(`Deleted image file: ${imagePath}`);
-            } catch (err) {
-              console.error(`Failed to delete image file: ${imagePath}`, err);
-            }
+        improvement.image.forEach((imageUrl) => {
+          if (imageUrl && imageUrl.startsWith("http")) {
+            deleteFileFromS3(imageUrl);
           }
         });
       }
@@ -459,18 +447,12 @@ export const deleteAllImprovements = async (req: Request, res: Response) => {
       },
     });
 
-    // Delete all image files
+    // Delete all image files from S3 (fire-and-forget, no await)
     improvements.forEach((improvement) => {
       if (improvement.image && improvement.image.length > 0) {
-        improvement.image.forEach((imageFilename) => {
-          const imagePath = path.join(process.cwd(), "uploads", imageFilename);
-          if (fs.existsSync(imagePath)) {
-            try {
-              fs.unlinkSync(imagePath);
-              console.log(`Deleted image file: ${imagePath}`);
-            } catch (err) {
-              console.error(`Failed to delete image file: ${imagePath}`, err);
-            }
+        improvement.image.forEach((imageUrl) => {
+          if (imageUrl && imageUrl.startsWith("http")) {
+            deleteFileFromS3(imageUrl);
           }
         });
       }

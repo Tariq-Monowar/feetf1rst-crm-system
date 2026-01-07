@@ -1,8 +1,6 @@
 import { Prisma, PrismaClient, massschuhe_order_status } from "@prisma/client";
 import { Request, Response } from "express";
-import { getImageUrl } from "../../../utils/base_utl";
-import fs from "fs";
-import path from "path";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -501,12 +499,8 @@ export const getMassschuheOrder = async (req: Request, res: Response) => {
       const formatted = formatOrderWithStatusHistory(o);
       return {
         ...formatted,
-        bodenerstellungpdf: o.bodenerstellungpdf
-          ? getImageUrl(`/uploads/${o.bodenerstellungpdf}`)
-          : null,
-        geliefertpdf: o.geliefertpdf
-          ? getImageUrl(`/uploads/${o.geliefertpdf}`)
-          : null,
+        bodenerstellungpdf: o.bodenerstellungpdf || null,
+        geliefertpdf: o.geliefertpdf || null,
       };
     });
 
@@ -657,9 +651,7 @@ export const getMassschuheOrderByCustomerId = async (
       const partnerWithImage = order.user
         ? {
             ...order.user,
-            image: order.user.image
-              ? getImageUrl(`/uploads/${order.user.image}`)
-              : null,
+            image: order.user.image || null,
           }
         : null;
       return { ...formatted, partner: partnerWithImage };
@@ -934,9 +926,7 @@ export const getMassschuheOrderById = async (req: Request, res: Response) => {
     const partnerWithImage = orderAny.user
       ? {
           ...orderAny.user,
-          image: orderAny.user.image
-            ? getImageUrl(`/uploads/${orderAny.user.image}`)
-            : null,
+          image: orderAny.user.image || null,
         }
       : null;
     return res.status(200).json({
@@ -945,12 +935,8 @@ export const getMassschuheOrderById = async (req: Request, res: Response) => {
       data: {
         ...formattedOrder,
         partner: partnerWithImage,
-        bodenerstellungpdf: orderAny.bodenerstellungpdf
-          ? getImageUrl(`/uploads/${orderAny.bodenerstellungpdf}`)
-          : null,
-        geliefertpdf: orderAny.geliefertpdf
-          ? getImageUrl(`/uploads/${orderAny.geliefertpdf}`)
-          : null,
+        bodenerstellungpdf: orderAny.bodenerstellungpdf || null,
+        geliefertpdf: orderAny.geliefertpdf || null,
       },
     });
   } catch (error: any) {
@@ -1185,43 +1171,22 @@ export const uploadMassschuheOrderPdf = async (req: Request, res: Response) => {
       });
     }
 
-    const bodenerstellungFileName = bodenerstellungFile?.filename ?? null;
-    const geliefertFileName = geliefertFile?.filename ?? null;
+    const bodenerstellungS3Url = bodenerstellungFile?.location ?? null;
+    const geliefertS3Url = geliefertFile?.location ?? null;
 
     const data: any = {};
-    if (bodenerstellungFileName) {
-      // delete old file if exists
-      if (order?.bodenerstellungpdf) {
-        const oldPath = path.join(
-          process.cwd(),
-          "uploads",
-          order.bodenerstellungpdf
-        );
-        if (fs.existsSync(oldPath)) {
-          try {
-            fs.unlinkSync(oldPath);
-          } catch (e) {
-            console.error(
-              `Failed to delete old bodenerstellungpdf ${oldPath}`,
-              e
-            );
-          }
-        }
+    if (bodenerstellungS3Url) {
+      // delete old file from S3 if exists (fire-and-forget, no await)
+      if (order?.bodenerstellungpdf && order.bodenerstellungpdf.startsWith("http")) {
+        deleteFileFromS3(order.bodenerstellungpdf);
       }
-      data.bodenerstellungpdf = bodenerstellungFileName;
+      data.bodenerstellungpdf = bodenerstellungS3Url;
     }
-    if (geliefertFileName) {
-      if (order?.geliefertpdf) {
-        const oldPath = path.join(process.cwd(), "uploads", order.geliefertpdf);
-        if (fs.existsSync(oldPath)) {
-          try {
-            fs.unlinkSync(oldPath);
-          } catch (e) {
-            console.error(`Failed to delete old geliefertpdf ${oldPath}`, e);
-          }
-        }
+    if (geliefertS3Url) {
+      if (order?.geliefertpdf && order.geliefertpdf.startsWith("http")) {
+        deleteFileFromS3(order.geliefertpdf);
       }
-      data.geliefertpdf = geliefertFileName;
+      data.geliefertpdf = geliefertS3Url;
     }
 
     await prisma.massschuhe_order.update({
@@ -1235,28 +1200,19 @@ export const uploadMassschuheOrderPdf = async (req: Request, res: Response) => {
       data: {
         orderId,
         ...data,
-        bodenerstellungpdf: bodenerstellungFileName
-          ? getImageUrl(`/uploads/${bodenerstellungFileName}`)
-          : null,
-        geliefertpdf: geliefertFileName
-          ? getImageUrl(`/uploads/${geliefertFileName}`)
-          : null,
+        bodenerstellungpdf: bodenerstellungS3Url || null,
+        geliefertpdf: geliefertS3Url || null,
       },
     });
   } catch (error: any) {
-    // Cleanup any uploaded files on error (mirror createCustomers behavior)
+    // Cleanup any uploaded files from S3 on error (fire-and-forget, no await)
     const files = req.files as any;
     if (files) {
       try {
-        const fs = require("fs");
         Object.keys(files).forEach((key) => {
           files[key].forEach((file: any) => {
-            if (file?.path) {
-              try {
-                fs.unlinkSync(file.path);
-              } catch (e) {
-                console.error(`Failed to delete file ${file.path}`, e);
-              }
+            if (file?.location) {
+              deleteFileFromS3(file.location);
             }
           });
         });
@@ -1916,22 +1872,19 @@ export const deleteAllMassschuheOrders = async (req: Request, res: Response) => 
       await tx.massschuhe_order.deleteMany({});
     });
 
-    // Delete physical files
-    const uploadsDir = path.join(process.cwd(), "uploads");
+    // Delete files from S3 (fire-and-forget, no await)
     let deletedFilesCount = 0;
     let failedFilesCount = 0;
 
-    for (const filename of filesToDelete) {
-      if (!filename) continue;
-
-      const filePath = path.join(uploadsDir, filename);
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          deletedFilesCount++;
-        }
-      } catch (error) {
-        console.error(`Failed to delete file ${filePath}:`, error);
+    for (const fileUrlOrKey of filesToDelete) {
+      if (!fileUrlOrKey) continue;
+      
+      // Only delete if it's an S3 URL (starts with http)
+      if (fileUrlOrKey.startsWith("http")) {
+        deleteFileFromS3(fileUrlOrKey);
+        deletedFilesCount++;
+      } else {
+        // Legacy local file, skip or handle differently if needed
         failedFilesCount++;
       }
     }

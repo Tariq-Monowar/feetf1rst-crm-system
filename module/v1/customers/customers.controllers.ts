@@ -3,8 +3,8 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import { getImageUrl } from "../../../utils/base_utl";
 import path from "path";
+import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -186,10 +186,10 @@ export const createCustomers = async (req: Request, res: Response) => {
     }
 
     let csvData: any = {};
-    let csvFileName: string | null = null;
+    let csvS3Url: string | null = null;
     if (files.csvFile && files.csvFile[0]) {
       const csvPath = files.csvFile[0].path;
-      csvFileName = files.csvFile[0].filename;
+      csvS3Url = files.csvFile[0].location;
       console.log("Parsing CSV file:", csvPath);
       csvData = await parseCSV(csvPath);
     }
@@ -250,22 +250,22 @@ export const createCustomers = async (req: Request, res: Response) => {
         files.picture_24 ||
         files.threed_model_right ||
         files.picture_16 ||
-        csvFileName
+        csvS3Url
       ) {
         screenerFile = await tx.screener_file.create({
           data: {
             customerId: newCustomer.id,
-            picture_10: files.picture_10?.[0]?.filename || null,
-            picture_23: files.picture_23?.[0]?.filename || null,
-            paint_24: files.paint_24?.[0]?.filename || null,
-            paint_23: files.paint_23?.[0]?.filename || null,
-            threed_model_left: files.threed_model_left?.[0]?.filename || null,
-            picture_17: files.picture_17?.[0]?.filename || null,
-            picture_11: files.picture_11?.[0]?.filename || null,
-            picture_24: files.picture_24?.[0]?.filename || null,
-            threed_model_right: files.threed_model_right?.[0]?.filename || null,
-            picture_16: files.picture_16?.[0]?.filename || null,
-            csvFile: csvFileName,
+            picture_10: files.picture_10?.[0]?.location || null,
+            picture_23: files.picture_23?.[0]?.location || null,
+            paint_24: files.paint_24?.[0]?.location || null,
+            paint_23: files.paint_23?.[0]?.location || null,
+            threed_model_left: files.threed_model_left?.[0]?.location || null,
+            picture_17: files.picture_17?.[0]?.location || null,
+            picture_11: files.picture_11?.[0]?.location || null,
+            picture_24: files.picture_24?.[0]?.location || null,
+            threed_model_right: files.threed_model_right?.[0]?.location || null,
+            picture_16: files.picture_16?.[0]?.location || null,
+            csvFile: csvS3Url,
             fusslange1: csvData.B58 || null,
             fusslange2: csvData.C58 || null,
             fussbreite1: csvData.B73 || null,
@@ -318,39 +318,17 @@ export const createCustomers = async (req: Request, res: Response) => {
       screenerFile: customerWithScreener.screenerFile.map((screener) => ({
         id: screener.id,
         customerId: screener.customerId,
-        picture_10: screener.picture_10
-          ? getImageUrl(`/uploads/${screener.picture_10}`)
-          : null,
-        picture_23: screener.picture_23
-          ? getImageUrl(`/uploads/${screener.picture_23}`)
-          : null,
-        paint_24: screener.paint_24
-          ? getImageUrl(`/uploads/${screener.paint_24}`)
-          : null,
-        paint_23: screener.paint_23
-          ? getImageUrl(`/uploads/${screener.paint_23}`)
-          : null,
-        picture_11: screener.picture_11
-          ? getImageUrl(`/uploads/${screener.picture_11}`)
-          : null,
-        picture_24: screener.picture_24
-          ? getImageUrl(`/uploads/${screener.picture_24}`)
-          : null,
-        threed_model_left: screener.threed_model_left
-          ? getImageUrl(`/uploads/${screener.threed_model_left}`)
-          : null,
-        threed_model_right: screener.threed_model_right
-          ? getImageUrl(`/uploads/${screener.threed_model_right}`)
-          : null,
-        picture_17: screener.picture_17
-          ? getImageUrl(`/uploads/${screener.picture_17}`)
-          : null,
-        picture_16: screener.picture_16
-          ? getImageUrl(`/uploads/${screener.picture_16}`)
-          : null,
-        csvFile: screener.csvFile
-          ? getImageUrl(`/uploads/${screener.csvFile}`)
-          : null,
+        picture_10: screener.picture_10 || null,
+        picture_23: screener.picture_23 || null,
+        paint_24: screener.paint_24 || null,
+        paint_23: screener.paint_23 || null,
+        picture_11: screener.picture_11 || null,
+        picture_24: screener.picture_24 || null,
+        threed_model_left: screener.threed_model_left || null,
+        threed_model_right: screener.threed_model_right || null,
+        picture_17: screener.picture_17 || null,
+        picture_16: screener.picture_16 || null,
+        csvFile: screener.csvFile || null,
         createdAt: screener.createdAt,
         updatedAt: screener.updatedAt,
         fusslange1: screener.fusslange1,
@@ -641,39 +619,17 @@ export const getAllCustomers = async (req: Request, res: Response) => {
       screenerFile: c.screenerFile.map((screener) => ({
         id: screener.id,
         customerId: screener.customerId,
-        picture_10: screener.picture_10
-          ? getImageUrl(`/uploads/${screener.picture_10}`)
-          : null,
-        picture_23: screener.picture_23
-          ? getImageUrl(`/uploads/${screener.picture_23}`)
-          : null,
-        paint_24: screener.paint_24
-          ? getImageUrl(`/uploads/${screener.paint_24}`)
-          : null,
-        paint_23: screener.paint_23
-          ? getImageUrl(`/uploads/${screener.paint_23}`)
-          : null,
-        picture_11: screener.picture_11
-          ? getImageUrl(`/uploads/${screener.picture_11}`)
-          : null,
-        picture_24: screener.picture_24
-          ? getImageUrl(`/uploads/${screener.picture_24}`)
-          : null,
-        threed_model_left: screener.threed_model_left
-          ? getImageUrl(`/uploads/${screener.threed_model_left}`)
-          : null,
-        threed_model_right: screener.threed_model_right
-          ? getImageUrl(`/uploads/${screener.threed_model_right}`)
-          : null,
-        picture_17: screener.picture_17
-          ? getImageUrl(`/uploads/${screener.picture_17}`)
-          : null,
-        picture_16: screener.picture_16
-          ? getImageUrl(`/uploads/${screener.picture_16}`)
-          : null,
-        csvFile: screener.csvFile
-          ? getImageUrl(`/uploads/${screener.csvFile}`)
-          : null,
+        picture_10: screener.picture_10 || null,
+        picture_23: screener.picture_23 || null,
+        paint_24: screener.paint_24 || null,
+        paint_23: screener.paint_23 || null,
+        picture_11: screener.picture_11 || null,
+        picture_24: screener.picture_24 || null,
+        threed_model_left: screener.threed_model_left || null,
+        threed_model_right: screener.threed_model_right || null,
+        picture_17: screener.picture_17 || null,
+        picture_16: screener.picture_16 || null,
+        csvFile: screener.csvFile || null,
         createdAt: screener.createdAt,
         updatedAt: screener.updatedAt,
       })),
@@ -728,7 +684,7 @@ export const deleteCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Delete all physical files first
+    // Delete all files from S3 (fire-and-forget, no await)
     // 1. Delete screener files
     customer.screenerFile.forEach((screener) => {
       const fileFields = [
@@ -743,44 +699,23 @@ export const deleteCustomer = async (req: Request, res: Response) => {
         screener.csvFile,
       ];
       fileFields.forEach((file) => {
-        if (file) {
-          const filePath = path.join(process.cwd(), "uploads", file);
-          if (fs.existsSync(filePath)) {
-            try {
-              fs.unlinkSync(filePath);
-            } catch (err) {
-              console.error(`Failed to delete file ${filePath}:`, err);
-            }
-          }
+        if (file && file.startsWith("http")) {
+          deleteFileFromS3(file);
         }
       });
     });
 
     // 2. Delete customer files
     customer.customer_files.forEach((file) => {
-      if (file.url) {
-        const filePath = path.join(process.cwd(), "uploads", file.url);
-        if (fs.existsSync(filePath)) {
-          try {
-            fs.unlinkSync(filePath);
-          } catch (err) {
-            console.error(`Failed to delete customer file ${filePath}:`, err);
-          }
-        }
+      if (file.url && file.url.startsWith("http")) {
+        deleteFileFromS3(file.url);
       }
     });
 
     // 3. Delete order invoices
     customer.customerOrders.forEach((order) => {
-      if (order.invoice) {
-        const invoicePath = path.join(process.cwd(), "uploads", order.invoice);
-        if (fs.existsSync(invoicePath)) {
-          try {
-            fs.unlinkSync(invoicePath);
-          } catch (err) {
-            console.error(`Failed to delete invoice ${invoicePath}:`, err);
-          }
-        }
+      if (order.invoice && order.invoice.startsWith("http")) {
+        deleteFileFromS3(order.invoice);
       }
     });
 
@@ -1117,9 +1052,10 @@ export const getCustomerById = async (req: Request, res: Response) => {
         "csvFile",
       ];
 
+      // URLs are already S3 URLs, no formatting needed
       imageFields.forEach((field) => {
         if (result[field]) {
-          result[field] = getImageUrl(`/uploads/${result[field]}`);
+          result[field] = result[field]; // Already S3 URL
         }
       });
 
@@ -1129,15 +1065,13 @@ export const getCustomerById = async (req: Request, res: Response) => {
     // 6. Process customer histories images
     const processedHistories = customerHistories.map((history) => ({
       ...history,
-      url: history.url ? getImageUrl(history.url) : null,
+      url: history.url || null,
     }));
 
     const processedPartner = partner
       ? {
           ...partner,
-          image: partner.image
-            ? getImageUrl(`/uploads/${partner.image}`)
-            : null,
+          image: partner.image || null,
         }
       : null;
 
@@ -1282,39 +1216,17 @@ export const assignVersorgungToCustomer = async (
       ? {
           id: latestScreener.id,
           customerId: latestScreener.customerId,
-          picture_10: latestScreener.picture_10
-            ? getImageUrl(`/uploads/${latestScreener.picture_10}`)
-            : null,
-          picture_23: latestScreener.picture_23
-            ? getImageUrl(`/uploads/${latestScreener.picture_23}`)
-            : null,
-          paint_24: latestScreener.paint_24
-            ? getImageUrl(`/uploads/${latestScreener.paint_24}`)
-            : null,
-          paint_23: latestScreener.paint_23
-            ? getImageUrl(`/uploads/${latestScreener.paint_23}`)
-            : null,
-          picture_11: latestScreener.picture_11
-            ? getImageUrl(`/uploads/${latestScreener.picture_11}`)
-            : null,
-          picture_24: latestScreener.picture_24
-            ? getImageUrl(`/uploads/${latestScreener.picture_24}`)
-            : null,
-          threed_model_left: latestScreener.threed_model_left
-            ? getImageUrl(`/uploads/${latestScreener.threed_model_left}`)
-            : null,
-          threed_model_right: latestScreener.threed_model_right
-            ? getImageUrl(`/uploads/${latestScreener.threed_model_right}`)
-            : null,
-          picture_17: latestScreener.picture_17
-            ? getImageUrl(`/uploads/${latestScreener.picture_17}`)
-            : null,
-          picture_16: latestScreener.picture_16
-            ? getImageUrl(`/uploads/${latestScreener.picture_16}`)
-            : null,
-          csvFile: latestScreener.csvFile
-            ? getImageUrl(`/uploads/${latestScreener.csvFile}`)
-            : null,
+          picture_10: latestScreener.picture_10 || null,
+          picture_23: latestScreener.picture_23 || null,
+          paint_24: latestScreener.paint_24 || null,
+          paint_23: latestScreener.paint_23 || null,
+          picture_11: latestScreener.picture_11 || null,
+          picture_24: latestScreener.picture_24 || null,
+          threed_model_left: latestScreener.threed_model_left || null,
+          threed_model_right: latestScreener.threed_model_right || null,
+          picture_17: latestScreener.picture_17 || null,
+          picture_16: latestScreener.picture_16 || null,
+          csvFile: latestScreener.csvFile || null,
           createdAt: latestScreener.createdAt,
           updatedAt: latestScreener.updatedAt,
         }
@@ -1383,39 +1295,17 @@ export const undoAssignVersorgungToCustomer = async (
       ? {
           id: latestScreener.id,
           customerId: latestScreener.customerId,
-          picture_10: latestScreener.picture_10
-            ? getImageUrl(`/uploads/${latestScreener.picture_10}`)
-            : null,
-          picture_23: latestScreener.picture_23
-            ? getImageUrl(`/uploads/${latestScreener.picture_23}`)
-            : null,
-          paint_24: latestScreener.paint_24
-            ? getImageUrl(`/uploads/${latestScreener.paint_24}`)
-            : null,
-          paint_23: latestScreener.paint_23
-            ? getImageUrl(`/uploads/${latestScreener.paint_23}`)
-            : null,
-          picture_11: latestScreener.picture_11
-            ? getImageUrl(`/uploads/${latestScreener.picture_11}`)
-            : null,
-          picture_24: latestScreener.picture_24
-            ? getImageUrl(`/uploads/${latestScreener.picture_24}`)
-            : null,
-          threed_model_left: latestScreener.threed_model_left
-            ? getImageUrl(`/uploads/${latestScreener.threed_model_left}`)
-            : null,
-          threed_model_right: latestScreener.threed_model_right
-            ? getImageUrl(`/uploads/${latestScreener.threed_model_right}`)
-            : null,
-          picture_17: latestScreener.picture_17
-            ? getImageUrl(`/uploads/${latestScreener.picture_17}`)
-            : null,
-          picture_16: latestScreener.picture_16
-            ? getImageUrl(`/uploads/${latestScreener.picture_16}`)
-            : null,
-          csvFile: latestScreener.csvFile
-            ? getImageUrl(`/uploads/${latestScreener.csvFile}`)
-            : null,
+          picture_10: latestScreener.picture_10 || null,
+          picture_23: latestScreener.picture_23 || null,
+          paint_24: latestScreener.paint_24 || null,
+          paint_23: latestScreener.paint_23 || null,
+          picture_11: latestScreener.picture_11 || null,
+          picture_24: latestScreener.picture_24 || null,
+          threed_model_left: latestScreener.threed_model_left || null,
+          threed_model_right: latestScreener.threed_model_right || null,
+          picture_17: latestScreener.picture_17 || null,
+          picture_16: latestScreener.picture_16 || null,
+          csvFile: latestScreener.csvFile || null,
           createdAt: latestScreener.createdAt,
           updatedAt: latestScreener.updatedAt,
         }
@@ -1846,10 +1736,8 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     if (!files) return;
     Object.keys(files).forEach((key) => {
       files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
+        if (file.location) {
+          deleteFileFromS3(file.location);
         }
       });
     });
@@ -1867,11 +1755,11 @@ export const addScreenerFile = async (req: Request, res: Response) => {
       });
     }
 
-    let csvFileName: string | null = null;
+    let csvS3Url: string | null = null;
     let csvData: any = {};
     if (files.csvFile && files.csvFile[0]) {
       const csvPath = files.csvFile[0].path;
-      csvFileName = files.csvFile[0].filename;
+      csvS3Url = files.csvFile[0].location;
       console.log("Parsing CSV file:", csvPath);
       csvData = await parseCSV(csvPath);
     }
@@ -1901,17 +1789,17 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     const newScreener = await prisma.screener_file.create({
       data: {
         customerId,
-        picture_10: files.picture_10?.[0]?.filename || null,
-        picture_23: files.picture_23?.[0]?.filename || null,
-        paint_24: files.paint_24?.[0]?.filename || null,
-        paint_23: files.paint_23?.[0]?.filename || null,
-        threed_model_left: files.threed_model_left?.[0]?.filename || null,
-        picture_17: files.picture_17?.[0]?.filename || null,
-        picture_11: files.picture_11?.[0]?.filename || null,
-        picture_24: files.picture_24?.[0]?.filename || null,
-        threed_model_right: files.threed_model_right?.[0]?.filename || null,
-        picture_16: files.picture_16?.[0]?.filename || null,
-        csvFile: csvFileName,
+        picture_10: files.picture_10?.[0]?.location || null,
+        picture_23: files.picture_23?.[0]?.location || null,
+        paint_24: files.paint_24?.[0]?.location || null,
+        paint_23: files.paint_23?.[0]?.location || null,
+        threed_model_left: files.threed_model_left?.[0]?.location || null,
+        picture_17: files.picture_17?.[0]?.location || null,
+        picture_11: files.picture_11?.[0]?.location || null,
+        picture_24: files.picture_24?.[0]?.location || null,
+        threed_model_right: files.threed_model_right?.[0]?.location || null,
+        picture_16: files.picture_16?.[0]?.location || null,
+        csvFile: csvS3Url,
         // ---
         fusslange1: csvData.B58 || null,
         fusslange2: csvData.C58 || null,
@@ -1931,39 +1819,17 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     const formattedScreener = {
       id: newScreener.id,
       customerId: newScreener.customerId,
-      picture_10: newScreener.picture_10
-        ? getImageUrl(`/uploads/${newScreener.picture_10}`)
-        : null,
-      picture_23: newScreener.picture_23
-        ? getImageUrl(`/uploads/${newScreener.picture_23}`)
-        : null,
-      paint_24: newScreener.paint_24
-        ? getImageUrl(`/uploads/${newScreener.paint_24}`)
-        : null,
-      paint_23: newScreener.paint_23
-        ? getImageUrl(`/uploads/${newScreener.paint_23}`)
-        : null,
-      picture_11: newScreener.picture_11
-        ? getImageUrl(`/uploads/${newScreener.picture_11}`)
-        : null,
-      picture_24: newScreener.picture_24
-        ? getImageUrl(`/uploads/${newScreener.picture_24}`)
-        : null,
-      threed_model_left: newScreener.threed_model_left
-        ? getImageUrl(`/uploads/${newScreener.threed_model_left}`)
-        : null,
-      threed_model_right: newScreener.threed_model_right
-        ? getImageUrl(`/uploads/${newScreener.threed_model_right}`)
-        : null,
-      picture_17: newScreener.picture_17
-        ? getImageUrl(`/uploads/${newScreener.picture_17}`)
-        : null,
-      picture_16: newScreener.picture_16
-        ? getImageUrl(`/uploads/${newScreener.picture_16}`)
-        : null,
-      csvFile: newScreener.csvFile
-        ? getImageUrl(`/uploads/${newScreener.csvFile}`)
-        : null,
+      picture_10: newScreener.picture_10 || null,
+      picture_23: newScreener.picture_23 || null,
+      paint_24: newScreener.paint_24 || null,
+      paint_23: newScreener.paint_23 || null,
+      picture_11: newScreener.picture_11 || null,
+      picture_24: newScreener.picture_24 || null,
+      threed_model_left: newScreener.threed_model_left || null,
+      threed_model_right: newScreener.threed_model_right || null,
+      picture_17: newScreener.picture_17 || null,
+      picture_16: newScreener.picture_16 || null,
+      csvFile: newScreener.csvFile || null,
       // CSV export data for this scanner set
       csvData: {
         fusslange1: newScreener.fusslange1,
@@ -2025,17 +1891,12 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
   const { customerId, screenerId } = req.params;
   const files = req.files as any;
 
-  // paint_24
-  // paint_23
-
   const cleanupFiles = () => {
     if (!files) return;
     Object.keys(files).forEach((key) => {
       files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
+        if (file.location) {
+          deleteFileFromS3(file.location);
         }
       });
     });
@@ -2091,41 +1952,33 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
     });
     console.log("latestScreener:", latestScreener);
 
-    const deleteOldIfNew = (newFile: any, oldFileName: string | null) => {
-      if (newFile && oldFileName) {
-        const oldPath = path.join(process.cwd(), "uploads", oldFileName);
-        if (fs.existsSync(oldPath)) {
-          try {
-            fs.unlinkSync(oldPath);
-            console.log(`Deleted old file: ${oldPath}`);
-          } catch (err) {
-            console.error(`Failed to delete old file: ${oldPath}`, err);
-          }
-        }
+    const deleteOldIfNew = (newFile: any, oldFileUrl: string | null) => {
+      if (newFile && oldFileUrl && oldFileUrl.startsWith("http")) {
+        deleteFileFromS3(oldFileUrl);
       }
     };
 
     const updateData: any = {};
     let csvData: any = {};
-    let csvFileName: string | null = existingScreener.csvFile;
+    let csvS3Url: string | null = existingScreener.csvFile;
 
     if (files?.picture_10?.[0]) {
       deleteOldIfNew(files.picture_10[0], existingScreener.picture_10);
-      updateData.picture_10 = files.picture_10[0].filename;
+      updateData.picture_10 = files.picture_10[0].location;
     }
 
     if (files?.picture_23?.[0]) {
       deleteOldIfNew(files.picture_23[0], existingScreener.picture_23);
-      updateData.picture_23 = files.picture_23[0].filename;
+      updateData.picture_23 = files.picture_23[0].location;
     }
     // ---------------------------------------------------------------
     if (files?.paint_24?.[0]) {
       deleteOldIfNew(files.paint_24[0], existingScreener.paint_24);
-      updateData.paint_24 = files.paint_24[0].filename;
+      updateData.paint_24 = files.paint_24[0].location;
     }
     if (files?.paint_23?.[0]) {
       deleteOldIfNew(files.paint_23[0], existingScreener.paint_23);
-      updateData.paint_23 = files.paint_23[0].filename;
+      updateData.paint_23 = files.paint_23[0].location;
     }
     //------------------------------------------------------------------
 
@@ -2135,22 +1988,22 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
         files.threed_model_left[0],
         existingScreener.threed_model_left
       );
-      updateData.threed_model_left = files.threed_model_left[0].filename;
+      updateData.threed_model_left = files.threed_model_left[0].location;
     }
 
     if (files?.picture_17?.[0]) {
       deleteOldIfNew(files.picture_17[0], existingScreener.picture_17);
-      updateData.picture_17 = files.picture_17[0].filename;
+      updateData.picture_17 = files.picture_17[0].location;
     }
 
     if (files?.picture_11?.[0]) {
       deleteOldIfNew(files.picture_11[0], existingScreener.picture_11);
-      updateData.picture_11 = files.picture_11[0].filename;
+      updateData.picture_11 = files.picture_11[0].location;
     }
 
     if (files?.picture_24?.[0]) {
       deleteOldIfNew(files.picture_24[0], existingScreener.picture_24);
-      updateData.picture_24 = files.picture_24[0].filename;
+      updateData.picture_24 = files.picture_24[0].location;
     }
 
     if (files?.threed_model_right?.[0]) {
@@ -2158,20 +2011,20 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
         files.threed_model_right[0],
         existingScreener.threed_model_right
       );
-      updateData.threed_model_right = files.threed_model_right[0].filename;
+      updateData.threed_model_right = files.threed_model_right[0].location;
     }
 
     if (files?.picture_16?.[0]) {
       deleteOldIfNew(files.picture_16[0], existingScreener.picture_16);
-      updateData.picture_16 = files.picture_16[0].filename;
+      updateData.picture_16 = files.picture_16[0].location;
     }
 
     if (files?.csvFile?.[0]) {
       deleteOldIfNew(files.csvFile[0], existingScreener.csvFile);
       const csvPath = files.csvFile[0].path;
-      csvFileName = files.csvFile[0].filename;
+      csvS3Url = files.csvFile[0].location;
       csvData = await parseCSV(csvPath);
-      updateData.csvFile = csvFileName;
+      updateData.csvFile = csvS3Url;
 
       // Store CSV data in the screener_file record (each scanner set has its own CSV data)
       updateData.fusslange1 =
@@ -2229,26 +2082,21 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
       data: updateData,
     });
 
-    // Format the response with image URLs
-    const formatFileUrl = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
-
+    // Format the response - URLs are already S3 URLs
     const formattedScreener = {
       id: updatedScreener.id,
       customerId: updatedScreener.customerId,
-      picture_10: formatFileUrl(updatedScreener.picture_10),
-      picture_23: formatFileUrl(updatedScreener.picture_23),
-      //----------------------------------------------------------
-      paint_24: formatFileUrl(updatedScreener.paint_24),
-      paint_23: formatFileUrl(updatedScreener.paint_23),
-      //----------------------------------------------------------
-      picture_11: formatFileUrl(updatedScreener.picture_11),
-      picture_24: formatFileUrl(updatedScreener.picture_24),
-      threed_model_left: formatFileUrl(updatedScreener.threed_model_left),
-      threed_model_right: formatFileUrl(updatedScreener.threed_model_right),
-      picture_17: formatFileUrl(updatedScreener.picture_17),
-      picture_16: formatFileUrl(updatedScreener.picture_16),
-      csvFile: formatFileUrl(updatedScreener.csvFile),
+      picture_10: updatedScreener.picture_10 || null,
+      picture_23: updatedScreener.picture_23 || null,
+      paint_24: updatedScreener.paint_24 || null,
+      paint_23: updatedScreener.paint_23 || null,
+      picture_11: updatedScreener.picture_11 || null,
+      picture_24: updatedScreener.picture_24 || null,
+      threed_model_left: updatedScreener.threed_model_left || null,
+      threed_model_right: updatedScreener.threed_model_right || null,
+      picture_17: updatedScreener.picture_17 || null,
+      picture_16: updatedScreener.picture_16 || null,
+      csvFile: updatedScreener.csvFile || null,
       // CSV export data for this scanner set
       csvData: {
         fusslange1: updatedScreener.fusslange1,
@@ -2311,17 +2159,10 @@ export const deleteScreenerFile = async (req: Request, res: Response) => {
       screenerFile.csvFile,
     ];
 
+    // Delete files from S3 (fire-and-forget, no await)
     fileFields.forEach((file) => {
-      if (file) {
-        const filePath = path.join(process.cwd(), "uploads", file);
-        if (fs.existsSync(filePath)) {
-          try {
-            fs.unlinkSync(filePath);
-            console.log(`Deleted file: ${filePath}`);
-          } catch (err) {
-            console.error(`Failed to delete file: ${filePath}`, err);
-          }
-        }
+      if (file && file.startsWith("http")) {
+        deleteFileFromS3(file);
       }
     });
 
@@ -2358,23 +2199,21 @@ export const getScreenerFileById = async (req: Request, res: Response) => {
       });
     }
 
-    const formatFileUrl = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
-
+    // URLs are already S3 URLs
     const formattedScreener = {
       id: screenerFile.id,
       customerId: screenerFile.customerId,
-      picture_10: formatFileUrl(screenerFile.picture_10),
-      picture_23: formatFileUrl(screenerFile.picture_23),
-      paint_24: formatFileUrl(screenerFile.paint_24),
-      paint_23: formatFileUrl(screenerFile.paint_23),
-      picture_11: formatFileUrl(screenerFile.picture_11),
-      picture_24: formatFileUrl(screenerFile.picture_24),
-      threed_model_left: formatFileUrl(screenerFile.threed_model_left),
-      threed_model_right: formatFileUrl(screenerFile.threed_model_right),
-      picture_17: formatFileUrl(screenerFile.picture_17),
-      picture_16: formatFileUrl(screenerFile.picture_16),
-      csvFile: formatFileUrl(screenerFile.csvFile),
+      picture_10: screenerFile.picture_10 || null,
+      picture_23: screenerFile.picture_23 || null,
+      paint_24: screenerFile.paint_24 || null,
+      paint_23: screenerFile.paint_23 || null,
+      picture_11: screenerFile.picture_11 || null,
+      picture_24: screenerFile.picture_24 || null,
+      threed_model_left: screenerFile.threed_model_left || null,
+      threed_model_right: screenerFile.threed_model_right || null,
+      picture_17: screenerFile.picture_17 || null,
+      picture_16: screenerFile.picture_16 || null,
+      csvFile: screenerFile.csvFile || null,
       // CSV export data for this scanner set
       csvData: {
         fusslange1: screenerFile.fusslange1,
@@ -2499,16 +2338,14 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
       },
     });
 
-    // Format orders with invoice URL and partner image URL
+    // Format orders - URLs are already S3 URLs
     const formattedOrders = orders.map((order) => ({
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
+      invoice: order.invoice || null,
       partner: order.partner
         ? {
             ...order.partner,
-            image: order.partner.image
-              ? getImageUrl(`/uploads/${order.partner.image}`)
-              : null,
+            image: order.partner.image || null,
           }
         : null,
     }));
@@ -3282,9 +3119,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
           versorgungenMap.set(versorgungId, {
             supplyStatus: {
               ...supplyStatus,
-              image: supplyStatus.image
-                ? getImageUrl(`/uploads/${supplyStatus.image}`)
-                : null,
+              image: supplyStatus.image || null,
             },
             order: {
               id: order.id,
