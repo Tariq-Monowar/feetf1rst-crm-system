@@ -199,7 +199,7 @@ const mapCharacteristicsToDetails = (ids: number[]) => {
     .map((item) => ({
       id: item.id,
       text: item.text,
-      image: getImageUrl(`/assets/v1/KeinTitel/${item.image}`),
+      image: getImageUrl(`/assets/v1/kein_titel/${item.image}`),
     }));
 };
 
@@ -898,7 +898,7 @@ export const getSingleProduct = async (req: Request, res: Response) => {
               return item
                 ? {
                     ...item,
-                    image: getImageUrl(`/assets/v1/KeinTitel/${item.image}`),
+                    image: getImageUrl(`/assets/v1/kein_titel/${item.image}`),
                   }
                 : null;
             })
