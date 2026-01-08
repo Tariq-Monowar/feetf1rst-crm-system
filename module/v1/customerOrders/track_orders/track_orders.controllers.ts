@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import { getImageUrl } from "../../../../utils/base_utl";
+// Removed getImageUrl - images are now S3 URLs
 import path from "path";
 import {
   sendPdfToEmail,
@@ -1485,12 +1485,9 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
               size: storeInfo.matchedSize,
             }
           : null,
-        picture_23: customerScreenerFile.picture_23
-          ? getImageUrl(`/uploads/${customerScreenerFile.picture_23}`)
-          : null,
-        picture_24: customerScreenerFile.picture_24
-          ? getImageUrl(`/uploads/${customerScreenerFile.picture_24}`)
-          : null,
+        // Images are already S3 URLs, use directly
+        picture_23: customerScreenerFile.picture_23 || null,
+        picture_24: customerScreenerFile.picture_24 || null,
       },
     });
   } catch (error: any) {
@@ -1579,9 +1576,8 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
       data: {
         partner: {
           name: order.partner.name || order.partner.busnessName || null,
-          image: order.partner.image
-            ? getImageUrl(`/uploads/${order.partner.image}`)
-            : null,
+          // Image is already S3 URL, use directly
+          image: order.partner.image || null,
         },
         customer: `${order.customer.vorname} ${order.customer.nachname}`,
         customerNumber: order.customer.customerNumber,

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 
 import { PrismaClient } from "@prisma/client";
-import { getImageUrl } from "../../../../utils/base_utl";
+// Removed getImageUrl - images are now S3 URLs
 const prisma = new PrismaClient();
 
 export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
@@ -226,9 +226,8 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
       );
     }
 
-    // Format image URLs
-    const formatImage = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
+    // Images are already S3 URLs, use directly
+    const formatImage = (s3Url: string | null) => s3Url || null;
 
     return res.status(200).json({
       success: true,
@@ -478,9 +477,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
-    // Format response (non-blocking)
-    const formatImage = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
+    // Images are already S3 URLs, use directly
+    const formatImage = (s3Url: string | null) => s3Url || null;
 
     const formattedCustomShaft = {
       ...customShaft,
@@ -619,8 +617,8 @@ export const sendToAdminOrder_3 = async (req, res) => {
       },
     });
 
-    const formatImage = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
+    // Images are already S3 URLs, use directly
+    const formatImage = (s3Url: string | null) => s3Url || null;
 
     const formattedAdminOrder = {
       id: adminOrder.id,
@@ -1058,8 +1056,8 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     ]);
 
     // Format response with image URLs
-    const formatImage = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
+    // Images are already S3 URLs, use directly
+    const formatImage = (s3Url: string | null) => s3Url || null;
 
     const formattedCustomShafts = customShafts.map((item: any) => {
       const { user, maßschaft_kollektion, customer, massschuhe_order, ...shaft } = item;
@@ -1323,9 +1321,8 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Format image URLs
-    const formatImage = (filename: string | null) =>
-      filename ? getImageUrl(`/uploads/${filename}`) : null;
+    // Images are already S3 URLs, use directly
+    const formatImage = (s3Url: string | null) => s3Url || null;
 
     // Format the response
     const shaftData: any = customShaft;

@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { data } from "../../../assets/v1/data";
-import { baseUrl, getImageUrl } from "../../../utils/base_utl";
+import { baseUrl } from "../../../utils/base_utl";
 
 const prisma = new PrismaClient();
 
@@ -121,10 +121,9 @@ export const getAllCustomerHistory = async (req: Request, res: Response) => {
       prisma.customerHistorie.count({ where: whereCondition }),
     ]);
 
+    // URLs are already S3 URLs, use directly
     const historyWithBaseUrl = history.map((record) => {
-      if (record.url) {
-        record.url = getImageUrl(record.url);
-      }
+      // URL is already S3 URL, no transformation needed
       return record;
     });
 
@@ -372,9 +371,7 @@ export const updateCustomerHistory = async (req: Request, res: Response) => {
       },
     });
 
-    if (updatedHistory.url) {
-      updatedHistory.url = getImageUrl(updatedHistory.url);
-    }
+    // URL is already S3 URL, no transformation needed
 
     res.status(200).json({
       success: true,

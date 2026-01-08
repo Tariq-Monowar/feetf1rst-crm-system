@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import fs from "fs";
 import dotenv from "dotenv";
 import https from "https";
+import { downloadFileFromS3 } from "./s3utils";
 import {
   adminLoginNotificationEmail,
   emailForgotPasswordOTP,
@@ -175,12 +176,23 @@ export const sendAdminLoginNotification = async (
 
 export const sendPdfToEmail = async (email: string, pdf: any): Promise<void> => {
   try {
-    const { size } = fs.statSync(pdf.path);
-    // if (size > 20 * 1024 * 1024) {
-    //   throw new Error('PDF is too large to email (>20MB).');
-    // }
+    let pdfBuffer: Buffer;
+    
+    // Handle S3 file (multer-s3) or local file (legacy)
+    if (pdf.location) {
+      // File is in S3, download it
+      pdfBuffer = await downloadFileFromS3(pdf.location);
+    } else if (pdf.path) {
+      // Legacy local file
+      const { size } = fs.statSync(pdf.path);
+      // if (size > 20 * 1024 * 1024) {
+      //   throw new Error('PDF is too large to email (>20MB).');
+      // }
+      pdfBuffer = fs.readFileSync(pdf.path);
+    } else {
+      throw new Error('PDF file path or S3 location is required');
+    }
 
-    const pdfBuffer = fs.readFileSync(pdf.path);
     const htmlContent = sendPdfToEmailTamplate(pdf);
 
     const mailTransporter = nodemailer.createTransport({
@@ -220,12 +232,26 @@ export const sendInvoiceEmail = async (
   options?: { customerName?: string; total?: number }
 ): Promise<void> => {
   try {
-    const { size } = fs.statSync(pdf.path);
-    if (size > 20 * 1024 * 1024) {
-      throw new Error('Invoice PDF is too large to email (>20MB).');
+    let pdfBuffer: Buffer;
+    
+    // Handle S3 file (multer-s3) or local file (legacy)
+    if (pdf.location) {
+      // File is in S3, download it
+      pdfBuffer = await downloadFileFromS3(pdf.location);
+      // Check size (approximate, since we already have the buffer)
+      if (pdfBuffer.length > 20 * 1024 * 1024) {
+        throw new Error('Invoice PDF is too large to email (>20MB).');
+      }
+    } else if (pdf.path) {
+      // Legacy local file
+      const { size } = fs.statSync(pdf.path);
+      if (size > 20 * 1024 * 1024) {
+        throw new Error('Invoice PDF is too large to email (>20MB).');
+      }
+      pdfBuffer = fs.readFileSync(pdf.path);
+    } else {
+      throw new Error('PDF file path or S3 location is required');
     }
-
-    const pdfBuffer = fs.readFileSync(pdf.path);
 
     const htmlContent = invoiceEmailTemplate(
       options?.customerName || 'Customer',

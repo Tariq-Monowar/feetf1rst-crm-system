@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 
-import { getImageUrl } from "../../../utils/base_utl";
+// Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../utils/notification.utils";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 

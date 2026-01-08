@@ -4,7 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import { getImageUrl } from "../../../utils/base_utl";
+// Removed getImageUrl - images are now S3 URLs
 import path from "path";
 import {
   sendPdfToEmail,
@@ -686,7 +686,8 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
 
     const formattedOrders = orders.map((order) => ({
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
+      // Invoice is already S3 URL, use directly
+      invoice: order.invoice || null,
     }));
 
     const totalPages = Math.ceil(totalCount / limit);
@@ -890,10 +891,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const formattedOrders = orders.map((order) => ({
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
-      barcodeLabel: order.barcodeLabel
-        ? getImageUrl(`/uploads/${order.barcodeLabel}`)
-        : null,
+      // Invoice is already S3 URL, use directly
+      invoice: order.invoice || null,
+      // BarcodeLabel is already S3 URL, use directly
+      barcodeLabel: order.barcodeLabel || null,
     }));
 
     const totalPages = Math.ceil(totalCount / limit);
@@ -1128,7 +1129,8 @@ export const getOrderById = async (req: Request, res: Response) => {
     console.log("============================", nearestSize);
     const formattedOrder = {
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
+      // Invoice is already S3 URL, use directly
+      invoice: order.invoice || null,
       customer: order.customer
         ? {
             ...order.customer,
@@ -1141,9 +1143,8 @@ export const getOrderById = async (req: Request, res: Response) => {
       partner: order.partner
         ? {
             ...order.partner,
-            image: order.partner.image
-              ? getImageUrl(`/uploads/${order.partner.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: order.partner.image || null,
             hauptstandort: order.partner.workshopNote?.sameAsBusiness
               ? order.partner.hauptstandort[0]
               : null,
@@ -1241,7 +1242,8 @@ export const getOrdersByCustomerId = async (req: Request, res: Response) => {
 
     const formattedOrders = orders.map((order) => ({
       ...order,
-      invoice: order.invoice ? getImageUrl(`/uploads/${order.invoice}`) : null,
+      // Invoice is already S3 URL, use directly
+      invoice: order.invoice || null,
     }));
 
     const totalPages = Math.ceil(totalCount / limit);

@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import validator from "validator";
 import { sendEmail } from "../../../utils/emailService.utils";
 import { PrismaClient, Prisma } from "@prisma/client";
-import { getImageUrl } from "../../../utils/base_utl";
+// Removed getImageUrl - images are now S3 URLs
 import {
   getPaginationOptions,
   getPaginationResult,
@@ -180,9 +180,8 @@ export const createMessage = async (req: Request, res: Response) => {
             id: newMessage.recipient.id,
             name: newMessage.recipient.name,
             email: newMessage.recipient.email,
-            image: newMessage.recipient.image
-              ? getImageUrl(`/uploads/${newMessage.recipient.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: newMessage.recipient.image || null,
           }
         : null,
       recipientEmail: newMessage.recipientEmail,
@@ -373,9 +372,8 @@ export const getSentMessages = async (req: Request, res: Response) => {
             id: message.recipient.id,
             name: message.recipient.name,
             email: message.recipient.email,
-            image: message.recipient.image
-              ? getImageUrl(`/uploads/${message.recipient.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.recipient.image || null,
             role: message.recipient.role,
           }
         : null,
@@ -588,9 +586,8 @@ export const getReceivedMessages = async (req: Request, res: Response) => {
             id: message.sender.id,
             name: message.sender.name,
             email: message.sender.email,
-            image: message.sender.image
-              ? getImageUrl(`/uploads/${message.sender.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.sender.image || null,
             role: message.sender.role,
           }
         : null,
@@ -705,9 +702,8 @@ export const setToFavorite = async (req: Request, res: Response) => {
             id: message.recipient.id,
             name: message.recipient.name,
             email: message.recipient.email,
-            image: message.recipient.image
-              ? getImageUrl(`/uploads/${message.recipient.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.recipient.image || null,
             role: message.recipient.role,
           }
         : null,
@@ -828,9 +824,8 @@ export const getFavoriteMessages = async (req: Request, res: Response) => {
               id: visibility.message.sender.id,
               name: visibility.message.sender.name,
               email: visibility.message.sender.email,
-              image: visibility.message.sender.image
-                ? getImageUrl(`/uploads/${visibility.message.sender.image}`)
-                : null,
+              // Image is already S3 URL, use directly
+              image: visibility.message.sender.image || null,
               role: visibility.message.sender.role,
             }
           : null,
@@ -839,9 +834,8 @@ export const getFavoriteMessages = async (req: Request, res: Response) => {
               id: visibility.message.recipient.id,
               name: visibility.message.recipient.name,
               email: visibility.message.recipient.email,
-              image: visibility.message.recipient.image
-                ? getImageUrl(`/uploads/${visibility.message.recipient.image}`)
-                : null,
+              // Image is already S3 URL, use directly
+              image: visibility.message.recipient.image || null,
               role: visibility.message.recipient.role,
             }
           : null,
@@ -935,9 +929,8 @@ export const getMessageById = async (req: Request, res: Response) => {
             id: message.sender.id,
             name: message.sender.name,
             email: message.sender.email,
-            image: message.sender.image
-              ? getImageUrl(`/uploads/${message.sender.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.sender.image || null,
             role: message.sender.role,
           }
         : null,
@@ -946,9 +939,8 @@ export const getMessageById = async (req: Request, res: Response) => {
             id: message.recipient.id,
             name: message.recipient.name,
             email: message.recipient.email,
-            image: message.recipient.image
-              ? getImageUrl(`/uploads/${message.recipient.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.recipient.image || null,
             role: message.recipient.role,
           }
         : null,
@@ -1134,9 +1126,8 @@ export const getSystemInboxMessage = async (req: Request, res: Response) => {
             id: message.sender.id,
             name: message.sender.name,
             email: message.sender.email,
-            image: message.sender.image
-              ? getImageUrl(`/uploads/${message.sender.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.sender.image || null,
             role: message.sender.role,
           }
         : null,
@@ -1145,9 +1136,8 @@ export const getSystemInboxMessage = async (req: Request, res: Response) => {
             id: message.recipient.id,
             name: message.recipient.name,
             email: message.recipient.email,
-            image: message.recipient.image
-              ? getImageUrl(`/uploads/${message.recipient.image}`)
-              : null,
+            // Image is already S3 URL, use directly
+            image: message.recipient.image || null,
             role: message.recipient.role,
           }
         : null,

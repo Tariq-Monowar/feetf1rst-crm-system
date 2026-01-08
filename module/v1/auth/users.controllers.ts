@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { baseUrl, getImageUrl } from "../../../utils/base_utl";
+import { baseUrl } from "../../../utils/base_utl";
 import {
   sendAdminLoginNotification,
   sendPartnershipWelcomeEmail,
@@ -214,12 +214,8 @@ export const loginUser = async (req: Request, res: Response) => {
       sendAdminLoginNotification(user.email, user.name, ipAddress);
     }
 
-    // Check if image is already a full URL (S3) or needs formatting (legacy local file)
-    const imageUrl = user.image
-      ? user.image.startsWith("http")
-        ? user.image
-        : getImageUrl(`/uploads/${user.image}`)
-      : null;
+    // Image should already be S3 URL, use directly
+    const imageUrl = user.image || null;
 
     res.status(200).json({
       success: true,
@@ -464,11 +460,8 @@ export const getAllPartners = async (req: Request, res: Response) => {
 
     const partnersWithImageUrls = partners.map((partner) => ({
       ...partner,
-      image: partner.image
-        ? partner.image.startsWith("http")
-          ? partner.image
-          : getImageUrl(`/uploads/${partner.image}`)
-        : null,
+      // Images should already be S3 URLs, use directly
+      image: partner.image || null,
     }));
 
     res.status(200).json({
