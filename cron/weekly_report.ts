@@ -18,7 +18,7 @@ interface GroessenMengen {
 }
 
 export const dailyReport = () => {
-  cron.schedule("*/60 * * * * *", async () => {
+  cron.schedule("0 0 * * 5", async () => {
     try {
       // Check if partners_settings model is available
       const partnersSettingsModel = (prisma as any).partners_settings;
