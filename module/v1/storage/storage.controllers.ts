@@ -329,7 +329,7 @@ export const buyStorage = async (req, res) => {
         lagerort: lagerort,
         groessenMengen: transformedGroessenMengen,
         purchase_price: adminStore.price || 0,
-        selling_price: price,
+        selling_price: selling_price,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
