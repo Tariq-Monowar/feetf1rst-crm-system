@@ -1,10 +1,9 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
-import fs from "fs";
+import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import path from "path";
-import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
+import { deleteFileFromS3, deleteMultipleFilesFromS3, downloadFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -57,28 +56,38 @@ const getNextCustomerNumberForPartner = async (
   return maxCustomer ? maxCustomer.customerNumber + 1 : 1000;
 };
 
-async function parseCSV(csvPath: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    console.log("Parsing CSV file:", csvPath);
-    const results: any = {};
-    let currentRow = 0;
+async function parseCSV(csvS3Url: string): Promise<any> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log("Parsing CSV file from S3:", csvS3Url);
+      const results: any = {};
+      let currentRow = 0;
 
-    fs.createReadStream(csvPath)
-      .pipe(iconv.decodeStream("utf16le"))
-      .pipe(csvParser({ separator: "\t", headers: false }))
-      .on("data", (row) => {
-        currentRow++;
-        targetCells.forEach((cell) => {
-          const col = cell.charAt(0);
-          const rowNum = parseInt(cell.slice(1));
-          if (currentRow === rowNum) {
-            const colIndex = col === "B" ? 1 : 2;
-            results[cell] = row[colIndex] || null;
-          }
-        });
-      })
-      .on("end", () => resolve(results))
-      .on("error", (err) => reject(err));
+      // Download file from S3
+      const csvBuffer = await downloadFileFromS3(csvS3Url);
+      
+      // Create a readable stream from the buffer
+      const stream = Readable.from(csvBuffer);
+
+      stream
+        .pipe(iconv.decodeStream("utf16le"))
+        .pipe(csvParser({ separator: "\t", headers: false }))
+        .on("data", (row) => {
+          currentRow++;
+          targetCells.forEach((cell) => {
+            const col = cell.charAt(0);
+            const rowNum = parseInt(cell.slice(1));
+            if (currentRow === rowNum) {
+              const colIndex = col === "B" ? 1 : 2;
+              results[cell] = row[colIndex] || null;
+            }
+          });
+        })
+        .on("end", () => resolve(results))
+        .on("error", (err) => reject(err));
+    } catch (error) {
+      reject(error);
+    }
   });
 }
 
@@ -90,10 +99,9 @@ export const createCustomers = async (req: Request, res: Response) => {
     if (!files) return;
     Object.keys(files).forEach((key) => {
       files[key].forEach((file: any) => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (err) {
-          console.error(`Failed to delete file ${file.path}`, err);
+        if (file.location) {
+          // Delete from S3 if file was uploaded
+          deleteFileFromS3(file.location);
         }
       });
     });
@@ -188,10 +196,10 @@ export const createCustomers = async (req: Request, res: Response) => {
     let csvData: any = {};
     let csvS3Url: string | null = null;
     if (files.csvFile && files.csvFile[0]) {
-      const csvPath = files.csvFile[0].path;
       csvS3Url = files.csvFile[0].location;
-      console.log("Parsing CSV file:", csvPath);
-      csvData = await parseCSV(csvPath);
+      if (csvS3Url) {
+        csvData = await parseCSV(csvS3Url);
+      }
     }
     let screenerFileId = null;
 
@@ -1737,6 +1745,7 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     Object.keys(files).forEach((key) => {
       files[key].forEach((file: any) => {
         if (file.location) {
+          // Delete from S3 if file was uploaded
           deleteFileFromS3(file.location);
         }
       });
@@ -1758,10 +1767,10 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     let csvS3Url: string | null = null;
     let csvData: any = {};
     if (files.csvFile && files.csvFile[0]) {
-      const csvPath = files.csvFile[0].path;
       csvS3Url = files.csvFile[0].location;
-      console.log("Parsing CSV file:", csvPath);
-      csvData = await parseCSV(csvPath);
+      if (csvS3Url) {
+        csvData = await parseCSV(csvS3Url);
+      }
     }
 
     if (Object.keys(csvData).length > 0) {
@@ -1896,6 +1905,7 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
     Object.keys(files).forEach((key) => {
       files[key].forEach((file: any) => {
         if (file.location) {
+          // Delete from S3 if file was uploaded
           deleteFileFromS3(file.location);
         }
       });
@@ -2021,9 +2031,10 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
 
     if (files?.csvFile?.[0]) {
       deleteOldIfNew(files.csvFile[0], existingScreener.csvFile);
-      const csvPath = files.csvFile[0].path;
       csvS3Url = files.csvFile[0].location;
-      csvData = await parseCSV(csvPath);
+      if (csvS3Url) {
+        csvData = await parseCSV(csvS3Url);
+      }
       updateData.csvFile = csvS3Url;
 
       // Store CSV data in the screener_file record (each scanner set has its own CSV data)
@@ -2031,10 +2042,6 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
         csvData.B58 ?? existingScreener.fusslange1 ?? null;
       updateData.fusslange2 =
         csvData.C58 ?? existingScreener.fusslange2 ?? null;
-        //----------------------------------------
-      updateData.paint_24 = csvData.B58 ?? existingScreener.paint_24 ?? null;
-      updateData.paint_23 = csvData.C58 ?? existingScreener.paint_23 ?? null;
-      //------------------------------------------
       updateData.fussbreite1 =
         csvData.B73 ?? existingScreener.fussbreite1 ?? null;
       updateData.fussbreite2 =

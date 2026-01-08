@@ -1,26 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import fs from "fs";
-import path from "path";
-import { getImageUrl } from "../../../../utils/base_utl";
+import { deleteFileFromS3 } from "../../../../utils/s3utils";
 const prisma = new PrismaClient();
-
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-
-// Helper function to safely delete a file
-const deleteFile = (filename: string) => {
-  if (!filename) return;
-  try {
-    const filePath = path.join(UPLOADS_DIR, filename);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (error: any) {
-    // Ignore ENOENT errors (file doesn't exist)
-    if (error.code !== "ENOENT") {
-      console.error(`Failed to delete file: ${filename}`, error);
-    }
-  }
-};
 
 // Helper function to clean and parse JSON string
 const parseJsonSafely = (input: any): any => {
@@ -76,8 +56,8 @@ export const createAdminStore = async (req, res) => {
       "groessenMengen",
     ].find((field) => !req.body[field]);
     if (missingField) {
-      if (req.file) {
-        deleteFile(req.file.filename);
+      if (req.file?.location) {
+        deleteFileFromS3(req.file.location);
       }
       return res.status(400).json({
         success: false,
@@ -85,10 +65,10 @@ export const createAdminStore = async (req, res) => {
       });
     }
 
-    const image = req.file?.filename;
+    const image = req.file?.location || null;
     if (!image) {
-      if (req.file) {
-        deleteFile(req.file.filename);
+      if (req.file?.location) {
+        deleteFileFromS3(req.file.location);
       }
       return res.status(400).json({
         success: false,
@@ -101,8 +81,8 @@ export const createAdminStore = async (req, res) => {
     try {
       parsedGroessenMengen = parseJsonSafely(groessenMengen);
     } catch (parseError: any) {
-      if (req.file) {
-        deleteFile(req.file.filename);
+      if (req.file?.location) {
+        deleteFileFromS3(req.file.location);
       }
       return res.status(400).json({
         success: false,
@@ -128,14 +108,15 @@ export const createAdminStore = async (req, res) => {
       message: "Admin store created successfully",
       data: {
         ...adminStore,
-        image: getImageUrl(`/uploads/${adminStore.image}`),
+        // Image is already S3 URL, use directly
+        image: adminStore.image || null,
       },
     });
   } catch (error: any) {
     console.log(error);
-    //i need to remove the image from the database if it is uploaded
-    if (req.file) {
-      deleteFile(req.file.filename);
+    // Delete from S3 if file was uploaded
+    if (req.file?.location) {
+      deleteFileFromS3(req.file.location);
     }
     res.status(500).json({
       success: false,
@@ -163,8 +144,8 @@ export const updateAdminStore = async (req, res) => {
     });
 
     if (!existingStore) {
-      if (req.file) {
-        deleteFile(req.file.filename);
+      if (req.file?.location) {
+        deleteFileFromS3(req.file.location);
       }
       return res.status(404).json({
         success: false,
@@ -196,8 +177,8 @@ export const updateAdminStore = async (req, res) => {
       try {
         updateData.groessenMengen = parseJsonSafely(groessenMengen);
       } catch (parseError: any) {
-        if (req.file) {
-          deleteFile(req.file.filename);
+        if (req.file?.location) {
+          deleteFileFromS3(req.file.location);
         }
         return res.status(400).json({
           success: false,
@@ -208,12 +189,12 @@ export const updateAdminStore = async (req, res) => {
     }
 
     // Handle image if new one is uploaded
-    if (req.file?.filename) {
-      // Delete old image if it exists
-      if (existingStore.image) {
-        deleteFile(existingStore.image);
+    if (req.file?.location) {
+      // Delete old image from S3 if it exists
+      if (existingStore.image && existingStore.image.startsWith("http")) {
+        deleteFileFromS3(existingStore.image);
       }
-      updateData.image = req.file.filename;
+      updateData.image = req.file.location;
     }
 
     // Update the admin store
@@ -227,14 +208,15 @@ export const updateAdminStore = async (req, res) => {
       message: "Admin store updated successfully",
       data: {
         ...updatedStore,
-        image: updatedStore.image ? getImageUrl(`/uploads/${updatedStore.image}`) : null,
+        // Image is already S3 URL, use directly
+        image: updatedStore.image || null,
       },
     });
   } catch (error: any) {
     console.log(error);
-    // Remove uploaded file if update fails
-    if (req.file) {
-      deleteFile(req.file.filename);
+    // Delete from S3 if file was uploaded
+    if (req.file?.location) {
+      deleteFileFromS3(req.file.location);
     }
     res.status(500).json({
       success: false,
@@ -332,10 +314,10 @@ export const getAllAdminStore = async (req, res) => {
       },
     });
 
-    // Format response with image URLs
+    // Format response with image URLs (already S3 URLs)
     const formattedStores = adminStores.map((store) => ({
       ...store,
-      image: store.image ? getImageUrl(`/uploads/${store.image}`) : null,
+      image: store.image || null,
       storesCount: store._count.stores,
     }));
 
@@ -380,7 +362,8 @@ export const getSingleAdminStore = async (req, res) => {
     }
     const formattedAdminStore = {
       ...adminStore,
-      image: adminStore.image ? getImageUrl(`/uploads/${adminStore.image}`) : null,
+      // Image is already S3 URL, use directly
+      image: adminStore.image || null,
     };
     res.status(200).json({
       success: true,
@@ -413,9 +396,9 @@ export const deleteAdminStore = async (req, res) => {
       });
     }
 
-    // Delete the associated image file if it exists
-    if (existingStore.image) {
-      deleteFile(existingStore.image);
+    // Delete the associated image file from S3 if it exists
+    if (existingStore.image && existingStore.image.startsWith("http")) {
+      deleteFileFromS3(existingStore.image);
     }
 
     // Delete the admin store record
@@ -478,10 +461,11 @@ export const trackStorage = async (req, res) => {
 
     const formattedAdminStoreTracking = adminStoreTracking.map((item) => ({
       ...item,
-      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
+      // Images are already S3 URLs, use directly
+      image: item.image || null,
       partner: item.partner ? {
         ...item.partner,
-        image: item.partner.image ? getImageUrl(`/uploads/${item.partner.image}`) : null,
+        image: item.partner.image || null,
       } : null,
     }));
 

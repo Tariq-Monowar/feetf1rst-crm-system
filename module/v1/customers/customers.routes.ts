@@ -34,9 +34,8 @@ router.post(
   upload.fields([
     { name: "picture_10", maxCount: 1 },
     { name: "picture_23", maxCount: 1 },
-    { name: "paint_10", maxCount: 1 },
+    { name: "paint_24", maxCount: 1 },
     { name: "paint_23", maxCount: 1 },
-
     { name: "threed_model_left", maxCount: 1 },
     { name: "picture_17", maxCount: 1 },
     { name: "picture_11", maxCount: 1 },
@@ -89,6 +88,8 @@ router.post(
   upload.fields([
     { name: "picture_10", maxCount: 1 },
     { name: "picture_23", maxCount: 1 },
+    { name: "paint_24", maxCount: 1 },
+    { name: "paint_23", maxCount: 1 },
     { name: "threed_model_left", maxCount: 1 },
     { name: "picture_17", maxCount: 1 },
     { name: "picture_11", maxCount: 1 },

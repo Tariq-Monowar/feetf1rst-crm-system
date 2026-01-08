@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { PrismaClient, StoreOrderOverviewStatus } from "@prisma/client";
-import { getImageUrl } from "../../../utils/base_utl";
 
 const prisma = new PrismaClient();
 
@@ -416,7 +415,8 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
 
     const formattedStorage = storageWithStatus.map((item) => ({
       ...item,
-      image: item.image ? getImageUrl(`/uploads/${item.image}`) : null,
+      // Images are already S3 URLs, use directly
+      image: item.image || null,
     }));
 
     res.status(200).json({

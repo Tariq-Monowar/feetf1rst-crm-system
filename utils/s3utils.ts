@@ -1,4 +1,5 @@
 import { DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { Readable } from "stream";
 import s3 from "./s3client";
 
 const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
@@ -163,5 +164,40 @@ export const replaceFileInS3 = async (
 
   // Upload new file
   return await uploadFileToS3(fileBuffer, fileName, contentType);
+};
+
+/**
+ * Download a file from S3 and return it as a Buffer
+ * @param s3UrlOrKey - Full S3 URL or just the key (filename)
+ * @returns Promise<Buffer> - File content as Buffer
+ */
+export const downloadFileFromS3 = async (s3UrlOrKey: string): Promise<Buffer> => {
+  try {
+    const key = extractS3Key(s3UrlOrKey);
+
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3.send(command);
+    
+    if (!response.Body) {
+      throw new Error("No file content returned from S3");
+    }
+
+    // Convert stream to buffer
+    const stream = response.Body as Readable;
+    const chunks: Buffer[] = [];
+    
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    return Buffer.concat(chunks);
+  } catch (error: any) {
+    console.error(`Error downloading file from S3: ${s3UrlOrKey}`, error);
+    throw error;
+  }
 };
 
