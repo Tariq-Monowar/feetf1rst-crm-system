@@ -40,13 +40,14 @@ export const allowedOrigins = [
   "https://feetf1rst.tech",
   "https://partner.feetf1rst.tech",
   "https://tdhaemoi-partner-dashbaord.vercel.app",
-  "https://flux-genius-std-treatments.trycloudflare.com",
   "https://tdhaemoi-landing-page.vercel.app",
   "https://tdhaemoi-landing-page-x8dy.vercel.app",
   "https://tdhaemoi-landing-page.vercel.app",
   "http://localhost:3003",
   "https://feetf1rst.vercel.app",
   "https://feetf1rst-landing-page.vercel.app",
+  "https://feetf1rst.tech",
+  "https://admin.feetf1rst.tech"
 ];
 app.use(
   cors({

@@ -23,7 +23,7 @@ router.get(
 
 router.get("/available-slots", verifyUser("PARTNER", "ADMIN"), getAvailableTimeSlots);
 
-router.get("/", verifyUser("ADMIN"), getAllAppointments);
+router.get("/", verifyUser("PARTNER", "ADMIN"), getAllAppointments);
 
 router.get("/my", verifyUser("PARTNER", "ADMIN"), getMyAppointments);
 
