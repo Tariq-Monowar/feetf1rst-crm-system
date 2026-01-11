@@ -515,10 +515,17 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       });
     }
 
+    let user;
+    if (decoded.role === "EMPLOYEE") {
+      user = await prisma.employees.findUnique({
+        where: { id: decoded.id },
+      });
+    } else {
+      user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+      });
+    }
     // Fetch user based on the decoded ID
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-    });
 
     if (!user) {
       return res.status(404).json({
