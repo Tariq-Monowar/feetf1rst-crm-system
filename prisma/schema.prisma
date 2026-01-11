@@ -10,8 +10,10 @@ datasource db {
 }
 
 model User {
-  id       String  @id @default(uuid())
-  name     String?
+  id String @id @default(uuid())
+
+  name String?
+
   email    String  @unique
   password String
   image    String?
@@ -40,30 +42,33 @@ model User {
   bestellubersicht       Bestellubersicht?
 
   // Mandatory one-to-one relationship
-  workshopNote             WorkshopNote?
-  stores                   Stores[]
-  StoresHistory            StoresHistory[]
-  custom_shafts            custom_shafts[]
+  workshopNote                WorkshopNote?
+  stores                      Stores[]
+  StoresHistory               StoresHistory[]
+  custom_shafts               custom_shafts[]
   // massschuheOrders massschuhe_order[]
-  massschuheOrders         massschuhe_order[]
-  controllQuestions        controllQuestions[]
-  customerOrdersHistories  customerOrdersHistory[]
-  massschuheOrderHistories massschuhe_order_history[]
-  supplyStatuses           supplyStatus[]
-  versorgungens            Versorgungen[]
-  customerSettings         customer_settings?
-  customerVersorgungens    customer_versorgungen[]
-  storeOrderOverviews      StoreOrderOverview[]
-  partnersSettings         partners_settings?
-  customerRequirements     customer_requirements[]
-  featureAccess            FeatureAccess?
-  notifications            notification[]
-  storeLocations           store_location[]
-  customers                customers[]
-  orderSettings            order_settings?
+  massschuheOrders            massschuhe_order[]
+  controllQuestions           controllQuestions[]
+  customerOrdersHistories     customerOrdersHistory[]
+  massschuheOrderHistories    massschuhe_order_history[]
+  supplyStatuses              supplyStatus[]
+  versorgungens               Versorgungen[]
+  customerSettings            customer_settings?
+  customerVersorgungens       customer_versorgungen[]
+  storeOrderOverviews         StoreOrderOverview[]
+  partnersSettings            partners_settings?
+  customerRequirements        customer_requirements[]
+  featureAccess               FeatureAccess?
+  notifications               notification[]
+  storeLocations              store_location[]
+  customers                   customers[]
+  orderSettings               order_settings?
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
-  maßschuheTransitions    maßschuhe_transitions[]
-  adminStoreTrackings      admin_store_tracking[]
+  maßschuheTransitions       maßschuhe_transitions[]
+  adminStoreTrackings         admin_store_tracking[]
+  partnerConversations        partner_conversation[]
+  partnerConversationMembers  partner_conversation_members[]
+  partnerConversationMessages partner_conversation_message[]
 
   @@map("users")
 }
@@ -257,28 +262,33 @@ enum Gender {
 //-------------------------------------------------
 
 model Employees {
-  id              String  @id @default(uuid())
-  accountName     String
+  id String @id @default(uuid())
+
+  accountName String
+
   employeeName    String
   email           String  @unique
   password        String
   financialAccess Boolean @default(false)
-
-  partnerId String
-  user      User   @relation(fields: [partnerId], references: [id])
+  jobPosition     String?
+  image           String?
+  partnerId       String
+  user            User    @relation(fields: [partnerId], references: [id])
 
   WorkshopNote WorkshopNote?
 
   // Many-to-many relation
   // massschuheOrders massschuhe_order[] @relation("OrderEmployees")
 
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime                   @updatedAt
-  appointmentEmployees     AppointmentEmployee[]
-  massschuheOrders         massschuhe_order[]
-  customerOrdersHistories  customerOrdersHistory[]
-  massschuheOrderHistories massschuhe_order_history[]
-  customerOrders           customerOrders[]
+  createdAt                   DateTime                       @default(now())
+  updatedAt                   DateTime                       @updatedAt
+  appointmentEmployees        AppointmentEmployee[]
+  massschuheOrders            massschuhe_order[]
+  customerOrdersHistories     customerOrdersHistory[]
+  massschuheOrderHistories    massschuhe_order_history[]
+  customerOrders              customerOrders[]
+  partnerConversationMembers  partner_conversation_members[]
+  partnerConversationMessages partner_conversation_message[]
 
   @@index([createdAt])
 }
@@ -1704,3 +1714,110 @@ model order_settings {
 //--------------------------------------------------------
 //-----------------------settings end---------------------
 //--------------------------------------------------------
+
+model partner_conversation {
+  id String @id @default(uuid())
+
+  name             String?
+  image            String?
+  conversationType conversationType @default(Private)
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  members  partner_conversation_members[]
+  messages partner_conversation_message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([createdAt])
+}
+
+enum conversationType {
+  Private
+  Group
+}
+
+model partner_conversation_members {
+  id String @id @default(uuid())
+
+  conversationId String
+  conversation   partner_conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Member can be either PARTNER or EMPLOYEE
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  role memberRole
+
+  isPartner Boolean @default(false)
+  // isMuted Boolean @default(false)
+  // isArchived Boolean @default(false)
+  isDeleted Boolean @default(false)
+
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([conversationId, partnerId, employeeId])
+  @@index([conversationId])
+  @@index([partnerId])
+  @@index([employeeId])
+}
+
+enum memberRole {
+  Partner
+  Employee
+}
+
+model partner_conversation_message {
+  id String @id @default(uuid())
+
+  conversationId String
+  conversation   partner_conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Sender can be either PARTNER or EMPLOYEE
+  senderPartnerId String?
+  senderPartner   User?   @relation(fields: [senderPartnerId], references: [id], onDelete: SetNull)
+
+  senderEmployeeId String?
+  senderEmployee   Employees? @relation(fields: [senderEmployeeId], references: [id], onDelete: SetNull)
+
+  // For multiple replies - self-relation for chaining replies
+  repliedToMessageIds String[]
+
+  senderType messageSenderType // PARTNER or EMPLOYEE
+
+  content     String
+  messageType messageType @default(Normal)
+
+  // Message status
+  isEdited  Boolean   @default(false)
+  isDeleted Boolean   @default(false)
+  isUpdated Boolean   @default(false)
+
+  deletedAt DateTime?
+
+
+  createdAt                      DateTime                       @default(now())
+  updatedAt                      DateTime                       @updatedAt
+
+  @@index([conversationId])
+  @@index([senderPartnerId])
+  @@index([senderEmployeeId])
+  @@index([createdAt])
+}
+
+enum messageSenderType {
+  Partner
+  Employee
+}
+
+enum messageType {
+  Normal
+  System
+}
