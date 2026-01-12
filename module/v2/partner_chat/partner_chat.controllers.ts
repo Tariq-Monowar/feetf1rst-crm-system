@@ -4,6 +4,7 @@ import {
   getPaginationOptions,
   getPaginationResult,
 } from "../../../utils/pagination";
+import { io } from "../../../index";
 
 const prisma = new PrismaClient();
 
@@ -429,6 +430,14 @@ export const sendMessage = async (req: Request, res: Response) => {
     };
 
     console.log("Formatted Message:", formattedMessage);
+
+    // Emit real-time message to all conversation members
+    conversation.members.forEach((member: any) => {
+      const memberId = member.partnerId || member.employeeId;
+      if (memberId) {
+        io.to(memberId).emit("newMessage", formattedMessage);
+      }
+    });
 
     return res.status(201).json({
       success: true,
