@@ -9,7 +9,10 @@ import suggestions from "./suggestions/suggestions.routes";
 import message from "./messages/messages.routes";
 import appointment from "./appointment/appointment.routes";
 import versorgungen from "./versorgungen/versorgungen.routes";
+
 import employees from "./employees/employees.routes";
+import employeeAuth from "./employees/auth/employee.auth.routes";
+
 import customers from "./customers/customers.routes";
 import einlagenFinder from "./einlagenFinder/einlagenFinder.routes";
 import exercises from "./exercises/exercises.routes";
@@ -42,7 +45,11 @@ const moduleRoutes = [
   { path: "/message", route: message },
   { path: "/appointment", route: appointment },
   { path: "/versorgungen", route: versorgungen },
+
   { path: "/employees", route: employees },
+  { path: "/employees/auth", route: employeeAuth },
+
+
   { path: "/customers", route: customers },
   { path: "/einlagen-finder", route: einlagenFinder },
   { path: "/exercises", route: exercises },

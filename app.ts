@@ -49,6 +49,7 @@ export const allowedOrigins = [
   "https://feetf1rst.tech",
   "https://admin.feetf1rst.tech"
 ];
+
 app.use(
   cors({
     origin: allowedOrigins,

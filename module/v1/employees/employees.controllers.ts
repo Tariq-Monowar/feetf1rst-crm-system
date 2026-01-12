@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -61,6 +62,7 @@ export const createEmployee = async (req: Request, res: Response) => {
         .status(400)
         .json({ success: false, message: "Employee already exists!" });
     }
+ 
 
     const employeeData = {
       accountName,
@@ -92,7 +94,6 @@ export const createEmployee = async (req: Request, res: Response) => {
 
 export const getAllEmployees = async (req: Request, res: Response) => {
   try {
-    console.log("req.user", req.user);
     const { page = 1, limit = 10 } = req.query;
     const partnerId = req.user.id;
 
