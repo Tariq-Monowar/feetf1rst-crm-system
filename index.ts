@@ -28,6 +28,26 @@ io.on("connection", (socket) => {
     console.log(`User with ID: ${userId} joined room: ${userId}`);
   });
 
+  socket.on("joinConversation", (conversationId) => {
+    socket.join(conversationId);
+    console.log(`Joined conversation: ${conversationId}`);
+  });
+
+  socket.on("typing", ({ conversationId, userId, userName }) => {
+    socket.to(conversationId).emit("typing", {
+      conversationId,
+      userId,
+      userName,
+    });
+  });
+
+  socket.on("stopTyping", ({ conversationId, userId }) => {
+    socket.to(conversationId).emit("stopTyping", {
+      conversationId,
+      userId,
+    });
+  });
+
   socket.on("disconnect", () => {
     console.log("Socket disconnected:", socket.id);
   });
@@ -52,9 +72,6 @@ server.listen(PORT, async () => {
 });
 
 //---------------------------------------
-
-
-
 
 // import express from "express";
 // import setupRoutes from "./setup_routes.js";
