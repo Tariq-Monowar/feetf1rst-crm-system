@@ -473,7 +473,7 @@ export const getMessages = async (req: Request, res: Response) => {
         id: conversationId,
         members: {
           some: {
-            OR: [
+            OR: [  
               myRole === "PARTNER" ? { partnerId: myId } : { employeeId: myId },
             ],
             isDeleted: false,

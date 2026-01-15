@@ -69,6 +69,7 @@ model User {
   partnerConversations        partner_conversation[]
   partnerConversationMembers  partner_conversation_members[]
   partnerConversationMessages partner_conversation_message[]
+  partnerPayouts              partner_payout[]
 
   @@map("users")
 }
@@ -88,6 +89,20 @@ model ucode {
   email      String   @unique
   expired_at DateTime
   createdAt  DateTime @default(now())
+}
+
+model partner_payout {
+  id String @id @default(uuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  bankName   String?
+  bankNumber String?
+  bic        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Product {
@@ -1797,14 +1812,13 @@ model partner_conversation_message {
   messageType messageType @default(Normal)
 
   // Message status
-  isEdited  Boolean   @default(false)
-  isRead    Boolean   @default(false)
+  isEdited Boolean @default(false)
+  isRead   Boolean @default(false)
 
   deletedAt DateTime?
 
-
-  createdAt                      DateTime                       @default(now())
-  updatedAt                      DateTime                       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([conversationId])
   @@index([senderPartnerId])
