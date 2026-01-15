@@ -182,6 +182,30 @@ export const createPrivateConversation = async (
         }),
       ]);
 
+      // Fetch replied-to messages if last message has replies
+      let replyMessages: Array<{ id: string; content: string }> = [];
+      if (lastMessage && lastMessage.repliedToMessageIds && lastMessage.repliedToMessageIds.length > 0) {
+        const repliedToMessages = await prisma.partner_conversation_message.findMany({
+          where: {
+            id: { in: lastMessage.repliedToMessageIds },
+            conversationId: conversation.id,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            content: true,
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        });
+
+        replyMessages = repliedToMessages.map((msg) => ({
+          id: msg.id,
+          content: msg.content,
+        }));
+      }
+
       // Format last message if exists
       const formattedLastMessage = lastMessage
         ? {
@@ -190,6 +214,7 @@ export const createPrivateConversation = async (
             content: lastMessage.content,
             isEdited: lastMessage.isEdited,
             messageType: lastMessage.messageType,
+            reply: replyMessages,
             createdAt: lastMessage.createdAt,
             updatedAt: lastMessage.updatedAt,
             isRead: lastMessage.isRead,
@@ -303,8 +328,8 @@ export const sendMessage = async (req: Request, res: Response) => {
   try {
     const myId = req.user.id;
     const myRole = req.user.role;
-    const { conversationId, content } = req.body;
-
+    const { conversationId, content, reply } = req.body;
+    console.log("Reply:", reply);
     // Validate input
     if (!conversationId || !content) {
       return res.status(400).json({
@@ -313,6 +338,20 @@ export const sendMessage = async (req: Request, res: Response) => {
           ? "conversationId is required"
           : "content is required",
       });
+    }
+
+    // Validate repliedToMessageIds if provided
+    let validRepliedToMessageIds: string[] = [];
+    if (reply) {
+      if (!Array.isArray(reply)) {
+        return res.status(400).json({
+          success: false,
+          message: "repliedToMessageIds must be an array",
+        });
+      }
+      validRepliedToMessageIds = reply.filter(
+        (id: any) => typeof id === "string" && id.trim() !== ""
+      );
     }
 
     // Check if conversation exists and user is a member, and get members
@@ -360,13 +399,44 @@ export const sendMessage = async (req: Request, res: Response) => {
       });
     }
 
+    // Validate that replied-to messages exist and belong to the same conversation
+    if (validRepliedToMessageIds.length > 0) {
+      const repliedToMessages = await prisma.partner_conversation_message.findMany({
+        where: {
+          id: { in: validRepliedToMessageIds },
+          conversationId: conversationId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          content: true,
+        },
+      });
+
+      // Check if all replied-to message IDs were found
+      const foundIds = repliedToMessages.map((msg) => msg.id);
+      const missingIds = validRepliedToMessageIds.filter(
+        (id) => !foundIds.includes(id)
+      );
+
+      if (missingIds.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Some replied-to messages not found or deleted: ${missingIds.join(", ")}`,
+        });
+      }
+
+      // Update validRepliedToMessageIds to only include found messages
+      validRepliedToMessageIds = foundIds;
+    }
+
     // Create message
     const messageData: any = {
       conversationId,
       content: content.trim(),
       senderType: myRole === "PARTNER" ? "Partner" : "Employee",
       messageType: "Normal",
-      repliedToMessageIds: [],
+      repliedToMessageIds: validRepliedToMessageIds,
     };
 
     if (myRole === "PARTNER") {
@@ -397,6 +467,30 @@ export const sendMessage = async (req: Request, res: Response) => {
       },
     });
 
+    // Fetch replied-to messages for the response
+    let replyMessages: Array<{ id: string; content: string }> = [];
+    if (validRepliedToMessageIds.length > 0) {
+      const repliedToMessages = await prisma.partner_conversation_message.findMany({
+        where: {
+          id: { in: validRepliedToMessageIds },
+          conversationId: conversationId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          content: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      replyMessages = repliedToMessages.map((msg) => ({
+        id: msg.id,
+        content: msg.content,
+      }));
+    }
+
     // Get sender info from the created message
     const senderInfo = {
       id: myId,
@@ -423,6 +517,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       content: newMessage.content,
       isEdited: newMessage.isEdited,
       messageType: newMessage.messageType,
+      reply: replyMessages,
       createdAt: newMessage.createdAt,
       updatedAt: newMessage.updatedAt,
       isRead: newMessage.isRead,
@@ -525,32 +620,71 @@ export const getMessages = async (req: Request, res: Response) => {
       take: limit,
     });
 
+    // Collect all replied-to message IDs
+    const allRepliedToIds = messages
+      .flatMap((msg: any) => msg.repliedToMessageIds || [])
+      .filter((id: string) => id && id.trim() !== "");
+
+    // Fetch all replied-to messages in one query
+    const repliedToMessagesMap = new Map<string, { id: string; content: string }>();
+    if (allRepliedToIds.length > 0) {
+      const repliedToMessages = await prisma.partner_conversation_message.findMany({
+        where: {
+          id: { in: allRepliedToIds },
+          conversationId: conversationId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          content: true,
+        },
+      });
+
+      repliedToMessages.forEach((msg) => {
+        repliedToMessagesMap.set(msg.id, { id: msg.id, content: msg.content });
+      });
+    }
+
     // Format messages to match sendMessage response format
-    const formattedMessages = messages.map((message: any) => ({
-      id: message.id,
-      conversationId: message.conversationId,
-      content: message.content,
-      isEdited: message.isEdited,
-      messageType: message.messageType,
-      createdAt: message.createdAt,
-      updatedAt: message.updatedAt,
-      isRead: message.isRead,
-      sender: {
-        id: message.senderPartnerId || message.senderEmployeeId || "",
-        name:
-          message.senderType === "Partner"
-            ? message.senderPartner?.name || ""
-            : message.senderEmployee?.employeeName || "",
-        email:
-          message.senderType === "Partner"
-            ? message.senderPartner?.email || ""
-            : message.senderEmployee?.email || "",
-        image:
-          message.senderType === "Partner"
-            ? message.senderPartner?.image || null
-            : message.senderEmployee?.image || null,
-      },
-    }));
+    const formattedMessages = messages.map((message: any) => {
+      // Build reply array for this message
+      const replyMessages: Array<{ id: string; content: string }> = [];
+      if (message.repliedToMessageIds && message.repliedToMessageIds.length > 0) {
+        message.repliedToMessageIds.forEach((msgId: string) => {
+          const repliedToMsg = repliedToMessagesMap.get(msgId);
+          if (repliedToMsg) {
+            replyMessages.push(repliedToMsg);
+          }
+        });
+      }
+
+      return {
+        id: message.id,
+        conversationId: message.conversationId,
+        content: message.content,
+        isEdited: message.isEdited,
+        messageType: message.messageType,
+        reply: replyMessages,
+        createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
+        isRead: message.isRead,
+        sender: {
+          id: message.senderPartnerId || message.senderEmployeeId || "",
+          name:
+            message.senderType === "Partner"
+              ? message.senderPartner?.name || ""
+              : message.senderEmployee?.employeeName || "",
+          email:
+            message.senderType === "Partner"
+              ? message.senderPartner?.email || ""
+              : message.senderEmployee?.email || "",
+          image:
+            message.senderType === "Partner"
+              ? message.senderPartner?.image || null
+              : message.senderEmployee?.image || null,
+        },
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -849,6 +983,31 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
     
     console.log("Unread count map:", Array.from(unreadCountMap.entries()));
 
+    // Collect all replied-to message IDs from all last messages
+    const allRepliedToIds = Array.from(lastMessageMap.values())
+      .flatMap((msg: any) => msg.repliedToMessageIds || [])
+      .filter((id: string) => id && id.trim() !== "");
+
+    // Fetch all replied-to messages in one batch query
+    const repliedToMessagesMap = new Map<string, { id: string; content: string }>();
+    if (allRepliedToIds.length > 0) {
+      const repliedToMessages = await prisma.partner_conversation_message.findMany({
+        where: {
+          id: { in: allRepliedToIds },
+          conversationId: { in: conversationIds },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          content: true,
+        },
+      });
+
+      repliedToMessages.forEach((msg) => {
+        repliedToMessagesMap.set(msg.id, { id: msg.id, content: msg.content });
+      });
+    }
+
     // Sort conversations by last message createdAt (most recent first)
     // Conversations without messages go to the end
     allConversations.sort((a, b) => {
@@ -871,6 +1030,17 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
       const lastMessage = lastMessageMap.get(conversation.id);
       const unreadCount = unreadCountMap.get(conversation.id) || 0;
 
+      // Build reply array for last message
+      let replyMessages: Array<{ id: string; content: string }> = [];
+      if (lastMessage && lastMessage.repliedToMessageIds && lastMessage.repliedToMessageIds.length > 0) {
+        lastMessage.repliedToMessageIds.forEach((msgId: string) => {
+          const repliedToMsg = repliedToMessagesMap.get(msgId);
+          if (repliedToMsg) {
+            replyMessages.push(repliedToMsg);
+          }
+        });
+      }
+
       const formattedLastMessage = lastMessage
         ? {
             id: lastMessage.id,
@@ -878,6 +1048,7 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
             content: lastMessage.content,
             isEdited: lastMessage.isEdited,
             messageType: lastMessage.messageType,
+            reply: replyMessages,
             createdAt: lastMessage.createdAt,
             updatedAt: lastMessage.updatedAt,
             isRead: lastMessage.isRead,
@@ -1140,6 +1311,7 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
       content: msg.content,
       isEdited: msg.isEdited,
       messageType: msg.messageType,
+      reply: [], // System messages don't have replies
       createdAt: msg.createdAt,
       updatedAt: msg.updatedAt,
       isRead: msg.isRead,
@@ -1353,6 +1525,7 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
       content: msg.content,
       isEdited: msg.isEdited,
       messageType: msg.messageType,
+      reply: [], // System messages don't have replies
       createdAt: msg.createdAt,
       updatedAt: msg.updatedAt,
       isRead: msg.isRead,
