@@ -9,7 +9,9 @@ import {
   addMemberToGroup,
   removeMemberFromGroup,
   markAllMessagesAsRead,
+  updateConversation,
 } from "./partner_chat.controllers";
+import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
@@ -34,7 +36,15 @@ router.get(
 router.post(
   "/create-group-conversation",
   verifyUser("PARTNER"),
+  upload.single("image"),
   createGroupConversation
+);
+
+router.patch(
+  "/update-conversation/:conversationId",
+  verifyUser("PARTNER"),
+  upload.single("image"),
+  updateConversation
 );
 
 router.get(

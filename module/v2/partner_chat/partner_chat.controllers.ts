@@ -5,6 +5,7 @@ import {
   getPaginationResult,
 } from "../../../utils/pagination";
 import { io } from "../../../index";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -758,13 +759,38 @@ export const getMessages = async (req: Request, res: Response) => {
 };
 
 export const createGroupConversation = async (req: Request, res: Response) => {
+  const file = req.file as any;
+
+  const cleanupFile = () => {
+    if (file && file.location) {
+      deleteFileFromS3(file.location);
+    }
+  };
+
   try {
     const myId = req.user.id;
     const myRole = req.user.role;
-    const { membersIds } = req.body;
+    let { membersIds, name } = req.body;
+
+    // Parse membersIds if it's a string (common when using form-data)
+    if (typeof membersIds === "string") {
+      try {
+        membersIds = JSON.parse(membersIds);
+      } catch (parseError) {
+        cleanupFile();
+        return res.status(400).json({
+          success: false,
+          message: "membersIds must be a valid JSON array",
+        });
+      }
+    }
+
+    // Get image from uploaded file if exists
+    const image = file?.location || null;
 
     // Validate input
     if (!membersIds || !Array.isArray(membersIds) || membersIds.length === 0) {
+      cleanupFile();
       return res.status(400).json({
         success: false,
         message: "membersIds must be a non-empty array",
@@ -772,6 +798,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
     }
 
     if (myRole !== "PARTNER") {
+      cleanupFile();
       return res.status(400).json({
         success: false,
         message: "Only partners can create group conversations",
@@ -781,6 +808,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
     // Validate current user exists
     const myUser = await prisma.user.findUnique({ where: { id: myId } });
     if (!myUser) {
+      cleanupFile();
       return res.status(400).json({
         success: false,
         message: "Current partner not found",
@@ -831,6 +859,8 @@ export const createGroupConversation = async (req: Request, res: Response) => {
       data: {
         partnerId: myPartnerId,
         conversationType: "Group",
+        name: name || null,
+        image: image || null,
         members: {
           create: allMembers.map((member) => ({
             ...(member.role === "PARTNER"
@@ -886,9 +916,9 @@ export const createGroupConversation = async (req: Request, res: Response) => {
         isDeleted: member.isDeleted,
         joinedAt: member.joinedAt,
       })),
-      messages: [],
-      unread: unreadCount,
-    };
+        messages: [],
+        unread: unreadCount,
+      };
 
     return res.status(201).json({
       success: true,
@@ -897,6 +927,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error in createGroupConversation:", error);
+    cleanupFile();
     return res.status(500).json({
       success: false,
       message: error.message || "Something went wrong",
@@ -1744,6 +1775,159 @@ export const markAllMessagesAsRead = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error in markAllMessagesAsRead:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
+
+export const updateConversation = async (req: Request, res: Response) => {
+  const file = req.file as any;
+
+  const cleanupFile = () => {
+    if (file && file.location) {
+      deleteFileFromS3(file.location);
+    }
+  };
+
+  try {
+    const myId = req.user.id;
+    const myRole = req.user.role;
+    const conversationId = req.params.conversationId;
+    const { name } = req.body;
+
+    // Get image from uploaded file if exists, otherwise use body.image (for removing image by sending null)
+    const image = file?.location || (req.body.image !== undefined ? req.body.image : undefined);
+
+    // Validate input
+    if (!conversationId) {
+      cleanupFile();
+      return res.status(400).json({
+        success: false,
+        message: "conversationId is required",
+      });
+    }
+
+    // At least one field should be provided for update
+    if (name === undefined && image === undefined) {
+      cleanupFile();
+      return res.status(400).json({
+        success: false,
+        message: "At least one of 'name' or 'image' must be provided",
+      });
+    }
+
+    // Only partners can update conversation info
+    if (myRole !== "PARTNER") {
+      cleanupFile();
+      return res.status(403).json({
+        success: false,
+        message: "Only partners can update conversation information",
+      });
+    }
+
+    // Check if conversation exists, is a group, and user is a member
+    const conversation = await prisma.partner_conversation.findFirst({
+      where: {
+        id: conversationId,
+        conversationType: "Group",
+        partnerId: myId,
+        members: {
+          some: {
+            partnerId: myId,
+            isDeleted: false,
+          },
+        },
+      },
+      include: {
+        members: {
+          where: { isDeleted: false },
+          include: {
+            partner: { select: { name: true, image: true } },
+            employee: { select: { employeeName: true, image: true } },
+          },
+        },
+      },
+    });
+
+    if (!conversation) {
+      cleanupFile();
+      return res.status(404).json({
+        success: false,
+        message:
+          "Group conversation not found or you are not a member of this conversation",
+      });
+    }
+
+    // Store old image URL for deletion
+    const oldImageUrl = conversation.image;
+
+    // Prepare update data - only include fields that are provided
+    const updateData: any = {};
+    if (name !== undefined) {
+      updateData.name = name || null;
+    }
+    if (image !== undefined) {
+      updateData.image = image || null;
+    }
+
+    // Update conversation
+    const updatedConversation = await prisma.partner_conversation.update({
+      where: { id: conversationId },
+      data: updateData,
+      include: {
+        members: {
+          where: { isDeleted: false },
+          include: {
+            partner: { select: { name: true, image: true } },
+            employee: { select: { employeeName: true, image: true } },
+          },
+        },
+      },
+    });
+
+    // Delete old image from S3 if:
+    // 1. A new image was uploaded (file exists), OR
+    // 2. Image is being removed (image is null/empty and old image exists)
+    if (oldImageUrl && (file?.location || image === null || image === "")) {
+      await deleteFileFromS3(oldImageUrl);
+    }
+
+    // Format response
+    const formattedResponse = {
+      id: updatedConversation.id,
+      name: updatedConversation.name,
+      image: updatedConversation.image,
+      conversationType: updatedConversation.conversationType,
+      partnerId: updatedConversation.partnerId,
+      createdAt: updatedConversation.createdAt,
+      updatedAt: updatedConversation.updatedAt,
+      members: updatedConversation.members.map((member) => ({
+        partnerId: member.partnerId,
+        employeeId: member.employeeId,
+        name: member.isPartner
+          ? member.partner?.name || ""
+          : member.employee?.employeeName || "",
+        image: member.isPartner
+          ? member.partner?.image || null
+          : member.employee?.image || null,
+        role: member.role,
+        isPartner: member.isPartner,
+        isDeleted: member.isDeleted,
+        joinedAt: member.joinedAt,
+      })),
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Conversation updated successfully",
+      data: formattedResponse,
+    });
+  } catch (error) {
+    console.error("Error in updateConversation:", error);
+    cleanupFile();
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
