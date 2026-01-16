@@ -11,6 +11,7 @@ datasource db {
 
 model User {
   id String @id @default(uuid())
+  partnerId String?
 
   name String?
 
@@ -26,6 +27,7 @@ model User {
   busnessName   String? // Geschäftspartner Name / Account Name
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
+  barcodeLabel String?
 
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt

@@ -132,7 +132,7 @@ export const createPrivateConversation = async (
     });
 
     // Helper function to format conversation response (kept inside function)
-    const formatConversationResponse = async (conversation: any) => {
+    const formatConversationResponse = async (conversation) => {
       // Build unread count query - only messages sent TO me (not by me)
       const unreadWhere: any = {
         conversationId: conversation.id,
@@ -183,26 +183,41 @@ export const createPrivateConversation = async (
       ]);
 
       // Fetch replied-to messages if last message has replies
-      let replyMessages: Array<{ id: string; content: string }> = [];
-      if (lastMessage && lastMessage.repliedToMessageIds && lastMessage.repliedToMessageIds.length > 0) {
-        const repliedToMessages = await prisma.partner_conversation_message.findMany({
-          where: {
-            id: { in: lastMessage.repliedToMessageIds },
-            conversationId: conversation.id,
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            content: true,
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
-        });
+      let replyMessages = [];
+      if (
+        lastMessage &&
+        lastMessage.repliedToMessageIds &&
+        lastMessage.repliedToMessageIds.length > 0
+      ) {
+        const repliedToMessages =
+          await prisma.partner_conversation_message.findMany({
+            where: {
+              id: { in: lastMessage.repliedToMessageIds },
+              conversationId: conversation.id,
+              deletedAt: null,
+            },
+            include: {
+              senderPartner: {
+                select: { id: true, name: true },
+              },
+              senderEmployee: {
+                select: { id: true, employeeName: true },
+              },
+            },
+            orderBy: {
+              createdAt: "asc",
+            },
+          });
 
         replyMessages = repliedToMessages.map((msg) => ({
           id: msg.id,
           content: msg.content,
+          user:
+            msg.senderType === "Partner"
+              ? msg.senderPartner?.name || ""
+              : msg.senderEmployee?.employeeName || "",
+          userId: msg.senderPartnerId || msg.senderEmployeeId || "",
+          status: msg.senderType === "Partner" ? "PARTNER" : "EMPLOYEE",
         }));
       }
 
@@ -219,7 +234,10 @@ export const createPrivateConversation = async (
             updatedAt: lastMessage.updatedAt,
             isRead: lastMessage.isRead,
             sender: {
-              id: lastMessage.senderPartnerId || lastMessage.senderEmployeeId || "",
+              id:
+                lastMessage.senderPartnerId ||
+                lastMessage.senderEmployeeId ||
+                "",
               name:
                 lastMessage.senderType === "Partner"
                   ? lastMessage.senderPartner?.name || ""
@@ -243,7 +261,7 @@ export const createPrivateConversation = async (
         conversationType: conversation.conversationType,
         partnerId: conversation.partnerId,
         createdAt: conversation.createdAt,
-        members: conversation.members.map((member: any) => ({
+        members: conversation.members.map((member) => ({
           partnerId: member.partnerId,
           employeeId: member.employeeId,
           name: member.isPartner
@@ -264,7 +282,9 @@ export const createPrivateConversation = async (
 
     // Return existing conversation if found
     if (existingConversation && existingConversation.members.length === 2) {
-      const formattedData = await formatConversationResponse(existingConversation);
+      const formattedData = await formatConversationResponse(
+        existingConversation
+      );
       return res.status(200).json({
         success: true,
         message: "Conversation already exists",
@@ -314,7 +334,7 @@ export const createPrivateConversation = async (
       message: "Conversation created successfully",
       data: formattedData,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in createPrivateConversation:", error);
     return res.status(500).json({
       success: false,
@@ -341,7 +361,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     }
 
     // Validate repliedToMessageIds if provided
-    let validRepliedToMessageIds: string[] = [];
+    let validRepliedToMessageIds = [];
     if (reply) {
       if (!Array.isArray(reply)) {
         return res.status(400).json({
@@ -350,7 +370,7 @@ export const sendMessage = async (req: Request, res: Response) => {
         });
       }
       validRepliedToMessageIds = reply.filter(
-        (id: any) => typeof id === "string" && id.trim() !== ""
+        (id) => typeof id === "string" && id.trim() !== ""
       );
     }
 
@@ -401,17 +421,18 @@ export const sendMessage = async (req: Request, res: Response) => {
 
     // Validate that replied-to messages exist and belong to the same conversation
     if (validRepliedToMessageIds.length > 0) {
-      const repliedToMessages = await prisma.partner_conversation_message.findMany({
-        where: {
-          id: { in: validRepliedToMessageIds },
-          conversationId: conversationId,
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          content: true,
-        },
-      });
+      const repliedToMessages =
+        await prisma.partner_conversation_message.findMany({
+          where: {
+            id: { in: validRepliedToMessageIds },
+            conversationId: conversationId,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            content: true,
+          },
+        });
 
       // Check if all replied-to message IDs were found
       const foundIds = repliedToMessages.map((msg) => msg.id);
@@ -422,7 +443,9 @@ export const sendMessage = async (req: Request, res: Response) => {
       if (missingIds.length > 0) {
         return res.status(400).json({
           success: false,
-          message: `Some replied-to messages not found or deleted: ${missingIds.join(", ")}`,
+          message: `Some replied-to messages not found or deleted: ${missingIds.join(
+            ", "
+          )}`,
         });
       }
 
@@ -445,7 +468,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       messageData.senderEmployeeId = myId;
     }
 
-    const newMessage = await prisma.partner_conversation_message.create({
+    const newMessage: any = await prisma.partner_conversation_message.create({
       data: messageData,
       include: {
         senderPartner: {
@@ -468,26 +491,37 @@ export const sendMessage = async (req: Request, res: Response) => {
     });
 
     // Fetch replied-to messages for the response
-    let replyMessages: Array<{ id: string; content: string }> = [];
+    let replyMessages = [];
     if (validRepliedToMessageIds.length > 0) {
-      const repliedToMessages = await prisma.partner_conversation_message.findMany({
-        where: {
-          id: { in: validRepliedToMessageIds },
-          conversationId: conversationId,
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          content: true,
-        },
-        orderBy: {
-          createdAt: "asc",
-        },
-      });
+      const repliedToMessages =
+        await prisma.partner_conversation_message.findMany({
+          where: {
+            id: { in: validRepliedToMessageIds },
+            conversationId: conversationId,
+            deletedAt: null,
+          },
+          include: {
+            senderPartner: {
+              select: { id: true, name: true },
+            },
+            senderEmployee: {
+              select: { id: true, employeeName: true },
+            },
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+        });
 
-      replyMessages = repliedToMessages.map((msg) => ({
+      replyMessages = repliedToMessages.map((msg: any) => ({
         id: msg.id,
         content: msg.content,
+        user:
+          msg.senderType === "Partner"
+            ? msg.senderPartner?.name || ""
+            : msg.senderEmployee?.employeeName || "",
+        userId: msg.senderPartnerId || msg.senderEmployeeId || "",
+        status: msg.senderType === "Partner" ? "PARTNER" : "EMPLOYEE",
       }));
     }
 
@@ -527,7 +561,7 @@ export const sendMessage = async (req: Request, res: Response) => {
     console.log("Formatted Message:", formattedMessage);
 
     // Emit real-time message to all conversation members
-    conversation.members.forEach((member: any) => {
+    conversation.members.forEach((member) => {
       const memberId = member.partnerId || member.employeeId;
       if (memberId) {
         io.to(memberId).emit("newMessage", formattedMessage);
@@ -539,7 +573,7 @@ export const sendMessage = async (req: Request, res: Response) => {
       message: "Message sent successfully",
       data: formattedMessage,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in sendMessage:", error);
     return res.status(500).json({
       success: false,
@@ -568,7 +602,7 @@ export const getMessages = async (req: Request, res: Response) => {
         id: conversationId,
         members: {
           some: {
-            OR: [  
+            OR: [
               myRole === "PARTNER" ? { partnerId: myId } : { employeeId: myId },
             ],
             isDeleted: false,
@@ -622,35 +656,52 @@ export const getMessages = async (req: Request, res: Response) => {
 
     // Collect all replied-to message IDs
     const allRepliedToIds = messages
-      .flatMap((msg: any) => msg.repliedToMessageIds || [])
-      .filter((id: string) => id && id.trim() !== "");
+      .flatMap((msg) => msg.repliedToMessageIds || [])
+      .filter((id) => id && id.trim() !== "");
 
     // Fetch all replied-to messages in one query
-    const repliedToMessagesMap = new Map<string, { id: string; content: string }>();
+    const repliedToMessagesMap = new Map();
     if (allRepliedToIds.length > 0) {
-      const repliedToMessages = await prisma.partner_conversation_message.findMany({
-        where: {
-          id: { in: allRepliedToIds },
-          conversationId: conversationId,
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          content: true,
-        },
-      });
+      const repliedToMessages =
+        await prisma.partner_conversation_message.findMany({
+          where: {
+            id: { in: allRepliedToIds },
+            conversationId: conversationId,
+            deletedAt: null,
+          },
+          include: {
+            senderPartner: {
+              select: { id: true, name: true },
+            },
+            senderEmployee: {
+              select: { id: true, employeeName: true },
+            },
+          },
+        });
 
       repliedToMessages.forEach((msg) => {
-        repliedToMessagesMap.set(msg.id, { id: msg.id, content: msg.content });
+        repliedToMessagesMap.set(msg.id, {
+          id: msg.id,
+          content: msg.content,
+          user:
+            msg.senderType === "Partner"
+              ? msg.senderPartner?.name || ""
+              : msg.senderEmployee?.employeeName || "",
+          userId: msg.senderPartnerId || msg.senderEmployeeId || "",
+          status: msg.senderType === "Partner" ? "PARTNER" : "EMPLOYEE",
+        });
       });
     }
 
     // Format messages to match sendMessage response format
-    const formattedMessages = messages.map((message: any) => {
+    const formattedMessages = messages.map((message) => {
       // Build reply array for this message
-      const replyMessages: Array<{ id: string; content: string }> = [];
-      if (message.repliedToMessageIds && message.repliedToMessageIds.length > 0) {
-        message.repliedToMessageIds.forEach((msgId: string) => {
+      const replyMessages = [];
+      if (
+        message.repliedToMessageIds &&
+        message.repliedToMessageIds.length > 0
+      ) {
+        message.repliedToMessageIds.forEach((msgId) => {
           const repliedToMsg = repliedToMessagesMap.get(msgId);
           if (repliedToMsg) {
             replyMessages.push(repliedToMsg);
@@ -696,7 +747,7 @@ export const getMessages = async (req: Request, res: Response) => {
         hasMore: messages.length === limit,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in getMessages:", error);
     return res.status(500).json({
       success: false,
@@ -739,7 +790,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
     const myPartnerId = myId;
 
     // Validate and fetch all members (check both partners and employees in parallel)
-    const memberPromises = membersIds.map(async (memberId: string) => {
+    const memberPromises = membersIds.map(async (memberId) => {
       const [partner, employee] = await Promise.all([
         prisma.user.findUnique({ where: { id: memberId } }),
         prisma.employees.findUnique({ where: { id: memberId } }),
@@ -747,14 +798,18 @@ export const createGroupConversation = async (req: Request, res: Response) => {
 
       if (partner) {
         if (partner.id !== myPartnerId) {
-          throw new Error("All members must belong to the same partner organization");
+          throw new Error(
+            "All members must belong to the same partner organization"
+          );
         }
         return { id: memberId, role: "PARTNER" as const };
       }
 
       if (employee) {
         if (employee.partnerId !== myPartnerId) {
-          throw new Error("All members must belong to the same partner organization");
+          throw new Error(
+            "All members must belong to the same partner organization"
+          );
         }
         return { id: memberId, role: "EMPLOYEE" as const };
       }
@@ -817,7 +872,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
       conversationType: newConversation.conversationType,
       partnerId: newConversation.partnerId,
       createdAt: newConversation.createdAt,
-      members: newConversation.members.map((member: any) => ({
+      members: newConversation.members.map((member) => ({
         partnerId: member.partnerId,
         employeeId: member.employeeId,
         name: member.isPartner
@@ -840,7 +895,7 @@ export const createGroupConversation = async (req: Request, res: Response) => {
       message: "Group conversation created successfully",
       data: formattedResponse,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in createGroupConversation:", error);
     return res.status(500).json({
       success: false,
@@ -912,7 +967,7 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
       deletedAt: null,
       isRead: false,
     };
-    
+
     // Exclude messages sent by me - use OR to handle null values correctly
     if (myRole === "PARTNER") {
       // For partners: get messages where senderPartnerId is null (from employees) OR not myId (from other partners)
@@ -960,13 +1015,16 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
     ]);
 
     // Debug logging
-    console.log("Unread query where clause:", JSON.stringify(unreadWhere, null, 2));
+    console.log(
+      "Unread query where clause:",
+      JSON.stringify(unreadWhere, null, 2)
+    );
     console.log("Unread messages found:", unreadCounts.length);
     console.log("Sample unread messages:", unreadCounts.slice(0, 3));
 
     // Create maps for quick lookup
-    const lastMessageMap = new Map<string, any>();
-    const unreadCountMap = new Map<string, number>();
+    const lastMessageMap = new Map();
+    const unreadCountMap = new Map();
 
     // Process last messages - keep only the first (latest) for each conversation
     lastMessages.forEach((msg) => {
@@ -980,31 +1038,45 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
       const currentCount = unreadCountMap.get(msg.conversationId) || 0;
       unreadCountMap.set(msg.conversationId, currentCount + 1);
     });
-    
+
     console.log("Unread count map:", Array.from(unreadCountMap.entries()));
 
     // Collect all replied-to message IDs from all last messages
     const allRepliedToIds = Array.from(lastMessageMap.values())
-      .flatMap((msg: any) => msg.repliedToMessageIds || [])
-      .filter((id: string) => id && id.trim() !== "");
+      .flatMap((msg) => msg.repliedToMessageIds || [])
+      .filter((id) => id && id.trim() !== "");
 
     // Fetch all replied-to messages in one batch query
-    const repliedToMessagesMap = new Map<string, { id: string; content: string }>();
+    const repliedToMessagesMap = new Map();
     if (allRepliedToIds.length > 0) {
-      const repliedToMessages = await prisma.partner_conversation_message.findMany({
-        where: {
-          id: { in: allRepliedToIds },
-          conversationId: { in: conversationIds },
-          deletedAt: null,
-        },
-        select: {
-          id: true,
-          content: true,
-        },
-      });
+      const repliedToMessages =
+        await prisma.partner_conversation_message.findMany({
+          where: {
+            id: { in: allRepliedToIds },
+            conversationId: { in: conversationIds },
+            deletedAt: null,
+          },
+          include: {
+            senderPartner: {
+              select: { id: true, name: true },
+            },
+            senderEmployee: {
+              select: { id: true, employeeName: true },
+            },
+          },
+        });
 
       repliedToMessages.forEach((msg) => {
-        repliedToMessagesMap.set(msg.id, { id: msg.id, content: msg.content });
+        repliedToMessagesMap.set(msg.id, {
+          id: msg.id,
+          content: msg.content,
+          user:
+            msg.senderType === "Partner"
+              ? msg.senderPartner?.name || ""
+              : msg.senderEmployee?.employeeName || "",
+          userId: msg.senderPartnerId || msg.senderEmployeeId || "",
+          status: msg.senderType === "Partner" ? "PARTNER" : "EMPLOYEE",
+        });
       });
     }
 
@@ -1013,12 +1085,14 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
     allConversations.sort((a, b) => {
       const msgA = lastMessageMap.get(a.id);
       const msgB = lastMessageMap.get(b.id);
-      
+
       if (!msgA && !msgB) return 0;
-      if (!msgA) return 1; 
+      if (!msgA) return 1;
       if (!msgB) return -1;
-      
-      return new Date(msgB.createdAt).getTime() - new Date(msgA.createdAt).getTime();
+
+      return (
+        new Date(msgB.createdAt).getTime() - new Date(msgA.createdAt).getTime()
+      );
     });
 
     // Apply pagination after sorting
@@ -1026,14 +1100,18 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
     const conversations = allConversations.slice(skip, skip + limit);
 
     // Format conversations
-    const formattedConversations = conversations.map((conversation: any) => {
+    const formattedConversations = conversations.map((conversation) => {
       const lastMessage = lastMessageMap.get(conversation.id);
       const unreadCount = unreadCountMap.get(conversation.id) || 0;
 
       // Build reply array for last message
-      let replyMessages: Array<{ id: string; content: string }> = [];
-      if (lastMessage && lastMessage.repliedToMessageIds && lastMessage.repliedToMessageIds.length > 0) {
-        lastMessage.repliedToMessageIds.forEach((msgId: string) => {
+      let replyMessages = [];
+      if (
+        lastMessage &&
+        lastMessage.repliedToMessageIds &&
+        lastMessage.repliedToMessageIds.length > 0
+      ) {
+        lastMessage.repliedToMessageIds.forEach((msgId) => {
           const repliedToMsg = repliedToMessagesMap.get(msgId);
           if (repliedToMsg) {
             replyMessages.push(repliedToMsg);
@@ -1053,7 +1131,10 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
             updatedAt: lastMessage.updatedAt,
             isRead: lastMessage.isRead,
             sender: {
-              id: lastMessage.senderPartnerId || lastMessage.senderEmployeeId || "",
+              id:
+                lastMessage.senderPartnerId ||
+                lastMessage.senderEmployeeId ||
+                "",
               name:
                 lastMessage.senderType === "Partner"
                   ? lastMessage.senderPartner?.name || ""
@@ -1077,7 +1158,7 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
         conversationType: conversation.conversationType,
         partnerId: conversation.partnerId,
         createdAt: conversation.createdAt,
-        members: conversation.members.map((member: any) => ({
+        members: conversation.members.map((member) => ({
           partnerId: member.partnerId,
           employeeId: member.employeeId,
           name: member.isPartner
@@ -1106,7 +1187,7 @@ export const getMyConversationsList = async (req: Request, res: Response) => {
         hasMore: skip + limit < allConversations.length,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in getMyConversationsList:", error);
     return res.status(500).json({
       success: false,
@@ -1126,7 +1207,9 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
     if (!conversationId || !memberIds) {
       return res.status(400).json({
         success: false,
-        message: !conversationId ? "conversationId is required" : "memberIds is required",
+        message: !conversationId
+          ? "conversationId is required"
+          : "memberIds is required",
       });
     }
 
@@ -1191,7 +1274,9 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
       .map((m) => m.partnerId || m.employeeId)
       .filter(Boolean);
 
-    const duplicateIds = memberIds.filter((id: string) => existingMemberIds.includes(id));
+    const duplicateIds = memberIds.filter((id) =>
+      existingMemberIds.includes(id)
+    );
     if (duplicateIds.length > 0) {
       return res.status(400).json({
         success: false,
@@ -1200,7 +1285,7 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
     }
 
     // Validate and fetch all new members in parallel
-    const memberValidationPromises = memberIds.map(async (memberId: string) => {
+    const memberValidationPromises = memberIds.map(async (memberId) => {
       const [partnerMember, employeeMember] = await Promise.all([
         prisma.user.findUnique({ where: { id: memberId } }),
         prisma.employees.findUnique({ where: { id: memberId } }),
@@ -1213,21 +1298,33 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
       // Ensure member belongs to the same partner organization
       if (partnerMember) {
         if (partnerMember.id !== myPartner.id) {
-          throw new Error(`Member ${memberId} must belong to the same partner organization`);
+          throw new Error(
+            `Member ${memberId} must belong to the same partner organization`
+          );
         }
-        return { id: memberId, type: "partner" as const, name: partnerMember.name || "Unknown Partner" };
+        return {
+          id: memberId,
+          type: "partner" as const,
+          name: partnerMember.name || "Unknown Partner",
+        };
       } else {
         if (employeeMember!.partnerId !== myPartner.id) {
-          throw new Error(`Member ${memberId} must belong to the same partner organization`);
+          throw new Error(
+            `Member ${memberId} must belong to the same partner organization`
+          );
         }
-        return { id: memberId, type: "employee" as const, name: employeeMember!.employeeName || "Unknown Employee" };
+        return {
+          id: memberId,
+          type: "employee" as const,
+          name: employeeMember!.employeeName || "Unknown Employee",
+        };
       }
     });
 
     let validatedMembers;
     try {
       validatedMembers = await Promise.all(memberValidationPromises);
-    } catch (error: any) {
+    } catch (error) {
       return res.status(400).json({
         success: false,
         message: error.message,
@@ -1262,7 +1359,9 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
             conversationId: conversationId,
             senderPartnerId: myId,
             senderType: "Partner",
-            content: `${member.name} is added by ${myPartner.name || "Partner"}`,
+            content: `${member.name} is added by ${
+              myPartner.name || "Partner"
+            }`,
             messageType: "System",
             repliedToMessageIds: [],
           },
@@ -1305,7 +1404,7 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
     }));
 
     // Format system messages with full details
-    const formattedSystemMessages = systemMessages.map((msg: any) => ({
+    const formattedSystemMessages = systemMessages.map((msg) => ({
       id: msg.id,
       conversationId: msg.conversationId,
       content: msg.content,
@@ -1340,7 +1439,7 @@ export const addMemberToGroup = async (req: Request, res: Response) => {
         systemMessages: formattedSystemMessages,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in addMemberToGroup:", error);
     return res.status(500).json({
       success: false,
@@ -1360,7 +1459,9 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
     if (!conversationId || !memberIds) {
       return res.status(400).json({
         success: false,
-        message: !conversationId ? "conversationId is required" : "memberIds is required",
+        message: !conversationId
+          ? "conversationId is required"
+          : "memberIds is required",
       });
     }
 
@@ -1415,8 +1516,8 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
     }
 
     // Build OR conditions for finding members
-    const orConditions: any[] = [];
-    memberIds.forEach((memberId: string) => {
+    const orConditions = [];
+    memberIds.forEach((memberId) => {
       orConditions.push({ partnerId: memberId });
       orConditions.push({ employeeId: memberId });
     });
@@ -1476,7 +1577,9 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
             conversationId: conversationId,
             senderPartnerId: myId,
             senderType: "Partner",
-            content: `${memberName} is removed by ${myPartner.name || "Partner"}`,
+            content: `${memberName} is removed by ${
+              myPartner.name || "Partner"
+            }`,
             messageType: "System",
             repliedToMessageIds: [],
           },
@@ -1519,7 +1622,7 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
     }));
 
     // Format system messages with full details
-    const formattedSystemMessages = systemMessages.map((msg: any) => ({
+    const formattedSystemMessages = systemMessages.map((msg) => ({
       id: msg.id,
       conversationId: msg.conversationId,
       content: msg.content,
@@ -1554,7 +1657,7 @@ export const removeMemberFromGroup = async (req: Request, res: Response) => {
         systemMessages: formattedSystemMessages,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in removeMemberFromGroup:", error);
     return res.status(500).json({
       success: false,
@@ -1639,7 +1742,7 @@ export const markAllMessagesAsRead = async (req: Request, res: Response) => {
         updatedCount: updateResult.count,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in markAllMessagesAsRead:", error);
     return res.status(500).json({
       success: false,
