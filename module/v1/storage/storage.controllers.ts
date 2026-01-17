@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, StoreOrderOverviewStatus } from "@prisma/client";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -157,8 +158,16 @@ const addStatusToStores = (stores: any[]) => {
 */
 
 export const createStorage = async (req: Request, res: Response) => {
+  const file = req.file as any;
+
+  const cleanupFile = () => {
+    if (file && file.location) {
+      deleteFileFromS3(file.location);
+    }
+  };
+
   try {
-    const {
+    let {
       produktname,
       hersteller,
       artikelnummer,
@@ -171,10 +180,44 @@ export const createStorage = async (req: Request, res: Response) => {
     } = req.body;
 
     const userId = req.user.id;
-    console.log(userId);
+
     if (!userId) {
+      cleanupFile();
       return res.status(401).json({ message: "Unauthorized" });
     }
+
+    // Parse groessenMengen if it's a string (common when using form-data)
+    if (typeof groessenMengen === "string") {
+      try {
+        const trimmed = groessenMengen.trim();
+        if (!trimmed) {
+          cleanupFile();
+          return res.status(400).json({
+            success: false,
+            message: "groessenMengen cannot be empty",
+          });
+        }
+        groessenMengen = JSON.parse(trimmed);
+      } catch (parseError: any) {
+        cleanupFile();
+        return res.status(400).json({
+          success: false,
+          message: `groessenMengen must be a valid JSON object. Error: ${parseError.message || "Invalid JSON format"}`,
+        });
+      }
+    }
+
+    // Validate groessenMengen is an object
+    if (!groessenMengen || typeof groessenMengen !== "object" || Array.isArray(groessenMengen)) {
+      cleanupFile();
+      return res.status(400).json({
+        success: false,
+        message: "groessenMengen must be a valid JSON object (not an array)",
+      });
+    }
+
+    // Get image from uploaded file if exists
+    const image = file?.location || null;
 
     const missingField = [
       "produktname",
@@ -184,11 +227,11 @@ export const createStorage = async (req: Request, res: Response) => {
       // "mindestbestand",
       "groessenMengen",
       "purchase_price",
-      "selling_price",
-      "adminStoreId",
+      "selling_price"
     ].find((field) => !req.body[field]);
 
     if (missingField) {
+      cleanupFile();
       res.status(400).json({
         message: `${missingField} is required!`,
       });
@@ -214,19 +257,25 @@ export const createStorage = async (req: Request, res: Response) => {
       cleanedGroessenMengen = cleaned;
     }
 
+    // Prepare data - when create_status is "by_self", don't include adminStoreId
+    // Note: create_status column doesn't exist in database yet - remove from create until migration is run
+    const storeData: any = {
+      produktname,
+      hersteller,
+      artikelnummer,
+      lagerort: lagerort || null,
+      mindestbestand: mindestbestand ? parseInt(mindestbestand) : null,
+      groessenMengen: cleanedGroessenMengen,
+      purchase_price: parseInt(purchase_price),
+      selling_price: parseInt(selling_price),
+      create_status: "by_self", // TODO: Uncomment after running migration to add create_status column
+      image,
+      userId,
+      // Note: adminStoreId is NOT included when create_status is "by_self"
+    };
+
     const newStorage = await prisma.stores.create({
-      data: {
-        produktname,
-        hersteller,
-        artikelnummer,
-        lagerort,
-        mindestbestand: mindestbestand ? parseInt(mindestbestand) : undefined,
-        groessenMengen: cleanedGroessenMengen,
-        purchase_price: parseInt(purchase_price),
-        selling_price: parseInt(selling_price),
-        userId,
-        adminStoreId,
-      },
+      data: storeData,
     });
 
     // Add calculated Status to response
@@ -239,6 +288,7 @@ export const createStorage = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("error:", error);
+    cleanupFile();
     res.status(500).json({
       success: false,
       message: "Something went wrong",

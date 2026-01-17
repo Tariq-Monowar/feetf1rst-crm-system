@@ -10,7 +10,7 @@ datasource db {
 }
 
 model User {
-  id String @id @default(uuid())
+  id        String  @id @default(uuid())
   partnerId String?
 
   name String?
@@ -27,7 +27,7 @@ model User {
   busnessName   String? // Geschäftspartner Name / Account Name
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
-  barcodeLabel String?
+  barcodeLabel  String?
 
   createdAt              DateTime                @default(now()) @map("created_at")
   updatedAt              DateTime                @updatedAt
@@ -963,9 +963,12 @@ model admin_store {
   // length        Float
   // size          String
   brand         String?
+
   productName   String?
   artikelnummer String?
   eigenschaften String?
+
+
 
   groessenMengen Json?
 
@@ -975,6 +978,17 @@ model admin_store {
   updatedAt           DateTime               @updatedAt
   adminStoreTrackings admin_store_tracking[]
   adminStoreHistories admin_store_history[]
+}
+
+model brand_store {
+  id   String @id @default(uuid())
+  brand String?
+
+  groessenMengen Json?
+
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model admin_store_tracking {
@@ -1066,6 +1080,8 @@ model Stores {
   /// এই স্টাটাস ডিপেন্ড করে mindestbestand এর উপর যদি mindestbestand এর উপরে থাকে তাহলে এটা "Voller Bestand" এই স্ট্রিং দিবে যদি mindestbestand এর নিচে থাকে তাহলে এটা "Niedriger Bestand" এই স্ট্রিং দিবে
   Status String?
 
+  create_status CreateStatus? @default(by_admin)
+
   orthotech Boolean @default(false)
   opannrit  Boolean @default(false)
 
@@ -1090,6 +1106,12 @@ model Stores {
   @@index([id, produktname])
   @@map("stores")
 }
+
+enum CreateStatus {
+ by_self
+ by_admin
+}
+
 
 model StoreOrderOverview {
   id String @id @default(uuid())

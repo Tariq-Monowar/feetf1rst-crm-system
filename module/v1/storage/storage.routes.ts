@@ -14,6 +14,7 @@ import {
   getStoreOverviewById
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
+import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ const router = express.Router();
  * কারন পার্টনার নিজে নিজে কোন Storage create করতে পারে না।
  * তাকে অ্যাাডমিনের কাছ থেকে কিনতে হয়
 */
-router.post("/create", verifyUser("PARTNER", "ADMIN"), createStorage);
+router.post("/create", verifyUser("PARTNER", "ADMIN"), upload.single("image"), createStorage);
 
 /*
  * /create এর পরিবর্তে এখন /buy ব্যবহার হয়
