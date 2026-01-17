@@ -10,7 +10,9 @@ import {
   getTrackStoragePrice,
   searchBrandStore,
   getSingleBrandStore,
-  updateBrandStore
+  updateBrandStore,
+  deleteBrandStore,
+  getAllBrandStore
 } from "./admin_store.controllers";
 import upload from "../../../../config/multer.config";
 
@@ -34,9 +36,12 @@ router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteAdminStore);
 router.get("/track-storage", verifyUser("ADMIN"), trackStorage);
 router.get("/track-price", verifyUser("ADMIN"), getTrackStoragePrice);
 
+router.get("/get-all-brand-store", verifyUser("ADMIN"), getAllBrandStore);
+
 router.get("/search-brand-store", verifyUser("ADMIN"), searchBrandStore);
 router.get("/get-brand-store/:id", verifyUser("ADMIN"), getSingleBrandStore);
 router.patch("/update-brand-store/:id", verifyUser("ADMIN"), updateBrandStore);
+router.delete("/delete-brand-store", verifyUser("ADMIN"), deleteBrandStore);
 
 
 export default router;

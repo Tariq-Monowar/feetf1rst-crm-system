@@ -95,12 +95,27 @@ export const createAdminStore = async (req, res) => {
       },
     });
 
-    await prisma.brand_store.create({
-      data: {
-        brand,
-        groessenMengen: parsedGroessenMengen,
-      },
+    // Check if brand_store with this brand already exists
+    const existingBrandStore = await prisma.brand_store.findFirst({
+      where: { brand },
     });
+
+    // If brand exists, update it; otherwise create new one
+    if (existingBrandStore) {
+      await prisma.brand_store.update({
+        where: { id: existingBrandStore.id },
+        data: {
+          groessenMengen: parsedGroessenMengen,
+        },
+      });
+    } else {
+      await prisma.brand_store.create({
+        data: {
+          brand,
+          groessenMengen: parsedGroessenMengen,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -609,6 +624,118 @@ export const updateBrandStore = async (req, res) => {
     });
   } catch (error: any) {
     console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const getAllBrandStore = async (req: any, res: any) => {
+  try {
+    // Pagination
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    const search = (req.query.search as string) || "";
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { brand: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const totalItems = await prisma.brand_store.count({ where });
+    const totalPages = Math.ceil(totalItems / limit);
+
+    const brandStores = await prisma.brand_store.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { brand: "asc" },
+      select: {
+        id: true,
+        brand: true,
+        groessenMengen: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Brand stores fetched successfully",
+      data: brandStores,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in getAllBrandStore:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const deleteBrandStore = async (req: any, res: any) => {
+  try {
+    const { ids } = req.body;
+
+    // Validate ids is an array
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must be a non-empty array",
+      });
+    }
+
+    // Validate all ids are strings
+    if (!ids.every((id) => typeof id === "string" && id.trim() !== "")) {
+      return res.status(400).json({
+        success: false,
+        message: "All ids must be valid non-empty strings",
+      });
+    }
+
+    // Check if any of the brand stores exist
+    const existingBrandStores = await prisma.brand_store.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+
+    if (existingBrandStores.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No brand stores found with the provided ids",
+      });
+    }
+
+    // Delete multiple brand stores
+    const deleteResult = await prisma.brand_store.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Brand stores deleted successfully",
+      data: {
+        deletedCount: deleteResult.count,
+        deletedIds: existingBrandStores.map((bs) => bs.id),
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in deleteBrandStore:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
