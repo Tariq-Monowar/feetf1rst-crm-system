@@ -186,7 +186,6 @@ export const createStorage = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Parse groessenMengen if it's a string (common when using form-data)
     if (typeof groessenMengen === "string") {
       try {
         const trimmed = groessenMengen.trim();
@@ -420,6 +419,189 @@ export const buyStorage = async (req, res) => {
     });
   } catch (error: any) {
     console.error("buyStorage error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const addStorage = async (req: Request, res: Response) => {
+  try {
+    const { id: userId } = req.user;
+    const {
+      admin_store_id,
+      lagerort = null as string | null,
+      groessenMengen,
+    } = req.body;
+
+    const missingField = ["admin_store_id"].find(
+      (field) => !req.body[field]
+    );
+
+    if (missingField) {
+      return res.status(400).json({
+        success: false,
+        message: `${missingField} is required!`,
+      });
+    }
+
+    // Get admin store data
+    const adminStore = await prisma.admin_store.findUnique({
+      where: {
+        id: admin_store_id,
+      },
+    });
+
+    if (!adminStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin store not found",
+      });
+    }
+
+    // Validate required fields from admin_store
+    if (!adminStore.productName || !adminStore.brand || !adminStore.artikelnummer || !adminStore.groessenMengen) {
+      return res.status(400).json({
+        success: false,
+        message: "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
+      });
+    }
+
+    // Parse groessenMengen if it's a string
+    let parsedGroessenMengen = groessenMengen;
+    if (groessenMengen) {
+      if (typeof groessenMengen === "string") {
+        try {
+          parsedGroessenMengen = JSON.parse(groessenMengen.trim());
+        } catch (parseError: any) {
+          return res.status(400).json({
+            success: false,
+            message: `groessenMengen must be a valid JSON object. Error: ${parseError.message || "Invalid JSON format"}`,
+          });
+        }
+      }
+    } else {
+      // Use admin store's groessenMengen if not provided
+      parsedGroessenMengen = adminStore.groessenMengen;
+    }
+
+    // Validate groessenMengen is an object
+    if (!parsedGroessenMengen || typeof parsedGroessenMengen !== "object" || Array.isArray(parsedGroessenMengen)) {
+      return res.status(400).json({
+        success: false,
+        message: "groessenMengen must be a valid JSON object (not an array)",
+      });
+    }
+
+    // Check if user already has a store with this adminStoreId
+    const existingStore = await prisma.stores.findFirst({
+      where: {
+        adminStoreId: admin_store_id,
+        userId: userId,
+      },
+    });
+
+    // Transform groessenMengen from admin_store format to Stores format
+    // Allow quantity 0 - process all sizes
+    const sizesToAdd = parsedGroessenMengen as Record<string, any>;
+    const transformedGroessenMengen: any = {};
+
+    for (const sizeKey of Object.keys(sizesToAdd)) {
+      const sizeData = sizesToAdd[sizeKey];
+      if (sizeData && typeof sizeData === "object") {
+        const quantity = Number(sizeData.quantity || 0);
+        transformedGroessenMengen[sizeKey] = {
+          length: sizeData.length || 0,
+          quantity: quantity,
+          mindestmenge: sizeData.mindestmenge || 0,
+          auto_order_limit: sizeData.auto_order_limit || 0,
+          auto_order_quantity: sizeData.auto_order_quantity || 0,
+        };
+      }
+    }
+
+    let resultStore;
+
+    if (existingStore) {
+      // Add to existing store - merge quantities
+      const currentGroessenMengen = (existingStore.groessenMengen as Record<string, any>) || {};
+      const updatedGroessenMengen = { ...currentGroessenMengen };
+      const mindestbestand = existingStore.mindestbestand || 0;
+
+      // Add quantities from transformedGroessenMengen to existing
+      for (const sizeKey of Object.keys(transformedGroessenMengen)) {
+        const newSizeData = transformedGroessenMengen[sizeKey];
+        if (updatedGroessenMengen[sizeKey]) {
+          // Existing size - add quantity
+          const currentQuantity = Number(updatedGroessenMengen[sizeKey].quantity || 0);
+          updatedGroessenMengen[sizeKey] = {
+            ...updatedGroessenMengen[sizeKey],
+            quantity: currentQuantity + newSizeData.quantity,
+          };
+        } else {
+          // New size - add as is
+          updatedGroessenMengen[sizeKey] = newSizeData;
+        }
+      }
+
+      // Recalculate Status
+      const newStatus = calculateStatus(updatedGroessenMengen, mindestbestand);
+
+      // Update existing store
+      resultStore = await prisma.stores.update({
+        where: { id: existingStore.id },
+        data: {
+          groessenMengen: updatedGroessenMengen,
+          Status: newStatus,
+          ...(lagerort && { lagerort }),
+        },
+      });
+    } else {
+      // Create new store (like buyStorage but without price)
+      resultStore = await prisma.stores.create({
+        data: {
+          produktname: adminStore.productName,
+          hersteller: adminStore.brand,
+          artikelnummer: adminStore.artikelnummer,
+          lagerort: lagerort,
+          groessenMengen: transformedGroessenMengen,
+          purchase_price: 0, // No price for add operation
+          selling_price: 0, // No price for add operation
+          image: adminStore.image,
+          userId: userId,
+          adminStoreId: admin_store_id,
+        },
+      });
+    }
+
+    // Create tracking record
+    await prisma.admin_store_tracking.create({
+      data: {
+        storeId: resultStore.id,
+        partnerId: userId,
+        produktname: adminStore.productName,
+        hersteller: adminStore.brand,
+        artikelnummer: adminStore.artikelnummer,
+        lagerort: lagerort,
+        groessenMengen: parsedGroessenMengen,
+        admin_storeId: admin_store_id,
+        price: 0, // No price for add operation
+        image: adminStore.image,
+      },
+    });
+
+    // Add calculated Status to response
+    const storeWithStatus = addStatusToStore(resultStore);
+
+    res.status(201).json({
+      success: true,
+      message: "Stock added successfully",
+      data: storeWithStatus,
+    });
+  } catch (error: any) {
+    console.error("addStorage error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
