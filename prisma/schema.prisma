@@ -958,17 +958,15 @@ model admin_store {
    */
   id String @id @default(uuid())
 
-  image         String?
-  price         Int?
+  image String?
+  price Int?
   // length        Float
   // size          String
-  brand         String?
+  brand String?
 
   productName   String?
   artikelnummer String?
   eigenschaften String?
-
-
 
   groessenMengen Json?
 
@@ -981,11 +979,10 @@ model admin_store {
 }
 
 model brand_store {
-  id   String @id @default(uuid())
+  id    String  @id @default(uuid())
   brand String?
 
   groessenMengen Json?
-
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1108,10 +1105,9 @@ model Stores {
 }
 
 enum CreateStatus {
- by_self
- by_admin
+  by_self
+  by_admin
 }
-
 
 model StoreOrderOverview {
   id String @id @default(uuid())

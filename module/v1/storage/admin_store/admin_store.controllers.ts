@@ -2,30 +2,23 @@ import { PrismaClient } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 const prisma = new PrismaClient();
 
-// Helper function to clean and parse JSON string
 const parseJsonSafely = (input: any): any => {
-  // If it's already an object, return it
+
   if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
     return input;
   }
 
-  // If it's not a string, throw error
   if (typeof input !== 'string') {
     throw new Error('groessenMengen must be a string or object');
   }
 
-  // Trim whitespace
   let cleaned = input.trim();
 
-  // Remove trailing commas before closing braces/brackets
-  // This regex removes trailing commas before } or ]
   cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
 
-  // Try to parse
   try {
     const parsed = JSON.parse(cleaned);
     
-    // Validate it's an object (not array, not null)
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       throw new Error('groessenMengen must be a valid JSON object');
     }
@@ -76,7 +69,6 @@ export const createAdminStore = async (req, res) => {
       });
     }
 
-    // Parse and validate groessenMengen
     let parsedGroessenMengen;
     try {
       parsedGroessenMengen = parseJsonSafely(groessenMengen);
@@ -103,18 +95,23 @@ export const createAdminStore = async (req, res) => {
       },
     });
 
+    await prisma.brand_store.create({
+      data: {
+        brand,
+        groessenMengen: parsedGroessenMengen,
+      },
+    });
+
     res.status(201).json({
       success: true,
       message: "Admin store created successfully",
       data: {
         ...adminStore,
-        // Image is already S3 URL, use directly
         image: adminStore.image || null,
       },
     });
   } catch (error: any) {
     console.log(error);
-    // Delete from S3 if file was uploaded
     if (req.file?.location) {
       deleteFileFromS3(req.file.location);
     }
@@ -510,6 +507,106 @@ export const getTrackStoragePrice = async (req, res) => {
       data: totalPrice,
     });
 
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const searchBrandStore = async (req: any, res: any) => {
+  try {
+    //pagination
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
+
+    const search = (req.query.search as string) || "";
+
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { brand: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    const totalItems = await prisma.brand_store.count({ where });
+    const totalPages = Math.ceil(totalItems / limit);
+    const brandStore = await prisma.brand_store.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { brand: "asc" },
+      select: {
+        id: true,
+        brand: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Brand store searched successfully",
+      data: brandStore,
+      pagination: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error in searchBrandStore:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const getSingleBrandStore = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const brandStore = await prisma.brand_store.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        brand: true,
+        groessenMengen: true,
+      },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Brand store fetched successfully",
+      data: brandStore,
+    });
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
+export const updateBrandStore = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { groessenMengen } = req.body;
+    const brandStore = await prisma.brand_store.update({
+      where: { id },
+      data: { groessenMengen: parseJsonSafely(groessenMengen) },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Brand store updated successfully",
+      data: brandStore,
+    });
   } catch (error: any) {
     console.log(error);
     res.status(500).json({
