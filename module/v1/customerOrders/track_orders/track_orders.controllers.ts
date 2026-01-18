@@ -1393,6 +1393,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       where: { id: orderId },
       select: {
         versorgung_note: true,
+        überzug: true,
         customer: {
           select: {
             id: true,
