@@ -1483,6 +1483,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         material: order.product?.material ?? null,
         versorgung: order.product?.versorgung ?? null,
         versorgung_note: order.versorgung_note ?? null,
+        uberzug: order.überzug,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
