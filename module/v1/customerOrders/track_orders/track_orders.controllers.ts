@@ -1392,6 +1392,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     const order = await prisma.customerOrders.findUnique({
       where: { id: orderId },
       select: {
+        versorgung_note: true,
         customer: {
           select: {
             id: true,
@@ -1408,6 +1409,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             diagnosis_status: true,
             material: true,
             versorgung: true,
+           
           },
         },
         store: {
@@ -1415,6 +1417,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             produktname: true,
             hersteller: true,
             groessenMengen: true,
+            
           },
         },
       },
@@ -1478,6 +1481,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         diagnosisStatus: order.product?.diagnosis_status ?? null,
         material: order.product?.material ?? null,
         versorgung: order.product?.versorgung ?? null,
+        versorgung_note: order.versorgung_note ?? null,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
