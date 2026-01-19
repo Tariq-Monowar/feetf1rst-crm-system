@@ -10,6 +10,7 @@ import order_settings from './order_settings/order_settings.routes'
 import partner_chat from './partner_chat/partner_chat.routes'
 import partner_payout from './partner_payout/partner_payout.routes'
 import pickups from './pickups/pickups.routes'
+import admin_order_transitions from './admin_order_transitions/admin_order_transitions.routes'
 
 const router = express.Router();
 
@@ -23,7 +24,8 @@ const moduleRoutes = [
   { path: '/order_settings', route: order_settings},
   { path: '/partner-chat', route: partner_chat},
   { path: '/partner-payout', route: partner_payout},
-  { path: '/pickups', route: pickups}
+  { path: '/pickups', route: pickups},
+  { path: '/admin-order-transitions', route: admin_order_transitions}
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

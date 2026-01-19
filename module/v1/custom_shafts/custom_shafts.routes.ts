@@ -12,7 +12,6 @@ import {
   getSingleCustomShaft,
   updateCustomShaftStatus,
   deleteCustomShaft,
-  totalPriceResponse,
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -42,13 +41,6 @@ router.patch(
 );
 
 router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteCustomShaft);
-
-router.get(
-  "/total-price-resio",
-  verifyUser("PARTNER", "ADMIN"),
-  totalPriceResponse
-);
-
 
 /*
 * this created by admin panel for partner.
