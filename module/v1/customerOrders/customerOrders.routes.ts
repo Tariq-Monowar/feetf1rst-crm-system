@@ -24,12 +24,13 @@ router.get(
 router.post("/create", verifyUser("ADMIN", "PARTNER"), createOrder);
 router.get("/", verifyUser("ADMIN", "PARTNER"), getAllOrders);
 router.get("/:id", verifyUser("ADMIN", "PARTNER"), getOrderById);
+
+
 router.get(
   "/customer/:customerId",
   verifyUser("ADMIN", "PARTNER"),
   getOrdersByCustomerId
 );
-
 
 router.delete(
   "/multiple/delete",

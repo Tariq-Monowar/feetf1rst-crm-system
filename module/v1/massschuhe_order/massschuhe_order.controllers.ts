@@ -1861,8 +1861,8 @@ export const deleteAllMassschuheOrders = async (req: Request, res: Response) => 
         },
       });
 
-      // Delete all maßschuhe_transitions
-      await tx.maßschuhe_transitions.deleteMany({
+      // Delete all admin_order_transitions
+      await tx.admin_order_transitions.deleteMany({
         where: {
           massschuhe_order_id: { not: null },
         },

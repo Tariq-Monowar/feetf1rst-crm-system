@@ -209,7 +209,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Create transition record
     try {
-      await prisma.maßschuhe_transitions.create({
+      await prisma.admin_order_transitions.create({
         data: {
           massschuhe_order_id: orderId,
           partnerId: userId,
@@ -466,7 +466,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
     });
 
     // create a transition
-    await prisma.maßschuhe_transitions.create({
+    await prisma.admin_order_transitions.create({
       data: {
         massschuhe_order_id: orderId,
         partnerId: id,
@@ -646,7 +646,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true },
     });
 
-    await prisma.maßschuhe_transitions.create({
+    await prisma.admin_order_transitions.create({
       data: {
         massschuhe_order_id: orderId,
         partnerId: id,

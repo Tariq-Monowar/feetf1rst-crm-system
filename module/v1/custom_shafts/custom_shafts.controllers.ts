@@ -1182,7 +1182,7 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
         massschuhe_order: {
           select: {
             id: true,
-            maßschuheTransitions: {
+            adminOrderTransitions: {
               select: {
                 id: true,
                 price: true,
@@ -1226,14 +1226,14 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
     const dailyTotals: { [key: string]: number } = {};
 
     // Group orders by date and calculate daily totals
-    // Total = sum of prices from maßschuhe_transitions
+    // Total = sum of prices from admin_order_transitions
     customShafts.forEach((shaft) => {
       const orderDate = new Date(shaft.createdAt);
       // Use local date to avoid timezone issues
       const dateKey = formatDateLocal(orderDate);
 
-      // Calculate total price from maßschuhe_transitions
-      const transitions = shaft.massschuhe_order?.maßschuheTransitions || [];
+      // Calculate total price from admin_order_transitions
+      const transitions = shaft.massschuhe_order?.adminOrderTransitions || [];
       const orderTotal = transitions.reduce((sum, transition) => {
         return sum + (transition.price || 0);
       }, 0);

@@ -66,7 +66,7 @@ model User {
   customers                   customers[]
   orderSettings               order_settings?
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
-  maßschuheTransitions       maßschuhe_transitions[]
+  adminOrderTransitions      admin_order_transitions[]
   adminStoreTrackings         admin_store_tracking[]
   partnerConversations        partner_conversation[]
   partnerConversationMembers  partner_conversation_members[]
@@ -1200,7 +1200,7 @@ model Bestellubersicht {
   updatedAt DateTime @updatedAt
 }
 
-//---------------------------massschuhe_order---------------------
+//===============================massschuhe_order=================================
 // model massschuhe_order {
 //   id String @id @default(uuid())
 
@@ -1318,7 +1318,7 @@ model massschuhe_order {
   massschuheOrderHistories massschuhe_order_history[]
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
   customShafts             custom_shafts[]
-  maßschuheTransitions    maßschuhe_transitions[]
+  adminOrderTransitions   admin_order_transitions[]
 
   isPanding Boolean? @default(false)
 
@@ -1597,7 +1597,7 @@ enum custom_shafts_status {
   // Geliefert
 }
 
-model maßschuhe_transitions {
+model admin_order_transitions {
   id String @id @default(uuid())
 
   status    massschuhe_order_status?
@@ -1616,7 +1616,7 @@ model maßschuhe_transitions {
   updatedAt DateTime @updatedAt
 }
 
-//---------------------------------------------------------------------------
+//==================================Massschuhe Order Ended==========================================
 
 model FeatureAccess {
   id String @id @default(uuid())
