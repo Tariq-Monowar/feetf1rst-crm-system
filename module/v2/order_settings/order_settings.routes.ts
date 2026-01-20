@@ -15,4 +15,3 @@ router.put("/manage", verifyUser("ADMIN", "PARTNER"), manageOrderSettings);
 router.patch("/manage", verifyUser("ADMIN", "PARTNER"), manageOrderSettings);
 
 export default router;
- 

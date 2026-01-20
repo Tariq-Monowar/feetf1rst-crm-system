@@ -66,7 +66,7 @@ model User {
   customers                   customers[]
   orderSettings               order_settings?
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
-  adminOrderTransitions      admin_order_transitions[]
+  adminOrderTransitions       admin_order_transitions[]
   adminStoreTrackings         admin_store_tracking[]
   partnerConversations        partner_conversation[]
   partnerConversationMembers  partner_conversation_members[]
@@ -1093,12 +1093,13 @@ model Stores {
 
   storesHistory StoresHistory[] // History of stock changes
 
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
   customerOrders        customerOrders[]
   customerVersorgungens customer_versorgungen[]
   storeOrderOverviews   StoreOrderOverview[]
   adminStoreTrackings   admin_store_tracking[]
+  adminOrderTransitions admin_order_transitions[]
 
   @@index([id, produktname])
   @@map("stores")
@@ -1318,7 +1319,7 @@ model massschuhe_order {
   massschuheOrderHistories massschuhe_order_history[]
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
   customShafts             custom_shafts[]
-  adminOrderTransitions   admin_order_transitions[]
+  adminOrderTransitions    admin_order_transitions[]
 
   isPanding Boolean? @default(false)
 
@@ -1602,12 +1603,17 @@ model admin_order_transitions {
 
   status    massschuhe_order_status?
   catagoary custom_shafts_catagoary?
-  price     Float?
-  note      String?
+
+  price Float?
+  note  String?
 
   // relation with massschuhe_order
   massschuhe_order_id String?
   massschuhe_order    massschuhe_order? @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
+
+  //store
+  storeId String?
+  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)

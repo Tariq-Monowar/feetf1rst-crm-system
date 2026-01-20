@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import fs from "fs";
-
 import { PrismaClient } from "@prisma/client";
+import { deleteFileFromS3 } from "../../../../utils/s3utils";
+
 // Removed getImageUrl - images are now S3 URLs
 const prisma = new PrismaClient();
 
@@ -77,14 +77,14 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     }
 
     const threed_model_right =
-      files?.image3d_1?.[0]?.filename ||
-      files?.threed_model_right?.[0]?.filename ||
+      files?.image3d_1?.[0]?.location ||
+      files?.threed_model_right?.[0]?.location ||
       null;
     const threed_model_left =
-      files?.image3d_2?.[0]?.filename ||
-      files?.threed_model_left?.[0]?.filename ||
+      files?.image3d_2?.[0]?.location ||
+      files?.threed_model_left?.[0]?.location ||
       null;
-    const invoice = files?.invoice?.[0]?.filename || null;
+    const invoice = files?.invoice?.[0]?.location || null;
 
     // Verify order exists
     let order;
@@ -388,11 +388,11 @@ export const sendToAdminOrder_2 = async (req, res) => {
       massschuhe_order_id: orderId,
       partnerId: id,
       customerId: order.customerId,
-      image3d_1: files.image3d_1?.[0]?.filename || null,
-      image3d_2: files.image3d_2?.[0]?.filename || null,
-      paintImage: files.paintImage?.[0]?.filename || null,
-      invoice2: files.invoice2?.[0]?.filename || null,
-      invoice: files.invoice?.[0]?.filename || null,
+      image3d_1: files.image3d_1?.[0]?.location || null,
+      image3d_2: files.image3d_2?.[0]?.location || null,
+      paintImage: files.paintImage?.[0]?.location || null,
+      invoice2: files.invoice2?.[0]?.location || null,
+      invoice: files.invoice?.[0]?.location || null,
       other_customer_number: order.customer?.customerNumber
         ? String(order.customer.customerNumber)
         : null,
@@ -512,14 +512,14 @@ export const sendToAdminOrder_2 = async (req, res) => {
   } catch (err: any) {
     console.error("Create Custom Shaft Error:", err);
 
-    // File cleanup (non-blocking)
+    // File cleanup (non-blocking) - delete from S3 if files were uploaded
     if (files) {
       Object.keys(files).forEach((key) => {
         files[key].forEach((file: any) => {
-          fs.unlink(file.path, (error) => {
-            if (error)
-              console.error(`Failed to delete file ${file.path}`, error);
-          });
+          if (file.location) {
+            // Delete from S3 if file was uploaded
+            deleteFileFromS3(file.location);
+          }
         });
       });
     }
@@ -543,8 +543,8 @@ export const sendToAdminOrder_3 = async (req, res) => {
   try {
     const { id } = req.user;
     const files = req.files as any;
-    const invoice = files?.invoice?.[0]?.filename || null;
-    const staticImage = files?.staticImage?.[0]?.filename || null;
+    const invoice = files?.invoice?.[0]?.location || null;
+    const staticImage = files?.staticImage?.[0]?.location || null;
     const orderId = req.params.orderId;
 
     const {
