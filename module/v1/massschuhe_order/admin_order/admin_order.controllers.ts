@@ -1554,7 +1554,7 @@ export const createCourierContact = async (req: Request, res: Response) => {
 export const customerListOrderContact = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    const { customerId } = req.body;
+    const { customerId } = req.params;
     if (!customerId) {
       return res.status(400).json({
         success: false,
