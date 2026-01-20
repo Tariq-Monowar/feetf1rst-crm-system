@@ -63,6 +63,6 @@ router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleAllAdminOrders);
 
 // courier contact
 router.post("/courier-contact/create", verifyUser("PARTNER"), createCourierContact);
-router.get("/courier-contact/customer-list-order-contact", verifyUser("PARTNER"), customerListOrderContact);
+router.get("/courier-contact/customer-list-order-contact/:customerId", verifyUser("PARTNER"), customerListOrderContact);
 
 export default router;
