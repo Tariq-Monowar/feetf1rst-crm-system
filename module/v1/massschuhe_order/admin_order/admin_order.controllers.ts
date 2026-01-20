@@ -334,6 +334,10 @@ export const sendToAdminOrder_2 = async (req, res) => {
       Sohlenstärke,
       Besondere_Hinweise,
       totalPrice,
+      verschlussart,
+      moechten_sie_passende_schnuersenkel_zum_schuh,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
+      moechten_sie_einen_zusaetzlichen_reissverschluss,
     } = req.body;
 
     if (!mabschaftKollektionId) {
@@ -418,6 +422,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
       Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
       Sohlenstärke: Sohlenstärke || null,
       Besondere_Hinweise: Besondere_Hinweise || null,
+      verschlussart: verschlussart || null,
+      moechten_sie_passende_schnuersenkel_zum_schuh:
+        moechten_sie_passende_schnuersenkel_zum_schuh || null,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen:
+        moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen || null,
+      moechten_sie_einen_zusaetzlichen_reissverschluss:
+        moechten_sie_einen_zusaetzlichen_reissverschluss || null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000
@@ -948,6 +959,11 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       paintImage: true,
       invoice2: true,
       leatherType: true,
+      // New Verschluss / Schnürsenkel fields
+      verschlussart: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
       // Common fields for Massschafterstellung and Bodenkonstruktion
       Konstruktionsart: true,
       Fersenkappe: true,
@@ -1214,6 +1230,11 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       paintImage: true,
       invoice2: true,
       leatherType: true,
+      // New Verschluss / Schnürsenkel fields
+      verschlussart: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
       // Common fields for Massschafterstellung and Bodenkonstruktion
       Konstruktionsart: true,
       Fersenkappe: true,

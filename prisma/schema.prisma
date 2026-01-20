@@ -1508,6 +1508,16 @@ model custom_shafts {
   paintImage  String?
   leatherType Json?
   invoice2    String?
+
+  //-----------------------------
+  //নতুন আরো অ্যাাড হলো
+  verschlussart                                          String? // "Klettverschluss (Velcro)", "Ösen", "Reißverschluss (Zipper)",
+  // ড্রপ ডাউনের ডাটার উপর ভিত্তি করে আরো তিনটা ফিল্ড আসবে
+  // Klettverschluss (Velcro) হলো কোন সাব ফিড আসবে না
+  moechten_sie_passende_schnuersenkel_zum_schuh          String? //Reißverschluss (Zipper), Ösen,
+  moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen String? //Reißverschluss (Zipper), Ösen,
+  moechten_sie_einen_zusaetzlichen_reissverschluss       String? //Reißverschluss (Zipper),
+
   /**
    * Massschafterstellung Ended
    * --------------------------------------------------------------------------
