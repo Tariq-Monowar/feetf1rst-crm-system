@@ -397,6 +397,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       paintImage: files.paintImage?.[0]?.location || null,
       invoice2: files.invoice2?.[0]?.location || null,
       invoice: files.invoice?.[0]?.location || null,
+      update_image: files.update_image?.[0]?.location || null,
       other_customer_number: order.customer?.customerNumber
         ? String(order.customer.customerNumber)
         : null,

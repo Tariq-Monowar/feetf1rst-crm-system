@@ -44,6 +44,7 @@ router.post(
     { name: "invoice", maxCount: 1 },
     { name: "paintImage", maxCount: 1 },
     { name: "invoice2", maxCount: 1 },
+    { name: "update_image", maxCount: 1 },
   ]),
   sendToAdminOrder_2
 );

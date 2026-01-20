@@ -1517,6 +1517,7 @@ model custom_shafts {
   moechten_sie_passende_schnuersenkel_zum_schuh          String? //Reißverschluss (Zipper), Ösen,
   moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen String? //Reißverschluss (Zipper), Ösen,
   moechten_sie_einen_zusaetzlichen_reissverschluss       String? //Reißverschluss (Zipper),
+  update_image String?
 
   /**
    * Massschafterstellung Ended
