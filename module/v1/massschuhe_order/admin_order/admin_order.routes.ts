@@ -7,7 +7,9 @@ import {
   sendToAdminOrder_2,
   sendToAdminOrder_3,
   getAllAdminOrders,
-  getSingleAllAdminOrders
+  getSingleAllAdminOrders,
+  createCourierContact,
+  customerListOrderContact
 } from "./admin_order.controllers";
 
 //make send to admin a order by partner it's first step
@@ -58,5 +60,9 @@ router.post(
 
 router.get("/get", verifyUser("PARTNER", "ADMIN"), getAllAdminOrders);
 router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleAllAdminOrders);
+
+// courier contact
+router.post("/courier-contact/create", verifyUser("PARTNER"), createCourierContact);
+router.get("/courier-contact/customer-list-order-contact", verifyUser("PARTNER"), customerListOrderContact);
 
 export default router;

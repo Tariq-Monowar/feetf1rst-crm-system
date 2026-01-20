@@ -489,15 +489,15 @@ export const sendToAdminOrder_2 = async (req, res) => {
       invoice: formatImage(customShaft.invoice),
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
-            ...customShaft.maßschaft_kollektion,
-            image: formatImage(customShaft.maßschaft_kollektion.image),
-          }
+          ...customShaft.maßschaft_kollektion,
+          image: formatImage(customShaft.maßschaft_kollektion.image),
+        }
         : null,
       partner: customShaft.user
         ? {
-            ...customShaft.user,
-            image: formatImage(customShaft.user.image),
-          }
+          ...customShaft.user,
+          image: formatImage(customShaft.user.image),
+        }
         : null,
     };
 
@@ -1384,6 +1384,194 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while fetching the custom shaft",
+      error: error.message,
+    });
+  }
+};
+
+
+// model CourierContact {
+//   id String @id @default(uuid())
+
+//   partnerId String?
+//   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+//   orderId String?
+//   order   massschuhe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+//   address Json?
+//   companyName String?
+//   phone String?
+//   email String?
+//   price Float? @default(13)
+
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+// }
+
+
+export const createCourierContact = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { address, companyName, phone, email, price, customerId, orderId } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    // if (!orderId) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Order ID is required",
+    //   });
+    // }
+
+    //check valid customerId
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // //check valid orderId
+    // const order = await prisma.massschuhe_order.findUnique({
+    //   where: { id: orderId },
+    //   select: { id: true },
+    // });
+
+    // if (!order) {
+    //   return res.status(404).json({
+    //     success: false,
+    //     message: "Order not found",
+    //   });
+    // }
+
+    //check valid input field
+    const requiredFields = [
+      "address",
+      "companyName",
+      "phone",
+      "email",
+      "price",
+    ];
+    for (const field of requiredFields) {
+      if (!req.body[field]) {
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required`,
+        });
+      }
+    }
+
+    // address is a json object
+    if (typeof address !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "Address must be a json object",
+      });
+    }
+
+    // price is a number
+    if (typeof price !== "number") {
+      return res.status(400).json({
+        success: false,
+        message: "Price must be a number",
+      });
+    }
+
+    // create data
+    const data = {
+      partnerId: userId,
+      orderId: orderId || null,
+      customerId: customerId,
+      address: address,
+      companyName: companyName,
+      phone: phone,
+      email: email,
+      price: price,
+    };
+
+    // create courier contact
+    const courierContact = await prisma.courierContact.create({
+      data: data,
+      select: {
+        id: true,
+        address: true,
+        companyName: true,
+        phone: true,
+        email: true,
+        price: true,
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Courier contact created successfully",
+      data: courierContact,
+    });
+
+  } catch (error: any) {
+    console.error("Create Courier Contact Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while creating the courier contact",
+      error: error.message,
+    });
+  }
+};
+
+
+export const customerListOrderContact = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { customerId } = req.body;
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    //check valid customerId
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+    //get latest order contact
+    const orderContact = await prisma.courierContact.findMany({
+      where: { customerId: customerId, partnerId: userId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, address: true, companyName: true, phone: true, email: true, price: true, createdAt: true },
+      take: 1,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order contact fetched successfully",
+      data: orderContact,
+    });
+
+  } catch (error: any) {
+    console.error("Customer List Order Contact Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while creating the courier contact",
       error: error.message,
     });
   }

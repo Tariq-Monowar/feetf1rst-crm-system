@@ -72,6 +72,7 @@ model User {
   partnerConversationMembers  partner_conversation_members[]
   partnerConversationMessages partner_conversation_message[]
   partnerPayouts              partner_payout[]
+  courierContacts             CourierContact[]
 
   @@map("users")
 }
@@ -538,6 +539,7 @@ model customers {
   shoeAnswers              shoeAnswers[]
   insolesAnswers           insolesAnswers[]
   massschuheOrderHistories massschuhe_order_history[]
+  courierContacts          CourierContact[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([vorname, nachname])
@@ -1321,7 +1323,8 @@ model massschuhe_order {
   customShafts             custom_shafts[]
   adminOrderTransitions    admin_order_transitions[]
 
-  isPanding Boolean? @default(false)
+  isPanding       Boolean?         @default(false)
+  courierContacts CourierContact[]
 
   @@unique([userId, orderNumber]) // Unique per partner
   @@index([createdAt])
@@ -1571,6 +1574,7 @@ enum custom_shafts_catagoary {
   Halbprobenerstellung
   Massschafterstellung
   Bodenkonstruktion
+  row
 }
 
 enum custom_shafts_status {
@@ -1617,6 +1621,28 @@ model admin_order_transitions {
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CourierContact {
+  id String @id @default(uuid())
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   massschuhe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  address     Json?
+  companyName String?
+  phone       String?
+  email       String?
+  price       Float?  @default(13)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
