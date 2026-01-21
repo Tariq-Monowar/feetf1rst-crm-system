@@ -705,11 +705,19 @@ export const sendToAdminOrder_3 = async (req, res) => {
 export const getAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+    const search = (req.query.search as string)?.trim() || "";
     const status = req.query.status;
     const catagoary = req.query.catagoary;
     const skip = (page - 1) * limit;
+    
+    // Early return for invalid pagination
+    if (page < 1 || limit < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid pagination parameters",
+      });
+    }
 
     const whereCondition: any = {};
 
@@ -725,9 +733,10 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       "Halbprobenerstellung",
       "Massschafterstellung",
       "Bodenkonstruktion",
+      "row",
     ] as const;
 
-    // Safe status validation
+    // Validate status
     if (status && !validStatuses.includes(status.toString() as any)) {
       return res.status(400).json({
         success: false,
@@ -736,7 +745,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Safe catagoary validation
+    // Validate catagoary
     if (catagoary && !validCatagoaries.includes(catagoary.toString() as any)) {
       return res.status(400).json({
         success: false,
@@ -745,6 +754,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
+    // Apply filters
     if (status) {
       whereCondition.status = status;
     }
@@ -753,29 +763,23 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       whereCondition.catagoary = catagoary;
     }
 
-    // Build search conditions based on category
+    // Build search conditions
     if (search) {
       const searchConditions: any[] = [
+        { orderNumber: { contains: search, mode: "insensitive" } },
+        { other_customer_number: { contains: search, mode: "insensitive" } },
         {
           customer: {
             OR: [
               { vorname: { contains: search, mode: "insensitive" } },
               { nachname: { contains: search, mode: "insensitive" } },
               { email: { contains: search, mode: "insensitive" } },
-              { telefon: { contains: search, mode: "insensitive" } },
-              { ort: { contains: search, mode: "insensitive" } },
-              { land: { contains: search, mode: "insensitive" } },
             ],
           },
         },
         {
           maßschaft_kollektion: {
-            OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              { catagoary: { contains: search, mode: "insensitive" } },
-              { gender: { contains: search, mode: "insensitive" } },
-              { description: { contains: search, mode: "insensitive" } },
-            ],
+            name: { contains: search, mode: "insensitive" },
           },
         },
         {
@@ -786,265 +790,17 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
             ],
           },
         },
-        { orderNumber: { contains: search, mode: "insensitive" } },
-        { other_customer_number: { contains: search, mode: "insensitive" } },
-        { custom_catagoary: { contains: search, mode: "insensitive" } },
       ];
-
-      // Add category-specific search fields
-      if (catagoary === "Halbprobenerstellung") {
-        searchConditions.push(
-          { Bettungsdicke: { contains: search, mode: "insensitive" } },
-          { Haertegrad_Shore: { contains: search, mode: "insensitive" } },
-          { Fersenschale: { contains: search, mode: "insensitive" } },
-          { Laengsgewölbestütze: { contains: search, mode: "insensitive" } },
-          {
-            Palotte_oder_Querpalotte: { contains: search, mode: "insensitive" },
-          },
-          {
-            Korrektur_der_Fußstellung: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Zehenelemente_Details: { contains: search, mode: "insensitive" } },
-          {
-            eine_korrektur_nötig_ist: { contains: search, mode: "insensitive" },
-          },
-          { Spezielles_Fußproblem: { contains: search, mode: "insensitive" } },
-          {
-            Zusatzkorrektur_Absatzerhöhung: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          {
-            Vertiefungen_Aussparungen: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Oberfläche_finish: { contains: search, mode: "insensitive" } },
-          { Überzug_Stärke: { contains: search, mode: "insensitive" } },
-          {
-            Anmerkungen_zur_Bettung: { contains: search, mode: "insensitive" },
-          },
-          {
-            Leisten_mit_ohne_Platzhalter: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Schuhleisten_Typ: { contains: search, mode: "insensitive" } },
-          { Material_des_Leisten: { contains: search, mode: "insensitive" } },
-          { Absatzhöhe: { contains: search, mode: "insensitive" } },
-          { Abrollhilfe: { contains: search, mode: "insensitive" } },
-          {
-            Spezielle_Fußprobleme_Leisten: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Anmerkungen_zum_Leisten: { contains: search, mode: "insensitive" } }
-        );
-      } else if (catagoary === "Massschafterstellung") {
-        searchConditions.push(
-          { lederfarbe: { contains: search, mode: "insensitive" } },
-          { innenfutter: { contains: search, mode: "insensitive" } },
-          { schafthohe: { contains: search, mode: "insensitive" } },
-          { polsterung: { contains: search, mode: "insensitive" } },
-          { vestarkungen: { contains: search, mode: "insensitive" } },
-          { polsterung_text: { contains: search, mode: "insensitive" } },
-          { vestarkungen_text: { contains: search, mode: "insensitive" } },
-          { nahtfarbe: { contains: search, mode: "insensitive" } },
-          { nahtfarbe_text: { contains: search, mode: "insensitive" } },
-          { lederType: { contains: search, mode: "insensitive" } },
-          { Konstruktionsart: { contains: search, mode: "insensitive" } },
-          { Fersenkappe: { contains: search, mode: "insensitive" } },
-          {
-            Farbauswahl_Bodenkonstruktion: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Sohlenmaterial: { contains: search, mode: "insensitive" } },
-          { Absatz_Höhe: { contains: search, mode: "insensitive" } },
-          { Absatz_Form: { contains: search, mode: "insensitive" } },
-          { Abrollhilfe_Rolle: { contains: search, mode: "insensitive" } },
-          { Laufsohle_Profil_Art: { contains: search, mode: "insensitive" } },
-          { Sohlenstärke: { contains: search, mode: "insensitive" } },
-          { Besondere_Hinweise: { contains: search, mode: "insensitive" } }
-        );
-      } else if (catagoary === "Bodenkonstruktion") {
-        searchConditions.push(
-          { Konstruktionsart: { contains: search, mode: "insensitive" } },
-          { Fersenkappe: { contains: search, mode: "insensitive" } },
-          {
-            Farbauswahl_Bodenkonstruktion: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-          { Sohlenmaterial: { contains: search, mode: "insensitive" } },
-          { Absatz_Höhe: { contains: search, mode: "insensitive" } },
-          { Absatz_Form: { contains: search, mode: "insensitive" } },
-          { Abrollhilfe_Rolle: { contains: search, mode: "insensitive" } },
-          { Laufsohle_Profil_Art: { contains: search, mode: "insensitive" } },
-          { Sohlenstärke: { contains: search, mode: "insensitive" } },
-          { Besondere_Hinweise: { contains: search, mode: "insensitive" } },
-          { staticName: { contains: search, mode: "insensitive" } },
-          { description: { contains: search, mode: "insensitive" } }
-        );
-      } else {
-        // No category filter - search all fields
-        searchConditions.push(
-          { lederfarbe: { contains: search, mode: "insensitive" } },
-          { innenfutter: { contains: search, mode: "insensitive" } },
-          { schafthohe: { contains: search, mode: "insensitive" } },
-          { polsterung: { contains: search, mode: "insensitive" } },
-          { vestarkungen: { contains: search, mode: "insensitive" } },
-          { polsterung_text: { contains: search, mode: "insensitive" } },
-          { vestarkungen_text: { contains: search, mode: "insensitive" } },
-          { nahtfarbe: { contains: search, mode: "insensitive" } },
-          { nahtfarbe_text: { contains: search, mode: "insensitive" } },
-          { lederType: { contains: search, mode: "insensitive" } },
-          { Bettungsdicke: { contains: search, mode: "insensitive" } },
-          { Haertegrad_Shore: { contains: search, mode: "insensitive" } },
-          { Fersenschale: { contains: search, mode: "insensitive" } },
-          { Laengsgewölbestütze: { contains: search, mode: "insensitive" } },
-          { Konstruktionsart: { contains: search, mode: "insensitive" } },
-          { Fersenkappe: { contains: search, mode: "insensitive" } }
-        );
-      }
 
       whereCondition.OR = searchConditions;
     }
 
-    // Build select fields based on category
-    const commonFields = {
-      id: true,
-      orderNumber: true,
-      other_customer_number: true,
-      customerId: true,
-      invoice: true,
-      totalPrice: true,
-      image3d_1: true,
-      image3d_2: true,
-      status: true,
-      catagoary: true,
-      isCompleted: true,
-      createdAt: true,
-      updatedAt: true,
-      partnerId: true,
-      massschuhe_order_id: true,
-    };
+    // Optimize: Use composite index for ordering when filtering by category
+    const orderByField = catagoary 
+      ? [{ catagoary: "asc" as const }, { createdAt: "desc" as const }]
+      : { createdAt: "desc" as const };
 
-    const halbprobenerstellungFields = {
-      Bettungsdicke: true,
-      Haertegrad_Shore: true,
-      Fersenschale: true,
-      Laengsgewölbestütze: true,
-      Palotte_oder_Querpalotte: true,
-      Korrektur_der_Fußstellung: true,
-      Zehenelemente_Details: true,
-      eine_korrektur_nötig_ist: true,
-      Spezielles_Fußproblem: true,
-      Zusatzkorrektur_Absatzerhöhung: true,
-      Vertiefungen_Aussparungen: true,
-      Oberfläche_finish: true,
-      Überzug_Stärke: true,
-      Anmerkungen_zur_Bettung: true,
-      Leisten_mit_ohne_Platzhalter: true,
-      Schuhleisten_Typ: true,
-      Material_des_Leisten: true,
-      Leisten_gleiche_Länge: true,
-      Absatzhöhe: true,
-      Abrollhilfe: true,
-      Spezielle_Fußprobleme_Leisten: true,
-      Anmerkungen_zum_Leisten: true,
-    };
-
-    const massschafterstellungFields = {
-      lederfarbe: true,
-      innenfutter: true,
-      schafthohe: true,
-      polsterung: true,
-      vestarkungen: true,
-      vestarkungen_text: true,
-      polsterung_text: true,
-      osen_einsetzen_price: true,
-      Passenden_schnursenkel_price: true,
-      nahtfarbe: true,
-      nahtfarbe_text: true,
-      lederType: true,
-      maßschaftKollektionId: true,
-      paintImage: true,
-      invoice2: true,
-      leatherType: true,
-      // New Verschluss / Schnürsenkel fields
-      verschlussart: true,
-
-      custom_catagoary: true,
-      custom_catagoary_price: true,
-
-      moechten_sie_passende_schnuersenkel_zum_schuh: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
-
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
-
-      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
-
-
-      Konstruktionsart: true,
-      Fersenkappe: true,
-      Farbauswahl_Bodenkonstruktion: true,
-      Sohlenmaterial: true,
-      Absatz_Höhe: true,
-      Absatz_Form: true,
-      Abrollhilfe_Rolle: true,
-      Laufsohle_Profil_Art: true,
-      Sohlenstärke: true,
-      Besondere_Hinweise: true,
-       
-    };
-
-    const bodenkonstruktionFields = {
-      Konstruktionsart: true,
-      Fersenkappe: true,
-      Farbauswahl_Bodenkonstruktion: true,
-      Sohlenmaterial: true,
-      Absatz_Höhe: true,
-      Absatz_Form: true,
-      Abrollhilfe_Rolle: true,
-      Laufsohle_Profil_Art: true,
-      Sohlenstärke: true,
-      Besondere_Hinweise: true,
-      staticImage: true,
-      staticName: true,
-      description: true,
-    };
-
-    // Build select object based on category
-    let selectFields: any = { ...commonFields };
-
-    if (catagoary === "Halbprobenerstellung") {
-      selectFields = { ...commonFields, ...halbprobenerstellungFields };
-    } else if (catagoary === "Massschafterstellung") {
-      selectFields = { ...commonFields, ...massschafterstellungFields };
-    } else if (catagoary === "Bodenkonstruktion") {
-      selectFields = { ...commonFields, ...bodenkonstruktionFields };
-    } else {
-      // No category filter - include all fields
-      selectFields = {
-        ...commonFields,
-        ...halbprobenerstellungFields,
-        ...massschafterstellungFields,
-        ...bodenkonstruktionFields,
-      };
-    }
-
+    // Fetch data with only essential fields for table view
     const [totalCount, customShafts] = await Promise.all([
       prisma.custom_shafts.count({
         where: whereCondition,
@@ -1053,102 +809,71 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         where: whereCondition,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy: orderByField,
         select: {
-          ...selectFields,
+          id: true,
+          orderNumber: true,
+          catagoary: true,
+          status: true,
+          totalPrice: true,
+          createdAt: true,
+          // Relations for table display
           customer: {
             select: {
               id: true,
-              customerNumber: true,
               vorname: true,
               nachname: true,
-              email: true,
-              telefon: true,
-              ort: true,
-              land: true,
-              straße: true,
-              geburtsdatum: true,
-              createdAt: true,
-              updatedAt: true,
             },
           },
           maßschaft_kollektion: {
             select: {
               id: true,
-              ide: true,
               name: true,
-              price: true,
-              image: true,
-              catagoary: true,
-              gender: true,
-              description: true,
-              verschlussart: true,
-              createdAt: true,
-              updatedAt: true,
             },
           },
           user: {
             select: {
               id: true,
               name: true,
-              email: true,
-              image: true,
-            },
-          },
-          massschuhe_order: {
-            select: {
-              id: true,
-              isPanding: true,
+              busnessName: true,
             },
           },
         },
       }),
     ]);
 
-    // Format response with image URLs
-    // Images are already S3 URLs, use directly
-    const formatImage = (s3Url: string | null) => s3Url || null;
+    // Format response to match table structure
+    const formattedOrders = customShafts.map((shaft: any) => {
+      // Calculate total price with extras
+      const basePrice = shaft.totalPrice || 0;
+      const hasExtras = basePrice > 0;
 
-    const formattedCustomShafts = customShafts.map((item: any) => {
-      const { user, maßschaft_kollektion, customer, massschuhe_order, ...shaft } = item;
-
-      const formatted: any = {
-        ...shaft,
-        // Format common images
-        image3d_1: formatImage(shaft.image3d_1),
-        image3d_2: formatImage(shaft.image3d_2),
-        paintImage: formatImage(shaft.paintImage),
-        invoice2: formatImage(shaft.invoice2),
-        staticImage: formatImage(shaft.staticImage),
-        // Include isPanding from massschuhe_order relation
-        isPanding: massschuhe_order?.isPanding || false,
-        // Format relations
-        customer: customer || null,
+      return {
+        id: shaft.id,
+        bestellnummer: shaft.orderNumber || "N/A",
+        kategorie: shaft.catagoary || null,
+        modell: shaft.maßschaft_kollektion?.name || "N/A",
+        preis: basePrice,
+        preisMitExtras: hasExtras,
+        status: shaft.status || null,
+        datum: shaft.createdAt,
+        // Partner business info
+        partner: shaft.user
+          ? {
+              id: shaft.user.id,
+              name: shaft.user.name || "N/A",
+              busnessName: shaft.user.busnessName || null,
+            }
+          : null,
+        // Customer info
+        customer: shaft.customer
+          ? {
+              id: shaft.customer.id,
+              vorname: shaft.customer.vorname || null,
+              nachname: shaft.customer.nachname || null,
+            }
+          : null,
       };
-
-      // Remove massschuhe_order from formatted (we only need isPanding)
-
-      // Format maßschaft_kollektion if it exists
-      if (maßschaft_kollektion) {
-        formatted.maßschaft_kollektion = {
-          ...maßschaft_kollektion,
-          image: formatImage(maßschaft_kollektion.image),
-        };
-      } else {
-        formatted.maßschaft_kollektion = null;
-      }
-
-      // Format partner (user) if it exists
-      if (user) {
-        formatted.partner = {
-          ...user,
-          image: formatImage(user.image),
-        };
-      } else {
-        formatted.partner = null;
-      }
-
-      return formatted;
     });
 
     // Calculate pagination values
@@ -1158,8 +883,8 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
 
     res.status(200).json({
       success: true,
-      message: "Custom shafts fetched successfully",
-      data: formattedCustomShafts,
+      message: "Admin orders fetched successfully",
+      data: formattedOrders,
       pagination: {
         totalItems: totalCount,
         totalPages: totalPages,
@@ -1170,10 +895,10 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       },
     });
   } catch (error: any) {
-    console.error("Get Custom Shafts Error:", error);
+    console.error("Get Admin Orders Error:", error);
     res.status(500).json({
       success: false,
-      message: "Something went wrong while fetching custom shafts",
+      message: "Something went wrong while fetching admin orders",
       error: error.message,
     });
   }
@@ -1182,6 +907,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
 export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const catagoary = req.query.catagoary as string | undefined;
 
     if (!id) {
       return res.status(400).json({
@@ -1190,9 +916,31 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
+    // Build where condition
+    const whereCondition: any = { id };
+
+    // Validate and apply category filter if provided
+    const validCatagoaries = [
+      "Halbprobenerstellung",
+      "Massschafterstellung",
+      "Bodenkonstruktion",
+      "row",
+    ] as const;
+
+    if (catagoary) {
+      if (!validCatagoaries.includes(catagoary as any)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid catagoary value",
+          validCatagoaries: validCatagoaries,
+        });
+      }
+      whereCondition.catagoary = catagoary;
+    }
+
     // First, get the category to determine which fields to select
     const categoryCheck = await prisma.custom_shafts.findUnique({
-      where: { id },
+      where: whereCondition,
       select: { catagoary: true },
     });
 
@@ -1304,6 +1052,35 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       description: true,
     };
 
+    const rowFields = {
+      lederfarbe: true,
+      innenfutter: true,
+      schafthohe: true,
+      polsterung: true,
+      vestarkungen: true,
+      vestarkungen_text: true,
+      polsterung_text: true,
+      osen_einsetzen_price: true,
+      Passenden_schnursenkel_price: true,
+      nahtfarbe: true,
+      nahtfarbe_text: true,
+      lederType: true,
+      maßschaftKollektionId: true,
+      paintImage: true,
+      invoice2: true,
+      leatherType: true,
+      verschlussart: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
+      custom_catagoary: true,
+      custom_catagoary_price: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
+      update_image: true,
+    };
+
     // Build select fields based on category
     let selectFields: any = { ...commonFields };
 
@@ -1313,6 +1090,8 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       selectFields = { ...commonFields, ...massschafterstellungFields };
     } else if (categoryCheck.catagoary === "Bodenkonstruktion") {
       selectFields = { ...commonFields, ...bodenkonstruktionFields };
+    } else if (categoryCheck.catagoary === "row") {
+      selectFields = { ...commonFields, ...rowFields };
     } else {
       // No category or unknown category - include all fields
       selectFields = {
@@ -1320,12 +1099,13 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
         ...halbprobenerstellungFields,
         ...massschafterstellungFields,
         ...bodenkonstruktionFields,
+        ...rowFields,
       };
     }
 
     // Fetch the custom shaft with category-specific fields
     const customShaft = await prisma.custom_shafts.findUnique({
-      where: { id },
+      where: whereCondition,
       select: {
         ...selectFields,
         customer: {

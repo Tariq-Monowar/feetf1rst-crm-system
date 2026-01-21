@@ -74,6 +74,8 @@ model User {
   partnerPayouts              partner_payout[]
   courierContacts             CourierContact[]
 
+  @@index([name]) // For search optimization
+  @@index([email]) // Already unique, but explicit index helps
   @@map("users")
 }
 
@@ -546,6 +548,9 @@ model customers {
   // @@index([telefonnummer])
   @@index([wohnort])
   @@index([email])
+  @@index([telefon]) // For search optimization
+  @@index([ort]) // For search optimization
+  @@index([land]) // For search optimization
   @@index([id, vorname])
   @@index([id, email])
   @@index([createdAt])
@@ -1405,6 +1410,10 @@ model maßschaft_kollektion {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([name]) // For search optimization
+  @@index([catagoary]) // For search optimization
+  @@index([gender]) // For search optimization
 }
 
 model custom_shafts {
@@ -1595,6 +1604,16 @@ model custom_shafts {
   @@index([maßschaftKollektionId]) // বেস জুতা অনুসারে দ্রুত সার্চের জন্য
   @@index([partnerId]) // পার্টনার অনুসারে দ্রুত সার্চের জন্য
   @@index([createdAt]) // তারিখ অনুসারে দ্রুত সার্চের জন্য
+  @@index([catagoary]) // Category filtering
+  @@index([isCompleted]) // Completion status filtering
+  @@index([catagoary, status]) // Composite: category + status (most common filter)
+  @@index([catagoary, createdAt]) // Composite: category + date sorting
+  @@index([partnerId, catagoary]) // Composite: partner + category
+  @@index([status, createdAt]) // Composite: status + date sorting
+  @@index([orderNumber]) // Order number search
+  @@index([other_customer_number]) // Customer number search
+  @@index([massschuhe_order_id]) // Order relation lookup
+  @@index([custom_catagoary]) // Custom category search
 }
 
 enum custom_shafts_catagoary {

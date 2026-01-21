@@ -9,23 +9,7 @@ import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
-// Cursor helper functions
-const encodeCursor = (createdAt: Date, id: string): string => {
-  const cursor = { createdAt: createdAt.toISOString(), id };
-  return Buffer.from(JSON.stringify(cursor)).toString("base64");
-};
-
-const decodeCursor = (cursor: string): { createdAt: Date; id: string } | null => {
-  try {
-    const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
-    return {
-      createdAt: new Date(decoded.createdAt),
-      id: decoded.id,
-    };
-  } catch (error) {
-    return null;
-  }
-};
+// Cursor is now just the message ID - no encoding needed
 
 export const createPrivateConversation = async (
   req: Request,
@@ -607,8 +591,8 @@ export const getMessages = async (req: Request, res: Response) => {
     const myId = req.user.id;
     const myRole = req.user.role;
     const { conversationId } = req.params;
-    const cursor = req.query.cursor as string | undefined;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const cursor = req.query.cursor as string | undefined; // cursor is now just message ID
+    const limit = parseInt(req.query.limit as string) || 15;
 
     if (!conversationId) {
       return res.status(400).json({
@@ -645,28 +629,31 @@ export const getMessages = async (req: Request, res: Response) => {
       deletedAt: null,
     };
 
-    // If cursor exists, filter messages strictly older than cursor
-    // This WHERE clause ensures no duplicates:
-    // - Messages with createdAt < cursor.createdAt (definitely older)
-    // - OR messages with createdAt = cursor.createdAt AND id < cursor.id (same timestamp, but older by ID)
-    // This compound condition excludes the cursor message itself and all messages newer than it
+    // If cursor (message ID) is provided, get messages older than that message
     if (cursor) {
-      const decodedCursor = decodeCursor(cursor);
-      if (!decodedCursor) {
+      // First, get the cursor message to find its createdAt
+      const cursorMessage = await prisma.partner_conversation_message.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true, id: true },
+      });
+
+      if (!cursorMessage) {
         return res.status(400).json({
           success: false,
-          message: "Invalid cursor provided",
+          message: "Invalid cursor message ID provided",
         });
       }
 
+      // Get messages older than cursor message
+      // Messages with createdAt < cursor.createdAt OR (createdAt = cursor.createdAt AND id < cursor.id)
       whereClause.AND = [
         {
           OR: [
-            { createdAt: { lt: decodedCursor.createdAt } },
+            { createdAt: { lt: cursorMessage.createdAt } },
             {
               AND: [
-                { createdAt: decodedCursor.createdAt },
-                { id: { lt: decodedCursor.id } },
+                { createdAt: cursorMessage.createdAt },
+                { id: { lt: cursorMessage.id } },
               ],
             },
           ],
@@ -674,8 +661,7 @@ export const getMessages = async (req: Request, res: Response) => {
       ];
     }
 
-    // Fetch limit + 1 messages to detect if there are more messages available
-    // This avoids an extra count query while still knowing if we've reached the end
+    // Fetch messages older than cursor (or latest messages if no cursor)
     const messages = await prisma.partner_conversation_message.findMany({
       where: whereClause,
       include: {
@@ -697,36 +683,14 @@ export const getMessages = async (req: Request, res: Response) => {
         },
       },
       orderBy: [
-        { createdAt: "desc" }, // Primary: oldest messages first (for infinite scroll up)
+        { createdAt: "desc" }, // Most recent first (oldest messages at the end)
         { id: "desc" }, // Secondary: tie-breaker when createdAt is identical
       ],
-      take: limit + 1, // Fetch one extra to detect hasMore
+      take: limit, // Get exactly 'limit' messages
     });
 
-    // Determine if there are more messages available
-    const hasMore = messages.length > limit;
-    
-    // Return only the first 'limit' messages (slice off the extra one if it exists)
-    const messagesToReturn = hasMore ? messages.slice(0, limit) : messages;
-
-    // Generate nextCursor from the OLDEST message in the returned batch (messagesToReturn[0])
-    // Why [0]? Because we're loading older messages when scrolling up:
-    // - First request: Gets oldest messages (e.g., messages 1-5)
-    // - Cursor from [0] (message 1): Next request gets messages older than message 1
-    // - This ensures we move backward through time correctly
-    // 
-    // Only set nextCursor if we returned a full batch (messagesToReturn.length === limit)
-    // This means there might be more older messages available
-    // If returned < limit, we've reached the end, so nextCursor = null
-    let nextCursor: string | null = null;
-    if (messagesToReturn.length === limit && messagesToReturn.length > 0) {
-      // Use the oldest message in the batch as the cursor
-      const oldestMessage = messagesToReturn[0];
-      nextCursor = encodeCursor(oldestMessage.createdAt, oldestMessage.id);
-    }
-
     // Collect all replied-to message IDs
-    const allRepliedToIds = messagesToReturn
+    const allRepliedToIds = messages
       .flatMap((msg) => msg.repliedToMessageIds || [])
       .filter((id) => id && id.trim() !== "");
 
@@ -765,7 +729,7 @@ export const getMessages = async (req: Request, res: Response) => {
     }
 
     // Format messages to match sendMessage response format
-    const formattedMessages = messagesToReturn.map((message) => {
+    const formattedMessages = messages.map((message) => {
       // Build reply array for this message
       const replyMessages = [];
       if (
@@ -812,8 +776,6 @@ export const getMessages = async (req: Request, res: Response) => {
       success: true,
       message: "Messages retrieved successfully",
       data: formattedMessages,
-      nextCursor,
-      hasMore,
     });
   } catch (error) {
     console.error("Error in getMessages:", error);
