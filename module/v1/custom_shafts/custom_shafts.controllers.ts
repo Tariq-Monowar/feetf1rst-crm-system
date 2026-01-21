@@ -14,7 +14,7 @@ export const createMaßschaftKollektion = async (
   const files = req.files as any;
 
   try {
-    const { name, price, catagoary, gender, description } = req.body;
+    const { name, price, catagoary, gender, description, vrschlussart } = req.body;
 
     const missingField = [
       "name",
@@ -22,6 +22,7 @@ export const createMaßschaftKollektion = async (
       "catagoary",
       "gender",
       "description",
+      "vrschlussart",
     ].find((field) => !req.body[field]);
 
     if (missingField) {
@@ -46,6 +47,7 @@ export const createMaßschaftKollektion = async (
         gender,
         description,
         image: imageUrl || "",
+        vrschlussart: vrschlussart || null,
       },
     });
 
@@ -184,7 +186,7 @@ export const updateMaßschaftKollektion = async (
       return;
     }
 
-    const { name, price, catagoary, gender, description } = req.body;
+    const { name, price, catagoary, gender, description, vrschlussart } = req.body;
 
     const updateData: any = {};
 
@@ -193,6 +195,7 @@ export const updateMaßschaftKollektion = async (
     if (catagoary !== undefined) updateData.catagoary = catagoary;
     if (gender !== undefined) updateData.gender = gender;
     if (description !== undefined) updateData.description = description;
+    if (vrschlussart !== undefined) updateData.vrschlussart = vrschlussart;
 
     // Handle new image upload
     if (files?.image?.[0]?.location) {
@@ -740,6 +743,7 @@ export const getTustomShafts = async (req: Request, res: Response) => {
               catagoary: true,
               gender: true,
               description: true,
+              vrschlussart: true,
               createdAt: true,
               updatedAt: true,
             },
