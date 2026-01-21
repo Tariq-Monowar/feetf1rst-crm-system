@@ -26,6 +26,7 @@ router.post(
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
+    { name: "update_image", maxCount: 1 },
   ]),
   createTustomShafts
 );
@@ -77,5 +78,6 @@ router.delete(
   verifyUser("PARTNER", "ADMIN"),
   deleteMaßschaftKollektion
 );
+
 
 export default router;

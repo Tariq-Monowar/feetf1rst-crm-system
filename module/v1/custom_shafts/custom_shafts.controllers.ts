@@ -380,6 +380,10 @@ export const createTustomShafts = async (req, res) => {
       totalPrice,
       osen_einsetzen_price,
       Passenden_schnursenkel_price,
+      verschlussart,
+      moechten_sie_passende_schnuersenkel_zum_schuh,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
+      moechten_sie_einen_zusaetzlichen_reissverschluss,
     } = req.body;
 
     // Validate mutual exclusivity between customerId and other_customer_number
@@ -470,6 +474,13 @@ export const createTustomShafts = async (req, res) => {
       nahtfarbe_text: nahtfarbe_text || null,
       lederType: lederType || null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
+
+      verschlussart: verschlussart || null,
+      moechten_sie_passende_schnuersenkel_zum_schuh: moechten_sie_passende_schnuersenkel_zum_schuh || null,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen || null,
+      moechten_sie_einen_zusaetzlichen_reissverschluss: moechten_sie_einen_zusaetzlichen_reissverschluss || null,
+      update_image: files.update_image?.[0]?.location || null,
+
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000
       )}`,
@@ -480,6 +491,7 @@ export const createTustomShafts = async (req, res) => {
       Passenden_schnursenkel_price: Passenden_schnursenkel_price
         ? parseFloat(Passenden_schnursenkel_price)
         : null,
+      catagoary: "row" as any
     };
 
     if (customer) {

@@ -9,6 +9,24 @@ import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
+// Cursor helper functions
+const encodeCursor = (createdAt: Date, id: string): string => {
+  const cursor = { createdAt: createdAt.toISOString(), id };
+  return Buffer.from(JSON.stringify(cursor)).toString("base64");
+};
+
+const decodeCursor = (cursor: string): { createdAt: Date; id: string } | null => {
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
+    return {
+      createdAt: new Date(decoded.createdAt),
+      id: decoded.id,
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
 export const createPrivateConversation = async (
   req: Request,
   res: Response
@@ -589,6 +607,8 @@ export const getMessages = async (req: Request, res: Response) => {
     const myId = req.user.id;
     const myRole = req.user.role;
     const { conversationId } = req.params;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 20;
 
     if (!conversationId) {
       return res.status(400).json({
@@ -619,17 +639,45 @@ export const getMessages = async (req: Request, res: Response) => {
       });
     }
 
-    // Get pagination options
-    const paginationOptions = getPaginationOptions(req);
-    const { page = 1, limit = 20 } = paginationOptions;
-    const skip = (page - 1) * limit;
+    // Build where clause for cursor-based pagination
+    const whereClause: any = {
+      conversationId,
+      deletedAt: null,
+    };
 
-    // Get messages only (no count for performance)
+    // If cursor exists, filter messages strictly older than cursor
+    // This WHERE clause ensures no duplicates:
+    // - Messages with createdAt < cursor.createdAt (definitely older)
+    // - OR messages with createdAt = cursor.createdAt AND id < cursor.id (same timestamp, but older by ID)
+    // This compound condition excludes the cursor message itself and all messages newer than it
+    if (cursor) {
+      const decodedCursor = decodeCursor(cursor);
+      if (!decodedCursor) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid cursor provided",
+        });
+      }
+
+      whereClause.AND = [
+        {
+          OR: [
+            { createdAt: { lt: decodedCursor.createdAt } },
+            {
+              AND: [
+                { createdAt: decodedCursor.createdAt },
+                { id: { lt: decodedCursor.id } },
+              ],
+            },
+          ],
+        },
+      ];
+    }
+
+    // Fetch limit + 1 messages to detect if there are more messages available
+    // This avoids an extra count query while still knowing if we've reached the end
     const messages = await prisma.partner_conversation_message.findMany({
-      where: {
-        conversationId,
-        deletedAt: null,
-      },
+      where: whereClause,
       include: {
         senderPartner: {
           select: {
@@ -648,15 +696,37 @@ export const getMessages = async (req: Request, res: Response) => {
           },
         },
       },
-      orderBy: {
-        createdAt: "asc",
-      },
-      skip,
-      take: limit,
+      orderBy: [
+        { createdAt: "desc" }, // Primary: oldest messages first (for infinite scroll up)
+        { id: "desc" }, // Secondary: tie-breaker when createdAt is identical
+      ],
+      take: limit + 1, // Fetch one extra to detect hasMore
     });
 
+    // Determine if there are more messages available
+    const hasMore = messages.length > limit;
+    
+    // Return only the first 'limit' messages (slice off the extra one if it exists)
+    const messagesToReturn = hasMore ? messages.slice(0, limit) : messages;
+
+    // Generate nextCursor from the OLDEST message in the returned batch (messagesToReturn[0])
+    // Why [0]? Because we're loading older messages when scrolling up:
+    // - First request: Gets oldest messages (e.g., messages 1-5)
+    // - Cursor from [0] (message 1): Next request gets messages older than message 1
+    // - This ensures we move backward through time correctly
+    // 
+    // Only set nextCursor if we returned a full batch (messagesToReturn.length === limit)
+    // This means there might be more older messages available
+    // If returned < limit, we've reached the end, so nextCursor = null
+    let nextCursor: string | null = null;
+    if (messagesToReturn.length === limit && messagesToReturn.length > 0) {
+      // Use the oldest message in the batch as the cursor
+      const oldestMessage = messagesToReturn[0];
+      nextCursor = encodeCursor(oldestMessage.createdAt, oldestMessage.id);
+    }
+
     // Collect all replied-to message IDs
-    const allRepliedToIds = messages
+    const allRepliedToIds = messagesToReturn
       .flatMap((msg) => msg.repliedToMessageIds || [])
       .filter((id) => id && id.trim() !== "");
 
@@ -695,7 +765,7 @@ export const getMessages = async (req: Request, res: Response) => {
     }
 
     // Format messages to match sendMessage response format
-    const formattedMessages = messages.map((message) => {
+    const formattedMessages = messagesToReturn.map((message) => {
       // Build reply array for this message
       const replyMessages = [];
       if (
@@ -742,11 +812,8 @@ export const getMessages = async (req: Request, res: Response) => {
       success: true,
       message: "Messages retrieved successfully",
       data: formattedMessages,
-      pagination: {
-        page,
-        limit,
-        hasMore: messages.length === limit,
-      },
+      nextCursor,
+      hasMore,
     });
   } catch (error) {
     console.error("Error in getMessages:", error);
