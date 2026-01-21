@@ -365,6 +365,13 @@ export const createTustomShafts = async (req, res) => {
   const files = req.files as any;
   const { id } = req.user;
 
+  // Helper: Parse price values
+  const parsePrice = (value: any): number | null => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = parseFloat(value.toString());
+    return isNaN(parsed) ? null : parsed;
+  };
+
   try {
     const {
       customerId,
@@ -387,6 +394,11 @@ export const createTustomShafts = async (req, res) => {
       moechten_sie_passende_schnuersenkel_zum_schuh,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
       moechten_sie_einen_zusaetzlichen_reissverschluss,
+      custom_catagoary,
+      custom_catagoary_price,
+      moechten_sie_passende_schnuersenkel_zum_schuh_price,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price,
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price,
     } = req.body;
 
     // Validate mutual exclusivity between customerId and other_customer_number
@@ -482,6 +494,14 @@ export const createTustomShafts = async (req, res) => {
       moechten_sie_passende_schnuersenkel_zum_schuh: moechten_sie_passende_schnuersenkel_zum_schuh || null,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen || null,
       moechten_sie_einen_zusaetzlichen_reissverschluss: moechten_sie_einen_zusaetzlichen_reissverschluss || null,
+      custom_catagoary: custom_catagoary || null,
+      custom_catagoary_price: parsePrice(custom_catagoary_price),
+      moechten_sie_passende_schnuersenkel_zum_schuh_price:
+        parsePrice(moechten_sie_passende_schnuersenkel_zum_schuh_price),
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price:
+        parsePrice(moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price),
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price:
+        parsePrice(moechten_sie_einen_zusaetzlichen_reissverschluss_price),
       update_image: files.update_image?.[0]?.location || null,
 
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(

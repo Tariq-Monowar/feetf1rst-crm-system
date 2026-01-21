@@ -253,6 +253,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
   const { id } = req.user;
   const { orderId } = req.params;
 
+  // Helper: Parse price values
+  const parsePrice = (value: any): number | null => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = parseFloat(value.toString());
+    return isNaN(parsed) ? null : parsed;
+  };
+
   try {
     // Get order and validate
     const order = await prisma.massschuhe_order.findUnique({
@@ -339,6 +346,10 @@ export const sendToAdminOrder_2 = async (req, res) => {
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
       moechten_sie_einen_zusaetzlichen_reissverschluss,
       custom_catagoary,
+      custom_catagoary_price,
+      moechten_sie_passende_schnuersenkel_zum_schuh_price,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price,
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price,
     } = req.body;
 
     if (!mabschaftKollektionId) {
@@ -432,6 +443,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
       moechten_sie_einen_zusaetzlichen_reissverschluss:
         moechten_sie_einen_zusaetzlichen_reissverschluss || null,
       custom_catagoary: custom_catagoary || null,
+      custom_catagoary_price: parsePrice(custom_catagoary_price),
+      moechten_sie_passende_schnuersenkel_zum_schuh_price:
+        parsePrice(moechten_sie_passende_schnuersenkel_zum_schuh_price),
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price:
+        parsePrice(moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price),
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price:
+        parsePrice(moechten_sie_einen_zusaetzlichen_reissverschluss_price),
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000
@@ -575,7 +593,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
       staticName,
       description,
       totalPrice,
-      custom_catagoary,
     } = req.body;
 
     const order = await prisma.massschuhe_order.findUnique({
@@ -606,7 +623,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
         Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
         Sohlenstärke: Sohlenstärke || null,
         Besondere_Hinweise: Besondere_Hinweise || null,
-        custom_catagoary: custom_catagoary || null,
         totalPrice: totalPrice ? parseFloat(totalPrice) : null,
         isCompleted: false,
         catagoary: "Bodenkonstruktion",
@@ -630,7 +646,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
         totalPrice: true,
         isCompleted: true,
         catagoary: true,
-        custom_catagoary: true,
       },
     });
 
@@ -656,7 +671,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
       totalPrice: adminOrder.totalPrice,
       isCompleted: adminOrder.isCompleted,
       catagoary: adminOrder.catagoary,
-      custom_catagoary: adminOrder.custom_catagoary,
     };
 
     await prisma.massschuhe_order.update({
@@ -918,7 +932,6 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
-      custom_catagoary: true,
       isCompleted: true,
       createdAt: true,
       updatedAt: true,
@@ -970,11 +983,20 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       leatherType: true,
       // New Verschluss / Schnürsenkel fields
       verschlussart: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
-      // Common fields for Massschafterstellung and Bodenkonstruktion
+
       custom_catagoary: true,
+      custom_catagoary_price: true,
+
+      moechten_sie_passende_schnuersenkel_zum_schuh: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
+
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
+
+      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
+
+
       Konstruktionsart: true,
       Fersenkappe: true,
       Farbauswahl_Bodenkonstruktion: true,
@@ -1193,7 +1215,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
-      custom_catagoary: true,
       isCompleted: true,
       createdAt: true,
       updatedAt: true,
@@ -1248,6 +1269,12 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       moechten_sie_passende_schnuersenkel_zum_schuh: true,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
       moechten_sie_einen_zusaetzlichen_reissverschluss: true,
+      // Price fields for Massschafterstellung
+      custom_catagoary: true,
+      custom_catagoary_price: true,
+      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
+      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
       // Common fields for Massschafterstellung and Bodenkonstruktion
       Konstruktionsart: true,
       Fersenkappe: true,
