@@ -1400,6 +1400,7 @@ model maßschaft_kollektion {
   // Model C → default: Velcro + zipper
   verschlussart String? // ধরন
 
+
   customShafts custom_shafts[] // এই জুতার উপর ভিত্তি করে তৈরি হওয়া কাস্টমাইজড অর্ডারসমূহ
 
   createdAt DateTime @default(now())
@@ -1514,6 +1515,9 @@ model custom_shafts {
   leatherType Json?
   invoice2    String?
 
+  //partner can add her own catagoary
+  custom_catagoary String?
+  
   //-----------------------------
   //নতুন আরো অ্যাাড হলো
   verschlussart                                          String? // "Klettverschluss (Velcro)", "Ösen", "Reißverschluss (Zipper)",

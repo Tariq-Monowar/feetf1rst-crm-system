@@ -338,6 +338,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       moechten_sie_passende_schnuersenkel_zum_schuh,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
       moechten_sie_einen_zusaetzlichen_reissverschluss,
+      custom_catagoary,
     } = req.body;
 
     if (!mabschaftKollektionId) {
@@ -430,6 +431,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
         moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen || null,
       moechten_sie_einen_zusaetzlichen_reissverschluss:
         moechten_sie_einen_zusaetzlichen_reissverschluss || null,
+      custom_catagoary: custom_catagoary || null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000
@@ -573,6 +575,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
       staticName,
       description,
       totalPrice,
+      custom_catagoary,
     } = req.body;
 
     const order = await prisma.massschuhe_order.findUnique({
@@ -603,6 +606,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
         Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
         Sohlenstärke: Sohlenstärke || null,
         Besondere_Hinweise: Besondere_Hinweise || null,
+        custom_catagoary: custom_catagoary || null,
         totalPrice: totalPrice ? parseFloat(totalPrice) : null,
         isCompleted: false,
         catagoary: "Bodenkonstruktion",
@@ -626,6 +630,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
         totalPrice: true,
         isCompleted: true,
         catagoary: true,
+        custom_catagoary: true,
       },
     });
 
@@ -651,6 +656,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
       totalPrice: adminOrder.totalPrice,
       isCompleted: adminOrder.isCompleted,
       catagoary: adminOrder.catagoary,
+      custom_catagoary: adminOrder.custom_catagoary,
     };
 
     await prisma.massschuhe_order.update({
@@ -768,6 +774,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         },
         { orderNumber: { contains: search, mode: "insensitive" } },
         { other_customer_number: { contains: search, mode: "insensitive" } },
+        { custom_catagoary: { contains: search, mode: "insensitive" } },
       ];
 
       // Add category-specific search fields
@@ -911,6 +918,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
+      custom_catagoary: true,
       isCompleted: true,
       createdAt: true,
       updatedAt: true,
@@ -966,6 +974,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
       moechten_sie_einen_zusaetzlichen_reissverschluss: true,
       // Common fields for Massschafterstellung and Bodenkonstruktion
+      custom_catagoary: true,
       Konstruktionsart: true,
       Fersenkappe: true,
       Farbauswahl_Bodenkonstruktion: true,
@@ -976,6 +985,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       Laufsohle_Profil_Art: true,
       Sohlenstärke: true,
       Besondere_Hinweise: true,
+       
     };
 
     const bodenkonstruktionFields = {
@@ -1183,6 +1193,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
+      custom_catagoary: true,
       isCompleted: true,
       createdAt: true,
       updatedAt: true,
