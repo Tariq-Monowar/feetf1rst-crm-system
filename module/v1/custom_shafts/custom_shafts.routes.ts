@@ -12,6 +12,7 @@ import {
   getSingleCustomShaft,
   updateCustomShaftStatus,
   deleteCustomShaft,
+  totalPriceResponse,
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -26,10 +27,13 @@ router.post(
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
-    { name: "update_image", maxCount: 1 },
+    { name: "zipper_image", maxCount: 1 },
+    { name: "invoice", maxCount: 1 },
+    { name: "custom_models_image", maxCount: 1 },
   ]),
   createTustomShafts
 );
+
 
 router.get("/get", verifyUser("PARTNER", "ADMIN"), getTustomShafts);
 
@@ -42,6 +46,13 @@ router.patch(
 );
 
 router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteCustomShaft);
+
+router.get(
+  "/total-price-resio",
+  verifyUser("PARTNER", "ADMIN"),
+  totalPriceResponse
+);
+
 
 /*
 * this created by admin panel for partner.
@@ -78,6 +89,5 @@ router.delete(
   verifyUser("PARTNER", "ADMIN"),
   deleteMaßschaftKollektion
 );
-
 
 export default router;
