@@ -293,16 +293,15 @@ model Employees {
   financialAccess Boolean @default(false)
   jobPosition     String?
   image           String?
-  role            Role   @default(EMPLOYEE)
+  role            Role    @default(EMPLOYEE)
 
-  partnerId       String
-  user            User    @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  partnerId String
+  user      User   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   WorkshopNote WorkshopNote?
 
-
-  createdAt                   DateTime                       @default(now())
-  updatedAt                   DateTime                       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   appointmentEmployees        AppointmentEmployee[]
   massschuheOrders            massschuhe_order[]
@@ -1407,7 +1406,6 @@ model maßschaft_kollektion {
   // Model C → default: Velcro + zipper
   verschlussart String? // ধরন
 
-
   customShafts custom_shafts[] // এই জুতার উপর ভিত্তি করে তৈরি হওয়া কাস্টমাইজড অর্ডারসমূহ
 
   createdAt DateTime @default(now())
@@ -1435,6 +1433,18 @@ model custom_shafts {
   // common for (Halbprobenerstellung || Massschafterstellung)
   image3d_1 String? // 3D ভিউ প্রথম ছবি
   image3d_2 String? // 3D ভিউ দ্বিতীয় ছবি
+
+/*
+ * isCustomeModels এর উপর ভিত্তি করে যদি true থাকে তাহলে আমার আর maßschaft_kollektion এর আইডি লাগবে না।
+ * আমাকে এর জন্য কিছু ডাটা যুক্ত করতে হবে যেমন, 
+ * 1. কিছু জুতার নাম
+ * 2. কিছু জুতার ছবি
+ * 3. কিছু জুতার মূল্য
+ * 4. কিছু জুতার ক্যাটাগরি
+ * 5. কিছু জুতার লিঙ্গ
+ * 6. কিছু জুতার বিস্তারিত বিবরণ
+*/
+  isCustomeModels Boolean? @default(false)
 
   /**
    * Halbprobenerstellung Started ওইয়ার্ডার ১
@@ -1527,24 +1537,31 @@ model custom_shafts {
   invoice2    String?
 
   //partner can add her own catagoary
-  custom_catagoary String?
+  custom_catagoary       String?
   custom_catagoary_price Float?
 
   //-----------------------------
   //নতুন আরো অ্যাাড হলো
-  verschlussart                                          String? // "Klettverschluss (Velcro)", "Ösen", "Reißverschluss (Zipper)",
+  verschlussart                                       String? // "Klettverschluss (Velcro)", "Ösen", "Reißverschluss (Zipper)",
   // ড্রপ ডাউনের ডাটার উপর ভিত্তি করে আরো তিনটা ফিল্ড আসবে
   // Klettverschluss (Velcro) হলো কোন সাব ফিড আসবে না
-  moechten_sie_passende_schnuersenkel_zum_schuh          String? //Reißverschluss (Zipper), Ösen,
+  moechten_sie_passende_schnuersenkel_zum_schuh       String? //Reißverschluss (Zipper), Ösen,
   moechten_sie_passende_schnuersenkel_zum_schuh_price Float?
 
-  moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen String? //Reißverschluss (Zipper), Ösen,
+  moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen       String? //Reißverschluss (Zipper), Ösen,
   moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price Float?
 
   moechten_sie_einen_zusaetzlichen_reissverschluss       String? //Reißverschluss (Zipper),
   moechten_sie_einen_zusaetzlichen_reissverschluss_price Float?
-  
-  update_image                                           String?
+
+  //যদি isCustomeModels true থাকে তাহলে
+  zipper_image String?
+  custom_models_name String?
+  custom_models_image String?
+  custom_models_price Float?
+  custom_models_verschlussart String?
+  custom_models_gender String?
+  custom_models_description String?
 
   /**
    * Massschafterstellung Ended
@@ -1619,9 +1636,14 @@ model custom_shafts {
 }
 
 enum custom_shafts_catagoary {
+  //স্টেপ ১
   Halbprobenerstellung
+  //স্টেপ ২
   Massschafterstellung
+  //স্টেপয়ার ৩
   Bodenkonstruktion
+
+  // এটা কোন স্টেপ না সরাসরি ওইয়ার্ডার করার জন্য ব্যবহার হয়।
   row
 }
 

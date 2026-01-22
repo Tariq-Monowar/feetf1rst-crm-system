@@ -502,7 +502,7 @@ export const createTustomShafts = async (req, res) => {
         parsePrice(moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price),
       moechten_sie_einen_zusaetzlichen_reissverschluss_price:
         parsePrice(moechten_sie_einen_zusaetzlichen_reissverschluss_price),
-      update_image: files.update_image?.[0]?.location || null,
+      zipper_image: files.zipper_image?.[0]?.location || null,
 
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
         10000 + Math.random() * 90000

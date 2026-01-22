@@ -409,7 +409,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       paintImage: files.paintImage?.[0]?.location || null,
       invoice2: files.invoice2?.[0]?.location || null,
       invoice: files.invoice?.[0]?.location || null,
-      update_image: files.update_image?.[0]?.location || null,
+      zipper_image: files.zipper_image?.[0]?.location || null,
       other_customer_number: order.customer?.customerNumber
         ? String(order.customer.customerNumber)
         : null,
@@ -816,7 +816,10 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
           catagoary: true,
           status: true,
           totalPrice: true,
+          other_customer_number: true,
           createdAt: true,
+          isCustomeModels: true,
+
           // Relations for table display
           customer: {
             select: {
@@ -838,7 +841,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
               busnessName: true,
             },
           },
-        },
+        } as any,
       }),
     ]);
 
@@ -857,6 +860,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         preisMitExtras: hasExtras,
         status: shaft.status || null,
         datum: shaft.createdAt,
+        isCustomeModels: shaft.isCustomeModels || false,
         // Partner business info
         partner: shaft.user
           ? {
@@ -952,7 +956,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     }
 
     // Define field sets (same as getAllAdminOrders)
-    const commonFields = {
+    const commonFields: any = {
       id: true,
       orderNumber: true,
       other_customer_number: true,
@@ -968,6 +972,14 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       updatedAt: true,
       partnerId: true,
       massschuhe_order_id: true,
+      isCustomeModels: true,
+      // Custom model fields (will be conditionally included in response)
+      custom_models_name: true,
+      custom_models_image: true,
+      custom_models_price: true,
+      custom_models_verschlussart: true,
+      custom_models_gender: true,
+      custom_models_description: true,
     };
 
     const halbprobenerstellungFields = {
@@ -1014,16 +1026,20 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       leatherType: true,
       // New Verschluss / Schnürsenkel fields
       verschlussart: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
+    
       // Price fields for Massschafterstellung
       custom_catagoary: true,
       custom_catagoary_price: true,
+
+      moechten_sie_passende_schnuersenkel_zum_schuh: true,
       moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
+
+      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
+
+      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
       moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
-      // Common fields for Massschafterstellung and Bodenkonstruktion
+
       Konstruktionsart: true,
       Fersenkappe: true,
       Farbauswahl_Bodenkonstruktion: true,
@@ -1078,7 +1094,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
       moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
       moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
-      update_image: true,
+      zipper_image: true,
     };
 
     // Build select fields based on category
@@ -1181,6 +1197,24 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       // Format relations
       customer: shaftData.customer || null,
     };
+
+    // Only include custom model fields if isCustomeModels is true
+    if (shaftData.isCustomeModels === true) {
+      formattedShaft.custom_models_name = shaftData.custom_models_name || null;
+      formattedShaft.custom_models_image = formatImage(shaftData.custom_models_image);
+      formattedShaft.custom_models_price = shaftData.custom_models_price || null;
+      formattedShaft.custom_models_verschlussart = shaftData.custom_models_verschlussart || null;
+      formattedShaft.custom_models_gender = shaftData.custom_models_gender || null;
+      formattedShaft.custom_models_description = shaftData.custom_models_description || null;
+    } else {
+      // Remove custom model fields if isCustomeModels is false
+      delete formattedShaft.custom_models_name;
+      delete formattedShaft.custom_models_image;
+      delete formattedShaft.custom_models_price;
+      delete formattedShaft.custom_models_verschlussart;
+      delete formattedShaft.custom_models_gender;
+      delete formattedShaft.custom_models_description;
+    }
 
     // Format maßschaft_kollektion if it exists
     if (shaftData.maßschaft_kollektion) {
