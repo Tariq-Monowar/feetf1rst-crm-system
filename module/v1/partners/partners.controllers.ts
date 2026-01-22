@@ -39,6 +39,7 @@ export const createPartnership = async (req: Request, res: Response) => {
       return;
     }
 
+    // Check if email exists in user table
     const existingPartnership = await prisma.user.findUnique({
       where: { email },
     });
@@ -46,6 +47,18 @@ export const createPartnership = async (req: Request, res: Response) => {
     if (existingPartnership) {
       res.status(400).json({
         message: "Email already exists",
+      });
+      return;
+    }
+
+    // Check if email exists in employees table
+    const existingEmployee = await prisma.employees.findUnique({
+      where: { email },
+    });
+
+    if (existingEmployee) {
+      res.status(400).json({
+        message: "Email already exists as an employee",
       });
       return;
     }
@@ -328,11 +341,21 @@ export const updatePartnerByAdmin = async (
         return;
       }
 
+      // Check if email exists in user table
       const existingEmail = await prisma.user.findUnique({ where: { email } });
       if (existingEmail) {
         res
           .status(400)
           .json({ success: false, message: "Email already in use" });
+        return;
+      }
+
+      // Check if email exists in employees table
+      const existingEmployeeEmail = await prisma.employees.findUnique({ where: { email } });
+      if (existingEmployeeEmail) {
+        res
+          .status(400)
+          .json({ success: false, message: "Email already exists as an employee" });
         return;
       }
     }

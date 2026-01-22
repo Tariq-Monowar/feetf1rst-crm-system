@@ -98,6 +98,7 @@ export const createUser = async (req: Request, res: Response) => {
       return;
     }
 
+    // Check if email exists in user table
     const existingUser = await prisma.user.findUnique({
       where: { email },
     });
@@ -105,6 +106,18 @@ export const createUser = async (req: Request, res: Response) => {
     if (existingUser) {
       res.status(400).json({
         message: "Email already exists",
+      });
+      return;
+    }
+
+    // Check if email exists in employees table
+    const existingEmployee = await prisma.employees.findUnique({
+      where: { email },
+    });
+
+    if (existingEmployee) {
+      res.status(400).json({
+        message: "Email already exists as an employee",
       });
       return;
     }
@@ -255,6 +268,31 @@ export const updateUser = async (req: Request, res: Response) => {
       return;
     }
 
+    // Check if email is being changed and validate uniqueness
+    if (email && email !== existingUser.email) {
+      // Check if email exists in user table
+      const existingEmailUser = await prisma.user.findUnique({
+        where: { email },
+      });
+      if (existingEmailUser) {
+        res.status(400).json({
+          message: "Email already exists",
+        });
+        return;
+      }
+
+      // Check if email exists in employees table
+      const existingEmailEmployee = await prisma.employees.findUnique({
+        where: { email },
+      });
+      if (existingEmailEmployee) {
+        res.status(400).json({
+          message: "Email already exists as an employee",
+        });
+        return;
+      }
+    }
+
     // With S3, req.file.location is the full S3 URL
     const newImageUrl = newImage?.location || null;
 
@@ -353,6 +391,7 @@ export const createPartnership = async (req: Request, res: Response) => {
       return;
     }
 
+    // Check if email exists in user table
     const existingPartnership = await prisma.user.findUnique({
       where: { email },
     });
@@ -360,6 +399,18 @@ export const createPartnership = async (req: Request, res: Response) => {
     if (existingPartnership) {
       res.status(400).json({
         message: "Email already exists",
+      });
+      return;
+    }
+
+    // Check if email exists in employees table
+    const existingEmployee = await prisma.employees.findUnique({
+      where: { email },
+    });
+
+    if (existingEmployee) {
+      res.status(400).json({
+        message: "Email already exists as an employee",
       });
       return;
     }
