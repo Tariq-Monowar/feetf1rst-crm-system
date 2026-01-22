@@ -251,7 +251,10 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 export const sendToAdminOrder_2 = async (req, res) => {
   const files = req.files as any;
   const { id } = req.user;
+
+  // Get orderId from route params and custom_models from query
   const { orderId } = req.params;
+  const { custom_models } = req.query;
 
   // Helper: Parse price values
   const parsePrice = (value: any): number | null => {
@@ -260,8 +263,72 @@ export const sendToAdminOrder_2 = async (req, res) => {
     return isNaN(parsed) ? null : parsed;
   };
 
+  // Helper: Parse boolean
+  const parseBoolean = (value: any): boolean => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      return value.toLowerCase() === "true" || value === "1";
+    }
+    return Boolean(value);
+  };
+
+  const isCustomModels = parseBoolean(custom_models);
+
+  // Extract all fields from req.body
+  const {
+    mabschaftKollektionId,
+    lederfarbe,
+    innenfutter,
+    schafthohe,
+    polsterung,
+    vestarkungen,
+    polsterung_text,
+    vestarkungen_text,
+    nahtfarbe,
+    nahtfarbe_text,
+    lederType,
+    osen_einsetzen_price,
+    Passenden_schnursenkel_price,
+    maßschaftKollektionId,
+    leatherType,
+    // Common fields for Massschafterstellung and Bodenkonstruktion
+    Konstruktionsart,
+    Fersenkappe,
+    Farbauswahl_Bodenkonstruktion,
+    Sohlenmaterial,
+    Absatz_Höhe,
+    Absatz_Form,
+    Abrollhilfe_Rolle,
+    Laufsohle_Profil_Art,
+    Sohlenstärke,
+    Besondere_Hinweise,
+    totalPrice,
+    verschlussart,
+    moechten_sie_passende_schnuersenkel_zum_schuh,
+    moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
+    moechten_sie_einen_zusaetzlichen_reissverschluss,
+    custom_catagoary,
+    custom_catagoary_price,
+    moechten_sie_passende_schnuersenkel_zum_schuh_price,
+    moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price,
+    moechten_sie_einen_zusaetzlichen_reissverschluss_price,
+    // Custom model fields (only used when custom_models=true)
+    custom_models_name,
+    custom_models_price,
+    custom_models_verschlussart,
+    custom_models_gender,
+    custom_models_description,
+  } = req.body;
+
   try {
-    // Get order and validate
+    // Get order and validate (orderId is always required from route params)
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "orderId is required",
+      });
+    }
+
     const order = await prisma.massschuhe_order.findUnique({
       where: { id: orderId },
       select: {
@@ -288,23 +355,6 @@ export const sendToAdminOrder_2 = async (req, res) => {
       data: { isPanding: true },
     });
 
-    // Check if order already sent to admin 2
-    const isOrderSent = await prisma.custom_shafts.findFirst({
-      where: {
-        massschuhe_order_id: orderId,
-        catagoary: "Massschafterstellung",
-        isCompleted: false,
-      },
-    });
-
-    // if (isOrderSent) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message:
-    //       "Order already sent to production. Please wait for complete the order.",
-    //   });
-    // }
-
     // Get customer from order
     if (!order.customerId) {
       return res.status(400).json({
@@ -313,63 +363,11 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    const {
-      mabschaftKollektionId,
-      lederfarbe,
-      innenfutter,
-      schafthohe,
-      polsterung,
-      vestarkungen,
-      polsterung_text,
-      vestarkungen_text,
-      nahtfarbe,
-      nahtfarbe_text,
-      lederType,
-      osen_einsetzen_price,
-      Passenden_schnursenkel_price,
-      maßschaftKollektionId,
-      leatherType,
-      // Common fields for Massschafterstellung and Bodenkonstruktion
-      Konstruktionsart,
-      Fersenkappe,
-      Farbauswahl_Bodenkonstruktion,
-      Sohlenmaterial,
-      Absatz_Höhe,
-      Absatz_Form,
-      Abrollhilfe_Rolle,
-      Laufsohle_Profil_Art,
-      Sohlenstärke,
-      Besondere_Hinweise,
-      totalPrice,
-      verschlussart,
-      moechten_sie_passende_schnuersenkel_zum_schuh,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
-      moechten_sie_einen_zusaetzlichen_reissverschluss,
-      custom_catagoary,
-      custom_catagoary_price,
-      moechten_sie_passende_schnuersenkel_zum_schuh_price,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price,
-      moechten_sie_einen_zusaetzlichen_reissverschluss_price,
-    } = req.body;
-
-    if (!mabschaftKollektionId) {
-      return res.status(400).json({
-        success: false,
-        message: "maßschaftKollektionId must be provided",
-      });
-    }
-
-    // Validate customer and kollektion
-    const [customer, kollektion] = await Promise.all([
-      prisma.customers.findUnique({
-        where: { id: order.customerId },
-        select: { id: true },
-      }),
-      prisma.maßschaft_kollektion.findUnique({
-        where: { id: mabschaftKollektionId },
-        select: { id: true },
-      }),
-    ]);
+    // Validate customer
+    const customer = await prisma.customers.findUnique({
+      where: { id: order.customerId },
+      select: { id: true, customerNumber: true },
+    });
 
     if (!customer) {
       return res.status(404).json({
@@ -378,11 +376,52 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    if (!kollektion) {
-      return res.status(404).json({
-        success: false,
-        message: "Maßschaft Kollektion not found",
+    let kollektion: any = null;
+
+    // If custom_models is false, validate mabschaftKollektionId
+    if (!isCustomModels) {
+      if (!mabschaftKollektionId) {
+        return res.status(400).json({
+          success: false,
+          message: "maßschaftKollektionId must be provided when custom_models is false",
+        });
+      }
+
+      // Validate kollektion
+      kollektion = await prisma.maßschaft_kollektion.findUnique({
+        where: { id: mabschaftKollektionId },
+        select: { id: true },
       });
+
+      if (!kollektion) {
+        return res.status(404).json({
+          success: false,
+          message: "Maßschaft Kollektion not found",
+        });
+      }
+    }
+
+    // Validate maßschaftKollektionId only if not custom models
+    if (!isCustomModels) {
+      if (!mabschaftKollektionId) {
+        return res.status(400).json({
+          success: false,
+          message: "maßschaftKollektionId must be provided when custom_models is false",
+        });
+      }
+
+      // Validate kollektion
+      kollektion = await prisma.maßschaft_kollektion.findUnique({
+        where: { id: mabschaftKollektionId },
+        select: { id: true },
+      });
+
+      if (!kollektion) {
+        return res.status(404).json({
+          success: false,
+          message: "Maßschaft Kollektion not found",
+        });
+      }
     }
 
     // Parse leatherType if it's a string (JSON)
@@ -410,8 +449,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
       invoice2: files.invoice2?.[0]?.location || null,
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
-      other_customer_number: order.customer?.customerNumber
-        ? String(order.customer.customerNumber)
+      other_customer_number: customer?.customerNumber
+        ? String(customer.customerNumber)
         : null,
       lederfarbe: lederfarbe || null,
       innenfutter: innenfutter || null,
@@ -463,8 +502,20 @@ export const sendToAdminOrder_2 = async (req, res) => {
         : null,
       catagoary: "Massschafterstellung",
       isCompleted: false,
-      maßschaftKollektionId: mabschaftKollektionId,
+      isCustomeModels: isCustomModels,
+      // Only set maßschaftKollektionId if not custom models
+      maßschaftKollektionId: isCustomModels ? null : mabschaftKollektionId,
     };
+
+    // Add custom model fields only if isCustomeModels is true
+    if (isCustomModels) {
+      shaftData.custom_models_name = custom_models_name || null;
+      shaftData.custom_models_image = files.custom_models_image?.[0]?.location || null;
+      shaftData.custom_models_price = parsePrice(custom_models_price);
+      shaftData.custom_models_verschlussart = custom_models_verschlussart || null;
+      shaftData.custom_models_gender = custom_models_gender || null;
+      shaftData.custom_models_description = custom_models_description || null;
+    }
 
     // Create the custom shaft
     const customShaft = await prisma.custom_shafts.create({
@@ -497,22 +548,61 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
-    // create a transition
-    await prisma.admin_order_transitions.create({
-      data: {
-        massschuhe_order_id: orderId,
-        partnerId: id,
-        catagoary: "Massschafterstellung",
-        //totalPrice
-        price: customShaft.totalPrice,
-        note: "Massschafterstellung send to admin",
-      },
-    });
+    // create a transition (only if orderId exists)
+    if (orderId) {
+      await prisma.admin_order_transitions.create({
+        data: {
+          massschuhe_order_id: orderId,
+          partnerId: id,
+          catagoary: "Massschafterstellung",
+          price: customShaft.totalPrice,
+          note: isCustomModels
+            ? "Massschafterstellung (Custom Model) send to admin"
+            : "Massschafterstellung send to admin",
+        },
+      });
+    }
 
     // Images are already S3 URLs, use directly
     const formatImage = (s3Url: string | null) => s3Url || null;
 
-    const formattedCustomShaft = {
+    // Fields that belong to Halbprobenerstellung (should not appear in Massschafterstellung)
+    const halbprobenerstellungFields = [
+      "Bettungsdicke",
+      "Haertegrad_Shore",
+      "Fersenschale",
+      "Laengsgewölbestütze",
+      "Palotte_oder_Querpalotte",
+      "Korrektur_der_Fußstellung",
+      "Zehenelemente_Details",
+      "eine_korrektur_nötig_ist",
+      "Spezielles_Fußproblem",
+      "Zusatzkorrektur_Absatzerhöhung",
+      "Vertiefungen_Aussparungen",
+      "Oberfläche_finish",
+      "Überzug_Stärke",
+      "Anmerkungen_zur_Bettung",
+      "Leisten_mit_ohne_Platzhalter",
+      "Schuhleisten_Typ",
+      "Material_des_Leisten",
+      "Leisten_gleiche_Länge",
+      "Absatzhöhe",
+      "Abrollhilfe",
+      "Spezielle_Fußprobleme_Leisten",
+      "Anmerkungen_zum_Leisten",
+    ];
+
+    // Custom model fields (should only appear when isCustomeModels is true)
+    const customModelFields = [
+      "custom_models_name",
+      "custom_models_image",
+      "custom_models_price",
+      "custom_models_verschlussart",
+      "custom_models_gender",
+      "custom_models_description",
+    ];
+
+    const formattedCustomShaft: any = {
       ...customShaft,
       image3d_1: formatImage(customShaft.image3d_1),
       image3d_2: formatImage(customShaft.image3d_2),
@@ -533,7 +623,20 @@ export const sendToAdminOrder_2 = async (req, res) => {
         : null,
     };
 
+    // Remove user field
     const { user, ...finalFormattedShaft } = formattedCustomShaft;
+
+    // Remove Halbprobenerstellung fields (not relevant for Massschafterstellung)
+    halbprobenerstellungFields.forEach((field) => {
+      delete finalFormattedShaft[field];
+    });
+
+    // Remove custom model fields if isCustomeModels is false
+    if (!isCustomModels) {
+      customModelFields.forEach((field) => {
+        delete finalFormattedShaft[field];
+      });
+    }
 
     // Send response immediately
     res.status(201).json({
