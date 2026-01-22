@@ -8,7 +8,8 @@
     "build": "tsc",
     "dev": "nodemon --exec ts-node index.ts",
     "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
-    "migrate:rename-transitions": "ts-node scripts/rename-transitions-table.ts"
+    "migrate:rename-transitions": "ts-node scripts/rename-transitions-table.ts",
+    "migrate:employees-role": "ts-node scripts/migrate-employees-role.ts"
   },
   "keywords": [],
   "author": "",

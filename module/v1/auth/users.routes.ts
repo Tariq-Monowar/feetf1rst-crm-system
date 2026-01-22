@@ -33,6 +33,6 @@ router.patch(
 
 router.get("/partners", verifyUser("ADMIN"), getAllPartners);
 
-router.get("/check-auth", checkAuthStatus);
+router.get("/check-auth", verifyUser("ANY"), checkAuthStatus);
 
 export default router;

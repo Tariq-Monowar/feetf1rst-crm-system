@@ -180,12 +180,51 @@ export const loginUser = async (req: Request, res: Response) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({
+    // First check if it's a user (partner/admin)
+    let user: any = await prisma.user.findUnique({
       where: {
         email,
       },
     });
-    console.log(user);
+
+    let isEmployee = false;
+
+    // If not found in user table, check employees table
+    if (!user) {
+      const employee = await prisma.employees.findUnique({
+        where: {
+          email,
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          image: true,
+          employeeName: true,
+          accountName: true,
+          jobPosition: true,
+          financialAccess: true,
+          role: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              hauptstandort: true,
+              busnessName: true,
+              absenderEmail: true,
+              phone: true,
+            },
+          },
+        },
+      });
+
+      if (employee) {
+        user = employee;
+        isEmployee = true;
+      }
+    }
 
     if (!user) {
       res.status(404).json({
@@ -194,54 +233,70 @@ export const loginUser = async (req: Request, res: Response) => {
       return;
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    // Password validation - employees use plain text, users use bcrypt
+    let isPasswordValid = false;
+    if (isEmployee) {
+      isPasswordValid = user.password === password;
+    } else {
+      isPasswordValid = await bcrypt.compare(password, user.password);
+    }
 
     if (!isPasswordValid) {
       res.status(401).json({ message: "Invalid password" });
       return;
     }
 
+    // Determine role for token
+    const userRole = isEmployee ? "EMPLOYEE" : user.role;
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: userRole },
       process.env.JWT_SECRET as string,
-      { expiresIn: "100d" }
     );
 
-    // const expirationDate = new Date();
-    // expirationDate.setDate(expirationDate.getDate() + 100);
-
-    // await prisma.account.deleteMany({
-    //   where: { user_id: user.id }
-    // });
-    // let data =   await prisma.account.create({
-    //   data: {
-    //     user_id: user.id,
-    //     token: token,
-    //     expires_at: expirationDate
-    //   }
-    // });
-    if (user.role === "ADMIN") {
+    // Handle admin login notification
+    if (!isEmployee && user.role === "ADMIN") {
       const rawIp = req.ip || req.socket.remoteAddress || "Unknown";
       const ipAddress = rawIp.replace("::ffff:", "");
-
       sendAdminLoginNotification(user.email, user.name, ipAddress);
     }
 
-    // Image should already be S3 URL, use directly
-    const imageUrl = user.image || null;
+    // Format response based on user type
+    if (isEmployee) {
+      // Employee response with partner data
+      res.status(200).json({
+        success: true,
+        message: "Login successful",
+        user: {
+          id: user.id,
+          accountName: user.accountName,
+          employeeName: user.employeeName,
+          email: user.email,
+          image: user.image || null,
+          jobPosition: user.jobPosition,
+          financialAccess: user.financialAccess,
+          role: user.role || "EMPLOYEE",
+          partner: user.user || null,
+        },
+        token,
+      });
+    } else {
+      // User (partner/admin) response
+      const imageUrl = user.image || null;
+      res.status(200).json({
+        success: true,
+        message: "Login successful",
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: imageUrl,
+          role: user.role,
+        },
+        token,
+      });
+    }
 
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: imageUrl,
-        role: user.role,
-      },
-      token,
-    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -528,55 +583,61 @@ export const getAllPartners = async (req: Request, res: Response) => {
   }
 };
 
-export const checkAuthStatus = async (req: Request, res: Response) => {
+export const checkAuthStatus = async (req, res) => {
   try {
-    const authHeader = req.headers["authorization"];
-    if (!authHeader) {
-      return res.status(401).json({
-        success: false,
-        message: "No token provided",
-      });
-    }
+    // req.user is set by verifyUser middleware
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+    console.log(userId, userRole);
 
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : authHeader;
-    if (!token) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token format",
-      });
-    }
-
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET as string);
-    } catch (jwtError) {
-      console.error("JWT verification error:", jwtError);
-      return res.status(401).json({
-        success: false,
-        message: "Invalid or expired token",
-      });
-    }
-
-    if (!decoded || typeof decoded !== "object" || !decoded.id) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid token payload",
+        message: "User not authenticated",
       });
     }
 
     let user;
-    if (decoded.role === "EMPLOYEE") {
+    if (userRole === "EMPLOYEE") {
+      // Fetch employee with partner data
       user = await prisma.employees.findUnique({
-        where: { id: decoded.id },
+        where: { id: userId },
+        select: {
+          id: true,
+          accountName: true,
+          employeeName: true,
+          email: true,
+          image: true,
+          jobPosition: true,
+          financialAccess: true,
+          role: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              hauptstandort: true,
+              busnessName: true,
+              absenderEmail: true,
+              phone: true,
+            },
+          },
+        },
       });
     } else {
+      // Fetch user (partner/admin)
       user = await prisma.user.findUnique({
-        where: { id: decoded.id },
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          image: true,
+          role: true,
+        },
       });
     }
-    // Fetch user based on the decoded ID
 
     if (!user) {
       return res.status(404).json({
@@ -585,14 +646,34 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const { password, ...userData } = user;
-
-  
-
-    res.status(200).json({
-      success: true,
-      user: userData
-    });
+    // Format response based on user type
+    if (userRole === "EMPLOYEE") {
+      res.status(200).json({
+        success: true,
+        user: {
+          id: user.id,
+          accountName: user.accountName,
+          employeeName: user.employeeName,
+          email: user.email,
+          image: user.image || null,
+          jobPosition: user.jobPosition,
+          financialAccess: user.financialAccess,
+          role: user.role || "EMPLOYEE",
+          partner: user.user || null,
+        },
+      });
+    } else {
+      res.status(200).json({
+        success: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image || null,
+          role: user.role,
+        },
+      });
+    }
   } catch (error) {
     console.error("Auth check error:", error);
     return res.status(500).json({

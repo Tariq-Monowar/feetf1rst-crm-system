@@ -271,6 +271,7 @@ enum Role {
   ADMIN
   USER
   PARTNER
+  EMPLOYEE
 }
 
 enum Gender {
@@ -292,16 +293,17 @@ model Employees {
   financialAccess Boolean @default(false)
   jobPosition     String?
   image           String?
+  role            Role   @default(EMPLOYEE)
+
   partnerId       String
-  user            User    @relation(fields: [partnerId], references: [id])
+  user            User    @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   WorkshopNote WorkshopNote?
 
-  // Many-to-many relation
-  // massschuheOrders massschuhe_order[] @relation("OrderEmployees")
 
   createdAt                   DateTime                       @default(now())
   updatedAt                   DateTime                       @updatedAt
+
   appointmentEmployees        AppointmentEmployee[]
   massschuheOrders            massschuhe_order[]
   customerOrdersHistories     customerOrdersHistory[]
