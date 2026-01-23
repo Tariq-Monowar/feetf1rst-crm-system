@@ -1157,7 +1157,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
         notificationSend(
           massschuheOrder.userId,
           "updated_massschuhe order_status" as any,
-          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customerId})
+          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
            has been updated to the next phase.`,
           massschuheOrder.id,
           false,
@@ -1174,7 +1174,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
         notificationSend(
           massschuheOrder.userId,
           "updated_massschuhe order_status" as any,
-          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customerId})
+          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
            has been updated to the next phase.`,
           massschuheOrder.id,
           false,

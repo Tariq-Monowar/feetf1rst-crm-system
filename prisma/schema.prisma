@@ -1420,87 +1420,65 @@ model custom_shafts {
   id String @id @default(uuid())
 
   /**
-   * common info এটা সব খানে আছে
+   * cএটা সব খানে আছে
    * -------------------------------------------------------------------------------------------
    * -------------------------------------------------------------------------------------------
    */
-  orderNumber           String? // অর্ডার নম্বর (যদি অর্ডার নম্বর থাকে)
-  other_customer_number String? // বিকল্প কাস্টমার রেফারেন্স নম্বর (উভয় একসাথে ব্যবহার হবে না)
-  customerId            String? // সংশ্লিষ্ট কাস্টমারের আইডি
-  invoice               String? // ইনভোইস নম্বর
-  totalPrice            Float? // মোট প্রাপ্তিত খরচ
+
+  orderNumber           String? 
+  other_customer_number String?
+   
+  customerId            String? 
+  invoice               String?
+
+  totalPrice            Float? 
 
   // common for (Halbprobenerstellung || Massschafterstellung)
-  image3d_1 String? // 3D ভিউ প্রথম ছবি
-  image3d_2 String? // 3D ভিউ দ্বিতীয় ছবি
+  image3d_1 String? 
+  image3d_2 String? 
 
-/*
- * isCustomeModels এর উপর ভিত্তি করে যদি true থাকে তাহলে আমার আর maßschaft_kollektion এর আইডি লাগবে না।
- * আমাকে এর জন্য কিছু ডাটা যুক্ত করতে হবে যেমন, 
- * 1. কিছু জুতার নাম
- * 2. কিছু জুতার ছবি
- * 3. কিছু জুতার মূল্য
- * 4. কিছু জুতার ক্যাটাগরি
- * 5. কিছু জুতার লিঙ্গ
- * 6. কিছু জুতার বিস্তারিত বিবরণ
-*/
   isCustomeModels Boolean? @default(false)
+  // if isCustomeModels is true then we dont need to add the massschuhe_order_id
+
 
   /**
    * Halbprobenerstellung Started ওইয়ার্ডার ১
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
-  // Kunde                String?  // "Brugger Theo"
-  // Bestellnr            String?  // order number
-  // Liefertermin         DateTime? // delivery date
-
-  // Upload 3D-Datei
-  // image3d_1 String? 
-  // image3d_2 String? 
-
-  // 
-  Bettungsdicke         String? // "Min. 5mm", "Min. 7mm", "Min. 10mm"
-  Haertegrad_Shore      String? // "A30 (Weich)", "A40 (Mittel)", "A30 Vorfuß A50 Rückfuß", "A65/25/20 (Diabetesbettung)"
-  Fersenschale          String? // "Leichte Fersenschale (Standard)", "Keine Fersenschale", "Hohe Fersenschale"
-  Laengsgewölbestütze String? // "Mittel", "Leicht", "Stark", "Nach Fußscan"
-
-  //page 2
-  // Palotte/Querpalotte
-  Palotte_oder_Querpalotte String? // "Keine", "Ja, Palotte", "Ja, Querpalotte 1-5", "Ja, Querpalotte 2-5"
-
-  // Korrektur der Fußstellung
-  Korrektur_der_Fußstellung String? // "Keine", "Innenranderhöhung", "Aussenranderhöhung"
-
-  // Zehenelemente
-  Zehenelemente_Details     String? // "bei folgenden Zehen: ______"
-  eine_korrektur_nötig_ist String? // "In welchem Bereich? Wenn"
-  Spezielles_Fußproblem    String? // free text
-
-  // Zusatzkorrekturen
-  Zusatzkorrektur_Absatzerhöhung String?
-  Vertiefungen_Aussparungen       String?
-  Oberfläche_finish              String?
-
-  //page 3
-  Überzug_Stärke        String?
-  // Anmerkungen zur Bettung
-  Anmerkungen_zur_Bettung String?
-
-  // Leistenkonfigurator
-  Leisten_mit_ohne_Platzhalter String? // "Ohne Platzhalter", "Mit Platzhalter"
-  Schuhleisten_Typ             String? // "Halbschuh", "Knöchelhoch"
-  Material_des_Leisten         String? // "Kunststoff (Standard)", "Buchenholz"
-  Leisten_gleiche_Länge       Boolean?
-  Absatzhöhe                  String? // "5cm", "10cm", "15cm", "20cm"
-  Abrollhilfe                  String? // "Standard", "Verbesserte Mittelfußrolle", "Verbesserte Ballenrolle"
-
-  //page 3
-  // Spezielle Fußprobleme für Leisten
-  Spezielle_Fußprobleme_Leisten String?
-
-  // Anmerkungen zum Leisten
-  Anmerkungen_zum_Leisten String?
+  Halbprobenerstellung_json Json?
+  /**
+   * soll_die_bettung_neutral_oder_korrigierend String?
+   * Bettungsdicke                              String?
+   * Haertegrad_Shore       String?
+   * Haertegrad_Shore_price Float?
+   * Fersenschale          String?
+   * Laengsgewölbestütze String?
+   * soll_eine_pelotte_oder_querpelotte String?
+   * Korrektur_der_Fußstellung         String?
+   * Zehenelemente                      String?
+   * wenn_eine_korrektur_nötig_ist                     String?
+   * gibt_es_ein_spezielles_fußproblem_das_wir_bei_der String?
+   * vertiefungen_aussparungen String?
+   * zusatzkorrekturen       String?
+   * zusatzkorrekturen_price Float?
+   * Oberfläche_finish       String?
+   * Oberfläche_finish_price Float?
+   * Uberzug       String?
+   * Uberzug_price Float?
+   * hast_du_sonstige_anmerkungen_oder_wünsche_zu_der_bettung String?
+   * // Leistenkonfigurator
+   * soll_der_leisten_mit_oder_ohne_platzhalter_fuer_die_bettung String?
+   * Schuhleisten_typ       String?
+   * Schuhleisten_typ_price Float?
+   * material_des_leisten       String?
+   * material_des_leisten_price Float?
+   * soll_beide_leisten_die_gleiche_länge_haben String?
+   * absatzhöhe                                 String?
+   * abrollhilfe                                 String?
+   * gibt_es_spezielle_fußprobleme_die_wir_bei_der_fertigung String?
+   * hast_du_sonstige_anmerkungen_oder_wünsche_zum_leisten   String?
+   */
 
   /**
    * Massschafterstellung Ended
@@ -1513,55 +1491,74 @@ model custom_shafts {
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
-  lederfarbe        String? // চামড়ার রঙ
-  innenfutter       String? // ভিতরের লাইনিং
-  schafthohe        String? // শ্যাফটের উচ্চতা
-  polsterung        String? // কুশনিং
-  vestarkungen      String? // শক্তকরণ/সাপোর্ট
-  vestarkungen_text String? // শক্তকরণের বিস্তারিত বিবরণ
-  polsterung_text   String? // কুশনিংয়ের বিস্তারিত বিবরণ
 
-  osen_einsetzen_price         Float? // লেস হোল বসানোর খরচ
-  Passenden_schnursenkel_price Float? // উপযুক্ত লেস ক্রয় খরচ
 
-  nahtfarbe      String? // সেলাইয়ের রঙ
-  nahtfarbe_text String? // সেলাইয়ের রঙের বিবরণ
+  Massschafterstellung_json1 Json?
+  ledertyp_image             String?
+  zipper_image               String?
+  paintImage                 String?
 
-  lederType String? // চামড়ার ধরন
+  Massschafterstellung_json2 Json?
+  Mehr_ansehen_image         String?
+  invoice2                   String?
 
-  maßschaftKollektionId String? // বেস জুতার রেফারেন্স আইডি
-
-  // নতুন অ্যাড হইছে
-  paintImage  String?
-  leatherType Json?
-  invoice2    String?
-
-  //partner can add her own catagoary
-  custom_catagoary       String?
-  custom_catagoary_price Float?
-
-  //-----------------------------
-  //নতুন আরো অ্যাাড হলো
-  verschlussart                                       String? // "Klettverschluss (Velcro)", "Ösen", "Reißverschluss (Zipper)",
-  // ড্রপ ডাউনের ডাটার উপর ভিত্তি করে আরো তিনটা ফিল্ড আসবে
-  // Klettverschluss (Velcro) হলো কোন সাব ফিড আসবে না
-  moechten_sie_passende_schnuersenkel_zum_schuh       String? //Reißverschluss (Zipper), Ösen,
-  moechten_sie_passende_schnuersenkel_zum_schuh_price Float?
-
-  moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen       String? //Reißverschluss (Zipper), Ösen,
-  moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price Float?
-
-  moechten_sie_einen_zusaetzlichen_reissverschluss       String? //Reißverschluss (Zipper),
-  moechten_sie_einen_zusaetzlichen_reissverschluss_price Float?
-
-  //যদি isCustomeModels true থাকে তাহলে
-  zipper_image String?
-  custom_models_name String?
-  custom_models_image String?
-  custom_models_price Float?
+  custom_models_name          String?
+  custom_models_image         String?
+  custom_models_price         Float?
   custom_models_verschlussart String?
-  custom_models_gender String?
-  custom_models_description String?
+  custom_models_gender        String?
+  custom_models_description   String?
+
+  //---------------------- fiRST Page------------
+  /**
+   * /**
+   * kategorie String?
+   * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
+   * ledertyp              String?
+   * // Ledertypen den Schuhbereichen zuordnen
+   * ledertypen_definieren Json?
+   * nzahl_der_ledertypen String?
+   * Innenfutter          String?
+   * lederfarbe           String?
+   * schafthöhe          String?
+   * polsterung           String?
+   * verstärkungen       String?
+   * //এখানে হিতা তে হিপার হবে কিনা! জিপার থাকলে ইমেইজ হবে
+   * // বা জুতার ধরণ হবে এখানে Zipper, Eyelets, Velcro এর মধ্যে হবে
+   * //যদি Zipper হবে তাহলে এখানে জিপার ইমেইজ হবে
+   * verschlussart String? // Zipper, Eyelets, Velcro
+   * moechten_sie_passende_schnuersenkel_zum_schuh       String? //Reißverschluss (Zipper), Ösen,
+   * moechten_sie_passende_schnuersenkel_zum_schuh_price Float?
+   * moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen       String? //Reißverschluss (Zipper), Ösen,
+   * moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price Float?
+   */
+
+  //------------------------second page------------------------
+  /**
+   * /**
+   * //এই পেইজে একটা জুতার তলার ছবি আছে
+   * Mehr_ansehen_image       String?
+   * Mehr_ansehen_title       String?
+   * Mehr_ansehen_description String?
+   * hinterkappe String?
+   * leder_auswahl       String?
+   * leder_auswahl_price Float?
+   * Kknstruktionsart       String?
+   * Kknstruktionsart_price Float?
+   * brandsohle       String?
+   * brandsohle_price Float?
+   * ohlenmaterial String?
+   * absatz_höhe_am_besten_wie_bei_leisten_beachten String?
+   * abrollhilfe_Rolle String?
+   * absatz_form_chtung_bitte_achten_Sohle_beachten_ob_möglich String?
+   * linker_schuh_left_Shoe String?
+   * rechter_schuh_right_Shoe String?
+   * öchten_Sie_die_Laufsohle_lose_der_Bestellung_beilegen String?
+   * öchten_Sie_die_Laufsohle_lose_der_Bestellung_beilegen_price Float?
+   * esondere_hinweise String?
+   */
+  //---------------------------------------------------------------
+  //------------------------SECOND ORDER COMPLATE------------------------
 
   /**
    * Massschafterstellung Ended
@@ -1569,30 +1566,13 @@ model custom_shafts {
    * --------------------------------------------------------------------------
    */
 
-  // ওইয়ার্ডার ১ আর ২ এর জন্য কমন
-  //===========Common for Massschafterstellung and Bodenkonstruktion Started ===========
-  Konstruktionsart              String? // "Әeklebt", "Rohmengendht (Maschine)"
-  Fersenkappe                   String? // "Normal", "Verstärkt"
-  Farbauswahl_Bodenkonstruktion String? // "Nach Produktfoto", "Nach Personal (passendstes)", "Eigene Angabe"
-  Sohlenmaterial                String? // "EVA Shore 58 (Lunalight)", "EVA Shore 53 (AL)", "EVA Shore 30 (SLW)", "Leder"
-  Absatz_Höhe                  String? // first "mm" field
-  Absatz_Form                   String? // "Keilabsatz", "Steckteil", "Absatzkeil", "Flügelabsatz innen", "Flügelabsatz außen"
-  Abrollhilfe_Rolle             String? // "Keine", "Mittelfußrolle", "Absatzrolle", "Ballenrolle"
-  Laufsohle_Profil_Art          String? // From "Select" dropdown
-  Sohlenstärke                 String? // "4 mm", "6 mm"
-  Besondere_Hinweise            String? // Textfield
-
-  //===========Common for Massschafterstellung and Bodenkonstruktion Ended ===========
-
   /**
    * Bodenkonstruktion Started ওইয়ার্ডার ৩
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
+  bodenkonstruktion_json Json?
   staticImage String?
-  staticName  String?
-  description String?
-
   /**
    * Bodenkonstruktion Ended
    * --------------------------------------------------------------------------
@@ -1600,8 +1580,9 @@ model custom_shafts {
    */
 
   //relation-------------------------------------------------
-  maßschaft_kollektion maßschaft_kollektion? @relation(fields: [maßschaftKollektionId], references: [id]) // সংশ্লিষ্ট বেস জুতা
-  customer              customers?             @relation(fields: [customerId], references: [id]) // সংশ্লিষ্ট কাস্টমার
+  maßschaftKollektionId String?
+  maßschaft_kollektion  maßschaft_kollektion? @relation(fields: [maßschaftKollektionId], references: [id]) // সংশ্লিষ্ট বেস জুতা
+  customer               customers?             @relation(fields: [customerId], references: [id]) // সংশ্লিষ্ট কাস্টমার
 
   partnerId String? // পার্টনার আইডি
   user      User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull) // সংশ্লিষ্ট পার্টনার ইউজার
@@ -1632,7 +1613,6 @@ model custom_shafts {
   @@index([orderNumber]) // Order number search
   @@index([other_customer_number]) // Customer number search
   @@index([massschuhe_order_id]) // Order relation lookup
-  @@index([custom_catagoary]) // Custom category search
 }
 
 enum custom_shafts_catagoary {

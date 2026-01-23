@@ -6,240 +6,109 @@ import { deleteFileFromS3 } from "../../../../utils/s3utils";
 const prisma = new PrismaClient();
 
 export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
+  const files = req.files as any;
+
+  const cleanupFiles = () => {
+    if (!files) return;
+    Object.keys(files).forEach((key) => {
+      files[key].forEach((file: any) => {
+        if (file.location) {
+          deleteFileFromS3(file.location);
+        }
+      });
+    });
+  };
+
   try {
     const { orderId } = req.params;
     const userId = req.user?.id;
 
-    // Validate request
+    const { totalPrice, Halbprobenerstellung_json } = req.body;
+
     if (!orderId) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Order ID is required",
       });
     }
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized: user not authenticated",
-      });
-    }
-
-    const getField = (key: string) => {
-      if (req.body[key] !== undefined) return req.body[key];
-
-      const normalize = (str: string) =>
-        str
-          .replace(/Ã¶/g, "ö")
-          .replace(/Ã¼/g, "ü")
-          .replace(/Ã¤/g, "ä")
-          .replace(/Ã\x9F/g, "ß")
-          .replace(/Ã\x9C/g, "Ü")
-          .replace(/Ã\x84/g, "Ä")
-          .replace(/Ã\x96/g, "Ö")
-          .toLowerCase();
-
-      const normalizedKey = normalize(key);
-      const foundKey = Object.keys(req.body).find(
-        (k) => normalize(k) === normalizedKey
-      );
-      return foundKey ? req.body[foundKey] : undefined;
-    };
-
-    const orNull = (value: any) => (value !== undefined ? value : null);
-
-    const toBoolean = (value: any): boolean | null => {
-      if (value === undefined) return null;
-      if (typeof value === "boolean") return value;
-      if (typeof value === "string") {
-        const lower = value.toLowerCase();
-        return (
-          lower.includes("ja") ||
-          lower.includes("yes") ||
-          lower === "true" ||
-          value === "1"
-        );
-      }
-      return Boolean(value);
-    };
-
-    // Helper: Parse totalPrice
-    const parsePrice = (value: any): number | null => {
-      if (value === undefined || value === null || value === "") return null;
-      const parsed = parseFloat(value.toString());
-      return isNaN(parsed) ? null : parsed;
-    };
-
-    const files = req.files as any;
-
-    if (files) {
-      console.log("Received file fields:", Object.keys(files));
-    }
-
-    const threed_model_right =
-      files?.image3d_1?.[0]?.location ||
-      files?.threed_model_right?.[0]?.location ||
-      null;
-    const threed_model_left =
-      files?.image3d_2?.[0]?.location ||
-      files?.threed_model_left?.[0]?.location ||
-      null;
+    const image3d_1 = files?.image3d_1?.[0]?.location || null;
+    const image3d_2 = files?.image3d_2?.[0]?.location || null;
     const invoice = files?.invoice?.[0]?.location || null;
 
     // Verify order exists
-    let order;
-    try {
-      order = await prisma.massschuhe_order.findUnique({
-        where: { id: orderId },
-        select: { id: true },
-      });
-    } catch (dbError: any) {
-      console.error("Database error finding order:", dbError);
-      return res.status(500).json({
-        success: false,
-        message: "Error verifying order",
-        error:
-          process.env.NODE_ENV === "development" ? dbError.message : undefined,
-      });
-    }
+    const order = await prisma.massschuhe_order.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
 
     if (!order) {
+      cleanupFiles();
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    // Create custom shaft order
-    let adminOrder;
-    try {
-      adminOrder = await prisma.custom_shafts.create({
-        data: {
-          massschuhe_order_id: orderId,
-          partnerId: userId,
-          image3d_1: threed_model_right,
-          image3d_2: threed_model_left,
-          invoice: invoice,
-          isCompleted: false,
-          catagoary: "Halbprobenerstellung",
-          Bettungsdicke: orNull(getField("Bettungsdicke")),
-          Haertegrad_Shore: orNull(getField("Haertegrad_Shore")),
-          Fersenschale: orNull(getField("Fersenschale")),
-          Laengsgewölbestütze: orNull(getField("Laengsgewölbestütze")),
-          Palotte_oder_Querpalotte: orNull(
-            getField("Palotte_oder_Querpalotte")
-          ),
-          Korrektur_der_Fußstellung: orNull(
-            getField("Korrektur_der_Fußstellung")
-          ),
-          Zehenelemente_Details: orNull(getField("Zehenelemente_Details")),
-          eine_korrektur_nötig_ist: orNull(
-            getField("eine_korrektur_nötig_ist")
-          ),
-          Spezielles_Fußproblem: orNull(getField("Spezielles_Fußproblem")),
-          Zusatzkorrektur_Absatzerhöhung: orNull(
-            getField("Zusatzkorrektur_Absatzerhöhung")
-          ),
-          Vertiefungen_Aussparungen: orNull(
-            getField("Vertiefungen_Aussparungen")
-          ),
-          Oberfläche_finish: orNull(getField("Oberfläche_finish")),
-          Überzug_Stärke: orNull(getField("Überzug_Stärke")),
-          Anmerkungen_zur_Bettung: orNull(getField("Anmerkungen_zur_Bettung")),
-          Leisten_mit_ohne_Platzhalter: orNull(
-            getField("Leisten_mit_ohne_Platzhalter")
-          ),
-          Schuhleisten_Typ: orNull(getField("Schuhleisten_Typ")),
-          Material_des_Leisten: orNull(getField("Material_des_Leisten")),
-          Leisten_gleiche_Länge: toBoolean(getField("Leisten_gleiche_Länge")),
-          Absatzhöhe: orNull(getField("Absatzhöhe")),
-          Abrollhilfe: orNull(getField("Abrollhilfe")),
-          Spezielle_Fußprobleme_Leisten: orNull(
-            getField("Spezielle_Fußprobleme_Leisten")
-          ),
-          Anmerkungen_zum_Leisten: orNull(getField("Anmerkungen_zum_Leisten")),
-          totalPrice: parsePrice(getField("totalPrice")),
-        },
-        select: {
-          id: true,
-          image3d_1: true,
-          image3d_2: true,
-          invoice: true,
-          isCompleted: true,
-          catagoary: true,
-          Bettungsdicke: true,
-          Haertegrad_Shore: true,
-          Fersenschale: true,
-          Laengsgewölbestütze: true,
-          Palotte_oder_Querpalotte: true,
-          Korrektur_der_Fußstellung: true,
-          Zehenelemente_Details: true,
-          eine_korrektur_nötig_ist: true,
-          Spezielles_Fußproblem: true,
-          Zusatzkorrektur_Absatzerhöhung: true,
-          Vertiefungen_Aussparungen: true,
-          Oberfläche_finish: true,
-          Überzug_Stärke: true,
-          Anmerkungen_zur_Bettung: true,
-          Leisten_mit_ohne_Platzhalter: true,
-          Schuhleisten_Typ: true,
-          Material_des_Leisten: true,
-          Leisten_gleiche_Länge: true,
-          Absatzhöhe: true,
-          Abrollhilfe: true,
-          Spezielle_Fußprobleme_Leisten: true,
-          Anmerkungen_zum_Leisten: true,
-          totalPrice: true,
-        },
-      });
-    } catch (error: any) {
-      console.error("Database error creating custom_shafts:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Error creating order",
-        error: error.message,
-      });
-    }
+    const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
 
-    // update the massschuhe_order to isPanding true
+    // Create custom shaft order
+    const data = await prisma.custom_shafts.create({
+      data: {
+        massschuhe_order_id: orderId,
+        partnerId: userId,
+        totalPrice: parsedTotalPrice,
+        Halbprobenerstellung_json,
+        image3d_1,
+        image3d_2,
+        invoice,
+        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
+          10000 + Math.random() * 90000,
+        )}`,
+        catagoary: "Halbprobenerstellung",
+        isCompleted: false,
+        status: "Neu",
+      },
+      select: {
+        id: true,
+        totalPrice: true,
+        image3d_1: true,
+        image3d_2: true,
+        invoice: true,
+        orderNumber: true,
+        catagoary: true,
+        status: true,
+        Halbprobenerstellung_json: true,
+      },
+    });
+
+    // Update the massschuhe_order to isPanding true
     await prisma.massschuhe_order.update({
       where: { id: orderId },
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
     // Create transition record
-    try {
-      await prisma.admin_order_transitions.create({
-        data: {
-          massschuhe_order_id: orderId,
-          partnerId: userId,
-          catagoary: "Halbprobenerstellung",
-          price: adminOrder.totalPrice,
-          note: "Halbprobenerstellung send to admin",
-        },
-      });
-    } catch (transitionError: any) {
-      console.error("Database error creating transition:", transitionError);
-      // Don't fail the whole request if transition creation fails
-      console.warn(
-        "Warning: Failed to create transition record, but order was created successfully"
-      );
-    }
+    await prisma.admin_order_transitions.create({
+      data: {
+        massschuhe_order_id: orderId,
+        partnerId: userId,
+        catagoary: "Halbprobenerstellung",
+        price: data.totalPrice,
+        note: "Halbprobenerstellung send to admin",
+      },
+    });
 
-    // Images are already S3 URLs, use directly
-    const formatImage = (s3Url: string | null) => s3Url || null;
-
+    // Format response nicely for frontend
     return res.status(200).json({
       success: true,
       message: "Order sent to admin 1 successfully",
-      data: {
-        ...adminOrder,
-        image3d_1: formatImage(adminOrder.image3d_1),
-        image3d_2: formatImage(adminOrder.image3d_2),
-        invoice: formatImage(adminOrder.invoice),
-      },
+      data,
+      // Halbprobenerstellung_json: data.Halbprobenerstellung_json && typeof data.Halbprobenerstellung_json === 'string' ? (() => { try { return JSON.parse(data.Halbprobenerstellung_json); } catch { return data.Halbprobenerstellung_json; } })() : data.Halbprobenerstellung_json,
     });
   } catch (error: any) {
+    console.error("Send to Admin Order 1 Error:", error);
+    cleanupFiles();
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -248,20 +117,25 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
   }
 };
 
+
 export const sendToAdminOrder_2 = async (req, res) => {
   const files = req.files as any;
   const { id } = req.user;
 
+  const cleanupFiles = () => {
+    if (!files) return;
+    Object.keys(files).forEach((key) => {
+      files[key].forEach((file: any) => {
+        if (file.location) {
+          deleteFileFromS3(file.location);
+        }
+      });
+    });
+  };
+
   // Get orderId from route params and custom_models from query
   const { orderId } = req.params;
   const { custom_models } = req.query;
-
-  // Helper: Parse price values
-  const parsePrice = (value: any): number | null => {
-    if (value === undefined || value === null || value === "") return null;
-    const parsed = parseFloat(value.toString());
-    return isNaN(parsed) ? null : parsed;
-  };
 
   // Helper: Parse boolean
   const parseBoolean = (value: any): boolean => {
@@ -274,55 +148,25 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   const isCustomModels = parseBoolean(custom_models);
 
-  // Extract all fields from req.body
+  // Extract fields from req.body
   const {
     mabschaftKollektionId,
-    lederfarbe,
-    innenfutter,
-    schafthohe,
-    polsterung,
-    vestarkungen,
-    polsterung_text,
-    vestarkungen_text,
-    nahtfarbe,
-    nahtfarbe_text,
-    lederType,
-    osen_einsetzen_price,
-    Passenden_schnursenkel_price,
-    maßschaftKollektionId,
-    leatherType,
-    // Common fields for Massschafterstellung and Bodenkonstruktion
-    Konstruktionsart,
-    Fersenkappe,
-    Farbauswahl_Bodenkonstruktion,
-    Sohlenmaterial,
-    Absatz_Höhe,
-    Absatz_Form,
-    Abrollhilfe_Rolle,
-    Laufsohle_Profil_Art,
-    Sohlenstärke,
-    Besondere_Hinweise,
+
     totalPrice,
-    verschlussart,
-    moechten_sie_passende_schnuersenkel_zum_schuh,
-    moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen,
-    moechten_sie_einen_zusaetzlichen_reissverschluss,
-    custom_catagoary,
-    custom_catagoary_price,
-    moechten_sie_passende_schnuersenkel_zum_schuh_price,
-    moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price,
-    moechten_sie_einen_zusaetzlichen_reissverschluss_price,
-    // Custom model fields (only used when custom_models=true)
+
     custom_models_name,
     custom_models_price,
     custom_models_verschlussart,
     custom_models_gender,
     custom_models_description,
+
+    Massschafterstellung_json1,
+    Massschafterstellung_json2,
   } = req.body;
 
   try {
-    // Get order and validate (orderId is always required from route params)
     if (!orderId) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "orderId is required",
@@ -344,19 +188,15 @@ export const sendToAdminOrder_2 = async (req, res) => {
     });
 
     if (!order) {
+      cleanupFiles();
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    await prisma.massschuhe_order.update({
-      where: { id: orderId },
-      data: { isPanding: true },
-    });
-
-    // Get customer from order
     if (!order.customerId) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Order does not have a customer associated",
@@ -370,30 +210,30 @@ export const sendToAdminOrder_2 = async (req, res) => {
     });
 
     if (!customer) {
+      cleanupFiles();
       return res.status(404).json({
         success: false,
         message: "Customer not found",
       });
     }
 
-    let kollektion: any = null;
-
-    // If custom_models is false, validate mabschaftKollektionId
+    // Validate mabschaftKollektionId if not custom models
     if (!isCustomModels) {
       if (!mabschaftKollektionId) {
+        cleanupFiles();
         return res.status(400).json({
           success: false,
           message: "maßschaftKollektionId must be provided when custom_models is false",
         });
       }
 
-      // Validate kollektion
-      kollektion = await prisma.maßschaft_kollektion.findUnique({
+      const kollektion = await prisma.maßschaft_kollektion.findUnique({
         where: { id: mabschaftKollektionId },
         select: { id: true },
       });
 
       if (!kollektion) {
+        cleanupFiles();
         return res.status(404).json({
           success: false,
           message: "Maßschaft Kollektion not found",
@@ -401,109 +241,34 @@ export const sendToAdminOrder_2 = async (req, res) => {
       }
     }
 
-    // Validate maßschaftKollektionId only if not custom models
-    if (!isCustomModels) {
-      if (!mabschaftKollektionId) {
-        return res.status(400).json({
-          success: false,
-          message: "maßschaftKollektionId must be provided when custom_models is false",
-        });
-      }
-
-      // Validate kollektion
-      kollektion = await prisma.maßschaft_kollektion.findUnique({
-        where: { id: mabschaftKollektionId },
-        select: { id: true },
-      });
-
-      if (!kollektion) {
-        return res.status(404).json({
-          success: false,
-          message: "Maßschaft Kollektion not found",
-        });
-      }
-    }
-
-    // Parse leatherType if it's a string (JSON)
-    let parsedLeatherType = null;
-    if (leatherType) {
-      try {
-        parsedLeatherType =
-          typeof leatherType === "string"
-            ? JSON.parse(leatherType)
-            : leatherType;
-      } catch (e) {
-        console.warn("Failed to parse leatherType as JSON:", e);
-        parsedLeatherType = leatherType;
-      }
-    }
+    // Helper: Parse price values
+    const parsePrice = (value: any): number | null => {
+      if (value === undefined || value === null || value === "") return null;
+      const parsed = parseFloat(value.toString());
+      return isNaN(parsed) ? null : parsed;
+    };
 
     // Prepare data object
     const shaftData: any = {
       massschuhe_order_id: orderId,
       partnerId: id,
       customerId: order.customerId,
+
       image3d_1: files.image3d_1?.[0]?.location || null,
       image3d_2: files.image3d_2?.[0]?.location || null,
       paintImage: files.paintImage?.[0]?.location || null,
       invoice2: files.invoice2?.[0]?.location || null,
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
-      other_customer_number: customer?.customerNumber
-        ? String(customer.customerNumber)
-        : null,
-      lederfarbe: lederfarbe || null,
-      innenfutter: innenfutter || null,
-      schafthohe: schafthohe || null,
-      polsterung: polsterung || null,
-      vestarkungen: vestarkungen || null,
-      polsterung_text: polsterung_text || null,
-      vestarkungen_text: vestarkungen_text || null,
-      nahtfarbe: nahtfarbe || null,
-      nahtfarbe_text: nahtfarbe_text || null,
-      lederType: lederType || null,
-      leatherType: parsedLeatherType,
-      // Common fields for Massschafterstellung and Bodenkonstruktion
-      Konstruktionsart: Konstruktionsart || null,
-      Fersenkappe: Fersenkappe || null,
-      Farbauswahl_Bodenkonstruktion: Farbauswahl_Bodenkonstruktion || null,
-      Sohlenmaterial: Sohlenmaterial || null,
-      Absatz_Höhe: Absatz_Höhe || null,
-      Absatz_Form: Absatz_Form || null,
-      Abrollhilfe_Rolle: Abrollhilfe_Rolle || null,
-      Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
-      Sohlenstärke: Sohlenstärke || null,
-      Besondere_Hinweise: Besondere_Hinweise || null,
-      verschlussart: verschlussart || null,
-      moechten_sie_passende_schnuersenkel_zum_schuh:
-        moechten_sie_passende_schnuersenkel_zum_schuh || null,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen:
-        moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen || null,
-      moechten_sie_einen_zusaetzlichen_reissverschluss:
-        moechten_sie_einen_zusaetzlichen_reissverschluss || null,
-      custom_catagoary: custom_catagoary || null,
-      custom_catagoary_price: parsePrice(custom_catagoary_price),
-      moechten_sie_passende_schnuersenkel_zum_schuh_price:
-        parsePrice(moechten_sie_passende_schnuersenkel_zum_schuh_price),
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price:
-        parsePrice(moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price),
-      moechten_sie_einen_zusaetzlichen_reissverschluss_price:
-        parsePrice(moechten_sie_einen_zusaetzlichen_reissverschluss_price),
+      other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
+      Massschafterstellung_json1,
+      Massschafterstellung_json2,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
-      orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
-        10000 + Math.random() * 90000
-      )}`,
+      orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
-      osen_einsetzen_price: osen_einsetzen_price
-        ? parseFloat(osen_einsetzen_price)
-        : null,
-      Passenden_schnursenkel_price: Passenden_schnursenkel_price
-        ? parseFloat(Passenden_schnursenkel_price)
-        : null,
       catagoary: "Massschafterstellung",
       isCompleted: false,
       isCustomeModels: isCustomModels,
-      // Only set maßschaftKollektionId if not custom models
       maßschaftKollektionId: isCustomModels ? null : mabschaftKollektionId,
     };
 
@@ -515,149 +280,101 @@ export const sendToAdminOrder_2 = async (req, res) => {
       shaftData.custom_models_verschlussart = custom_models_verschlussart || null;
       shaftData.custom_models_gender = custom_models_gender || null;
       shaftData.custom_models_description = custom_models_description || null;
+
+
     }
 
     // Create the custom shaft
     const customShaft = await prisma.custom_shafts.create({
       data: shaftData,
-      include: {
-        customer: {
-          select: {
-            id: true,
-            vorname: true,
-            nachname: true,
-            email: true,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        customerId: true,
+        createdAt: true,
+        updatedAt: true,
+        partnerId: true,
+        image3d_1: true,
+        image3d_2: true,
+        paintImage: true,
+        invoice2: true,
+        invoice: true,
+        zipper_image: true,
+        other_customer_number: true,
+        Massschafterstellung_json1: true,
+        Massschafterstellung_json2: true,
+        totalPrice: true,
+        isCustomeModels: true,
+        maßschaftKollektionId: true,
+        custom_models_name: true,
+        custom_models_image: true,
+        custom_models_price: true,
+        custom_models_verschlussart: true,
+        custom_models_gender: true,
+        custom_models_description: true,
+        catagoary: true,
+          maßschaft_kollektion: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              image: true,
+            },
           },
         },
-        maßschaft_kollektion: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            image: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
+       
+
+    });
+
+    // Update order status
+    await prisma.massschuhe_order.update({
+      where: { id: orderId },
+      data: { isPanding: true },
+    });
+
+    // Create transition record
+    await prisma.admin_order_transitions.create({
+      data: {
+        massschuhe_order_id: orderId,
+        partnerId: id,
+        catagoary: "Massschafterstellung",
+        price: customShaft.totalPrice,
+        note: isCustomModels
+          ? "Massschafterstellung (Custom Model) send to admin"
+          : "Massschafterstellung send to admin",
       },
     });
 
-    // create a transition (only if orderId exists)
-    if (orderId) {
-      await prisma.admin_order_transitions.create({
-        data: {
-          massschuhe_order_id: orderId,
-          partnerId: id,
-          catagoary: "Massschafterstellung",
-          price: customShaft.totalPrice,
-          note: isCustomModels
-            ? "Massschafterstellung (Custom Model) send to admin"
-            : "Massschafterstellung send to admin",
-        },
-      });
-    }
+    // Parse JSON fields if they are strings
 
-    // Images are already S3 URLs, use directly
-    const formatImage = (s3Url: string | null) => s3Url || null;
-
-    // Fields that belong to Halbprobenerstellung (should not appear in Massschafterstellung)
-    const halbprobenerstellungFields = [
-      "Bettungsdicke",
-      "Haertegrad_Shore",
-      "Fersenschale",
-      "Laengsgewölbestütze",
-      "Palotte_oder_Querpalotte",
-      "Korrektur_der_Fußstellung",
-      "Zehenelemente_Details",
-      "eine_korrektur_nötig_ist",
-      "Spezielles_Fußproblem",
-      "Zusatzkorrektur_Absatzerhöhung",
-      "Vertiefungen_Aussparungen",
-      "Oberfläche_finish",
-      "Überzug_Stärke",
-      "Anmerkungen_zur_Bettung",
-      "Leisten_mit_ohne_Platzhalter",
-      "Schuhleisten_Typ",
-      "Material_des_Leisten",
-      "Leisten_gleiche_Länge",
-      "Absatzhöhe",
-      "Abrollhilfe",
-      "Spezielle_Fußprobleme_Leisten",
-      "Anmerkungen_zum_Leisten",
-    ];
-
-    // Custom model fields (should only appear when isCustomeModels is true)
-    const customModelFields = [
-      "custom_models_name",
-      "custom_models_image",
-      "custom_models_price",
-      "custom_models_verschlussart",
-      "custom_models_gender",
-      "custom_models_description",
-    ];
-
-    const formattedCustomShaft: any = {
+    // Format response
+    const responseData: any = {
       ...customShaft,
-      image3d_1: formatImage(customShaft.image3d_1),
-      image3d_2: formatImage(customShaft.image3d_2),
-      paintImage: formatImage(customShaft.paintImage),
-      invoice2: formatImage(customShaft.invoice2),
-      invoice: formatImage(customShaft.invoice),
-      maßschaft_kollektion: customShaft.maßschaft_kollektion
-        ? {
-          ...customShaft.maßschaft_kollektion,
-          image: formatImage(customShaft.maßschaft_kollektion.image),
-        }
-        : null,
-      partner: customShaft.user
-        ? {
-          ...customShaft.user,
-          image: formatImage(customShaft.user.image),
-        }
-        : null,
+      maßschaft_kollektion: customShaft.maßschaft_kollektion || null,
     };
 
     // Remove user field
-    const { user, ...finalFormattedShaft } = formattedCustomShaft;
-
-    // Remove Halbprobenerstellung fields (not relevant for Massschafterstellung)
-    halbprobenerstellungFields.forEach((field) => {
-      delete finalFormattedShaft[field];
-    });
+    const { user, ...finalData } = responseData;
 
     // Remove custom model fields if isCustomeModels is false
     if (!isCustomModels) {
-      customModelFields.forEach((field) => {
-        delete finalFormattedShaft[field];
-      });
+      delete finalData.custom_models_name;
+      delete finalData.custom_models_image;
+      delete finalData.custom_models_price;
+      delete finalData.custom_models_verschlussart;
+      delete finalData.custom_models_gender;
+      delete finalData.custom_models_description;
     }
 
-    // Send response immediately
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
-      data: finalFormattedShaft,
+      data: finalData,
     });
   } catch (err: any) {
     console.error("Create Custom Shaft Error:", err);
-
-    // File cleanup (non-blocking) - delete from S3 if files were uploaded
-    if (files) {
-      Object.keys(files).forEach((key) => {
-        files[key].forEach((file: any) => {
-          if (file.location) {
-            // Delete from S3 if file was uploaded
-            deleteFileFromS3(file.location);
-          }
-        });
-      });
-    }
+    cleanupFiles();
 
     if (err.code === "P2003") {
       return res.status(400).json({
@@ -674,119 +391,96 @@ export const sendToAdminOrder_2 = async (req, res) => {
   }
 };
 
+
 export const sendToAdminOrder_3 = async (req, res) => {
+  const files = req.files as any;
+
+  const cleanupFiles = () => {
+    if (!files) return;
+    Object.keys(files).forEach((key) => {
+      files[key].forEach((file: any) => {
+        if (file.location) {
+          deleteFileFromS3(file.location);
+        }
+      });
+    });
+  };
+
   try {
-    const { id } = req.user;
-    const files = req.files as any;
+    const { orderId } = req.params;
+    const userId = req.user?.id;
+
+    const { totalPrice, bodenkonstruktion_json, staticName, description } = req.body;
+
+    if (!orderId) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
     const invoice = files?.invoice?.[0]?.location || null;
     const staticImage = files?.staticImage?.[0]?.location || null;
-    const orderId = req.params.orderId;
 
-    const {
-      Konstruktionsart,
-      Fersenkappe,
-      Farbauswahl_Bodenkonstruktion,
-      Sohlenmaterial,
-      Absatz_Höhe,
-      Absatz_Form,
-      Abrollhilfe_Rolle,
-      Laufsohle_Profil_Art,
-      Sohlenstärke,
-      Besondere_Hinweise,
-      staticName,
-      description,
-      totalPrice,
-    } = req.body;
-
+    // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
       where: { id: orderId },
+      select: { id: true },
     });
+
     if (!order) {
+      cleanupFiles();
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
-    const adminOrder = await prisma.custom_shafts.create({
+    const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
+
+    // Create custom shaft order
+    const data = await prisma.custom_shafts.create({
       data: {
         massschuhe_order_id: orderId,
-        partnerId: id,
-        invoice: invoice,
-        staticImage: staticImage,
-        staticName: staticName || null,
-        description: description || null,
-        Konstruktionsart: Konstruktionsart || null,
-        Fersenkappe: Fersenkappe || null,
-        Farbauswahl_Bodenkonstruktion: Farbauswahl_Bodenkonstruktion || null,
-        Sohlenmaterial: Sohlenmaterial || null,
-        Absatz_Höhe: Absatz_Höhe || null,
-        Absatz_Form: Absatz_Form || null,
-        Abrollhilfe_Rolle: Abrollhilfe_Rolle || null,
-        Laufsohle_Profil_Art: Laufsohle_Profil_Art || null,
-        Sohlenstärke: Sohlenstärke || null,
-        Besondere_Hinweise: Besondere_Hinweise || null,
-        totalPrice: totalPrice ? parseFloat(totalPrice) : null,
-        isCompleted: false,
+        partnerId: userId,
+        totalPrice: parsedTotalPrice,
+        bodenkonstruktion_json,
+        invoice,
+        staticImage,
+        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
+          10000 + Math.random() * 90000,
+        )}`,
         catagoary: "Bodenkonstruktion",
+        isCompleted: false,
+        status: "Neu",
       },
       select: {
         id: true,
+        totalPrice: true,
         invoice: true,
         staticImage: true,
-        staticName: true,
-        description: true,
-        Konstruktionsart: true,
-        Fersenkappe: true,
-        Farbauswahl_Bodenkonstruktion: true,
-        Sohlenmaterial: true,
-        Absatz_Höhe: true,
-        Absatz_Form: true,
-        Abrollhilfe_Rolle: true,
-        Laufsohle_Profil_Art: true,
-        Sohlenstärke: true,
-        Besondere_Hinweise: true,
-        totalPrice: true,
-        isCompleted: true,
+        orderNumber: true,
         catagoary: true,
+        status: true,
+        bodenkonstruktion_json: true,
+        
       },
     });
 
-    // Images are already S3 URLs, use directly
-    const formatImage = (s3Url: string | null) => s3Url || null;
-
-    const formattedAdminOrder = {
-      id: adminOrder.id,
-      invoice: formatImage(adminOrder.invoice),
-      staticImage: formatImage(adminOrder.staticImage),
-      staticName: adminOrder.staticName,
-      description: adminOrder.description,
-      Konstruktionsart: adminOrder.Konstruktionsart,
-      Fersenkappe: adminOrder.Fersenkappe,
-      Farbauswahl_Bodenkonstruktion: adminOrder.Farbauswahl_Bodenkonstruktion,
-      Sohlenmaterial: adminOrder.Sohlenmaterial,
-      Absatz_Höhe: adminOrder.Absatz_Höhe,
-      Absatz_Form: adminOrder.Absatz_Form,
-      Abrollhilfe_Rolle: adminOrder.Abrollhilfe_Rolle,
-      Laufsohle_Profil_Art: adminOrder.Laufsohle_Profil_Art,
-      Sohlenstärke: adminOrder.Sohlenstärke,
-      Besondere_Hinweise: adminOrder.Besondere_Hinweise,
-      totalPrice: adminOrder.totalPrice,
-      isCompleted: adminOrder.isCompleted,
-      catagoary: adminOrder.catagoary,
-    };
-
+    // Update the massschuhe_order to isPanding true
     await prisma.massschuhe_order.update({
       where: { id: orderId },
-      data: { isPanding: true },
+      data: { isPanding: true, production_startedAt: new Date() },
     });
 
+    // Create transition record
     await prisma.admin_order_transitions.create({
       data: {
         massschuhe_order_id: orderId,
-        partnerId: id,
+        partnerId: userId,
         catagoary: "Bodenkonstruktion",
-        price: adminOrder.totalPrice,
+        price: data.totalPrice,
         note: "Bodenkonstruktion send to admin",
       },
     });
@@ -794,9 +488,11 @@ export const sendToAdminOrder_3 = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Order sent to admin 3 successfully",
-      data: formattedAdminOrder,
+      data,
     });
   } catch (error: any) {
+    console.error("Send to Admin Order 3 Error:", error);
+    cleanupFiles();
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -805,20 +501,20 @@ export const sendToAdminOrder_3 = async (req, res) => {
   }
 };
 
+
 export const getAllAdminOrders = async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+    const cursor = req.query.cursor as string | undefined;
     const search = (req.query.search as string)?.trim() || "";
     const status = req.query.status;
     const catagoary = req.query.catagoary;
-    const skip = (page - 1) * limit;
-    
-    // Early return for invalid pagination
-    if (page < 1 || limit < 1) {
+
+    // Validate limit
+    if (limit < 1 || limit > 100) {
       return res.status(400).json({
         success: false,
-        message: "Invalid pagination parameters",
+        message: "Limit must be between 1 and 100",
       });
     }
 
@@ -866,6 +562,12 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       whereCondition.catagoary = catagoary;
     }
 
+    // Apply cursor-based pagination
+    // If cursor (ID) is provided, fetch records with id less than cursor (for descending order)
+    if (cursor) {
+      whereCondition.id = { lt: cursor };
+    }
+
     // Build search conditions
     if (search) {
       const searchConditions: any[] = [
@@ -898,107 +600,45 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       whereCondition.OR = searchConditions;
     }
 
-    // Optimize: Use composite index for ordering when filtering by category
-    const orderByField = catagoary 
-      ? [{ catagoary: "asc" as const }, { createdAt: "desc" as const }]
-      : { createdAt: "desc" as const };
-
-    // Fetch data with only essential fields for table view
-    const [totalCount, customShafts] = await Promise.all([
-      prisma.custom_shafts.count({
-        where: whereCondition,
-      }),
-      prisma.custom_shafts.findMany({
-        where: whereCondition,
-        skip,
-        take: limit,
-        orderBy: orderByField,
-        select: {
-          id: true,
-          orderNumber: true,
-          catagoary: true,
-          status: true,
-          totalPrice: true,
-          other_customer_number: true,
-          createdAt: true,
-          isCustomeModels: true,
-
-          // Relations for table display
-          customer: {
-            select: {
-              id: true,
-              vorname: true,
-              nachname: true,
-            },
+    // Cursor-based pagination: Always order by id (ascending) for consistent cursor behavior
+    // Fetch limit + 1 to check if there's a next page
+    const data = await prisma.custom_shafts.findMany({
+      where: whereCondition,
+      take: limit + 1, // Fetch one extra to check if there's more
+      orderBy: { id: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        catagoary: true,
+        status: true,
+        totalPrice: true,
+        other_customer_number: true,
+        createdAt: true,
+        isCustomeModels: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            busnessName: true,
+            image: true,
           },
-          maßschaft_kollektion: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-          user: {
-            select: {
-              id: true,
-              name: true,
-              busnessName: true,
-            },
-          },
-        } as any,
-      }),
-    ]);
-
-    // Format response to match table structure
-    const formattedOrders = customShafts.map((shaft: any) => {
-      // Calculate total price with extras
-      const basePrice = shaft.totalPrice || 0;
-      const hasExtras = basePrice > 0;
-
-      return {
-        id: shaft.id,
-        bestellnummer: shaft.orderNumber || "N/A",
-        kategorie: shaft.catagoary || null,
-        modell: shaft.maßschaft_kollektion?.name || "N/A",
-        preis: basePrice,
-        preisMitExtras: hasExtras,
-        status: shaft.status || null,
-        datum: shaft.createdAt,
-        isCustomeModels: shaft.isCustomeModels || false,
-        // Partner business info
-        partner: shaft.user
-          ? {
-              id: shaft.user.id,
-              name: shaft.user.name || "N/A",
-              busnessName: shaft.user.busnessName || null,
-            }
-          : null,
-        // Customer info
-        customer: shaft.customer
-          ? {
-              id: shaft.customer.id,
-              vorname: shaft.customer.vorname || null,
-              nachname: shaft.customer.nachname || null,
-            }
-          : null,
-      };
+        },
+      } as any,
     });
 
-    // Calculate pagination values
-    const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
+    // Check if there's a next page
+    const hasNextPage = data.length > limit;
+    
+    // If we fetched an extra item, remove it
+    const items = hasNextPage ? data.slice(0, limit) : data;
 
     res.status(200).json({
       success: true,
       message: "Admin orders fetched successfully",
-      data: formattedOrders,
+      data: items,
       pagination: {
-        totalItems: totalCount,
-        totalPages: totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        hasNextPage: hasNextPage,
-        hasPrevPage: hasPrevPage,
+        limit,
+        hasNextPage,
       },
     });
   } catch (error: any) {
@@ -1058,7 +698,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Define field sets (same as getAllAdminOrders)
+    // Define common fields (same for all categories)
     const commonFields: any = {
       id: true,
       orderNumber: true,
@@ -1085,141 +725,40 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       custom_models_description: true,
     };
 
-    const halbprobenerstellungFields = {
-      Bettungsdicke: true,
-      Haertegrad_Shore: true,
-      Fersenschale: true,
-      Laengsgewölbestütze: true,
-      Palotte_oder_Querpalotte: true,
-      Korrektur_der_Fußstellung: true,
-      Zehenelemente_Details: true,
-      eine_korrektur_nötig_ist: true,
-      Spezielles_Fußproblem: true,
-      Zusatzkorrektur_Absatzerhöhung: true,
-      Vertiefungen_Aussparungen: true,
-      Oberfläche_finish: true,
-      Überzug_Stärke: true,
-      Anmerkungen_zur_Bettung: true,
-      Leisten_mit_ohne_Platzhalter: true,
-      Schuhleisten_Typ: true,
-      Material_des_Leisten: true,
-      Leisten_gleiche_Länge: true,
-      Absatzhöhe: true,
-      Abrollhilfe: true,
-      Spezielle_Fußprobleme_Leisten: true,
-      Anmerkungen_zum_Leisten: true,
-    };
-
-    const massschafterstellungFields = {
-      lederfarbe: true,
-      innenfutter: true,
-      schafthohe: true,
-      polsterung: true,
-      vestarkungen: true,
-      vestarkungen_text: true,
-      polsterung_text: true,
-      osen_einsetzen_price: true,
-      Passenden_schnursenkel_price: true,
-      nahtfarbe: true,
-      nahtfarbe_text: true,
-      lederType: true,
-      maßschaftKollektionId: true,
-      paintImage: true,
-      invoice2: true,
-      leatherType: true,
-      // New Verschluss / Schnürsenkel fields
-      verschlussart: true,
-    
-      // Price fields for Massschafterstellung
-      custom_catagoary: true,
-      custom_catagoary_price: true,
-
-      moechten_sie_passende_schnuersenkel_zum_schuh: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
-
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
-
-      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
-
-      Konstruktionsart: true,
-      Fersenkappe: true,
-      Farbauswahl_Bodenkonstruktion: true,
-      Sohlenmaterial: true,
-      Absatz_Höhe: true,
-      Absatz_Form: true,
-      Abrollhilfe_Rolle: true,
-      Laufsohle_Profil_Art: true,
-      Sohlenstärke: true,
-      Besondere_Hinweise: true,
-    };
-
-    const bodenkonstruktionFields = {
-      Konstruktionsart: true,
-      Fersenkappe: true,
-      Farbauswahl_Bodenkonstruktion: true,
-      Sohlenmaterial: true,
-      Absatz_Höhe: true,
-      Absatz_Form: true,
-      Abrollhilfe_Rolle: true,
-      Laufsohle_Profil_Art: true,
-      Sohlenstärke: true,
-      Besondere_Hinweise: true,
-      staticImage: true,
-      staticName: true,
-      description: true,
-    };
-
-    const rowFields = {
-      lederfarbe: true,
-      innenfutter: true,
-      schafthohe: true,
-      polsterung: true,
-      vestarkungen: true,
-      vestarkungen_text: true,
-      polsterung_text: true,
-      osen_einsetzen_price: true,
-      Passenden_schnursenkel_price: true,
-      nahtfarbe: true,
-      nahtfarbe_text: true,
-      lederType: true,
-      maßschaftKollektionId: true,
-      paintImage: true,
-      invoice2: true,
-      leatherType: true,
-      verschlussart: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss: true,
-      custom_catagoary: true,
-      custom_catagoary_price: true,
-      moechten_sie_passende_schnuersenkel_zum_schuh_price: true,
-      moechten_sie_den_schaft_bereits_mit_eingesetzten_oesen_price: true,
-      moechten_sie_einen_zusaetzlichen_reissverschluss_price: true,
-      zipper_image: true,
-    };
-
-    // Build select fields based on category
+    // Build select fields based on category - include JSON fields
     let selectFields: any = { ...commonFields };
 
     if (categoryCheck.catagoary === "Halbprobenerstellung") {
-      selectFields = { ...commonFields, ...halbprobenerstellungFields };
+      selectFields.Halbprobenerstellung_json = true;
     } else if (categoryCheck.catagoary === "Massschafterstellung") {
-      selectFields = { ...commonFields, ...massschafterstellungFields };
+      selectFields.Massschafterstellung_json1 = true;
+      selectFields.Massschafterstellung_json2 = true;
+      selectFields.paintImage = true;
+      selectFields.invoice2 = true;
+      selectFields.zipper_image = true;
+      selectFields.maßschaftKollektionId = true;
     } else if (categoryCheck.catagoary === "Bodenkonstruktion") {
-      selectFields = { ...commonFields, ...bodenkonstruktionFields };
+      selectFields.bodenkonstruktion_json = true;
+      selectFields.staticImage = true;
     } else if (categoryCheck.catagoary === "row") {
-      selectFields = { ...commonFields, ...rowFields };
+      // For row category, include Massschafterstellung fields
+      selectFields.Massschafterstellung_json1 = true;
+      selectFields.Massschafterstellung_json2 = true;
+      selectFields.paintImage = true;
+      selectFields.invoice2 = true;
+      selectFields.zipper_image = true;
+      selectFields.maßschaftKollektionId = true;
     } else {
-      // No category or unknown category - include all fields
-      selectFields = {
-        ...commonFields,
-        ...halbprobenerstellungFields,
-        ...massschafterstellungFields,
-        ...bodenkonstruktionFields,
-        ...rowFields,
-      };
+      // No category or unknown category - include all JSON fields
+      selectFields.Halbprobenerstellung_json = true;
+      selectFields.Massschafterstellung_json1 = true;
+      selectFields.Massschafterstellung_json2 = true;
+      selectFields.bodenkonstruktion_json = true;
+      selectFields.paintImage = true;
+      selectFields.invoice2 = true;
+      selectFields.zipper_image = true;
+      selectFields.staticImage = true;
+      selectFields.maßschaftKollektionId = true;
     }
 
     // Fetch the custom shaft with category-specific fields
@@ -1285,6 +824,8 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     // Images are already S3 URLs, use directly
     const formatImage = (s3Url: string | null) => s3Url || null;
 
+    // Parse JSON fields if they are strings (like in sendToAdminOrder_1)
+ 
     // Format the response
     const shaftData: any = customShaft;
     const formattedShaft: any = {
@@ -1295,6 +836,12 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       paintImage: formatImage(shaftData.paintImage),
       invoice2: formatImage(shaftData.invoice2),
       staticImage: formatImage(shaftData.staticImage),
+      zipper_image: formatImage(shaftData.zipper_image),
+      // Parse JSON fields if they are strings
+      Halbprobenerstellung_json: shaftData.Halbprobenerstellung_json,
+      Massschafterstellung_json1: shaftData.Massschafterstellung_json1,
+      Massschafterstellung_json2: shaftData.Massschafterstellung_json2,
+      bodenkonstruktion_json: shaftData.bodenkonstruktion_json,
       // Include isPanding from massschuhe_order relation
       isPanding: shaftData.massschuhe_order?.isPanding || false,
       // Format relations
@@ -1344,6 +891,10 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     // Remove user and massschuhe_order fields (we use partner and isPanding instead)
     delete formattedShaft.user;
     delete formattedShaft.massschuhe_order;
+
+    // Remove staticName and description if they exist (removed from sendToAdminOrder_3)
+    delete formattedShaft.staticName;
+    delete formattedShaft.description;
 
     res.status(200).json({
       success: true,

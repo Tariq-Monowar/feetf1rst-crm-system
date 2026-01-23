@@ -21,8 +21,6 @@ router.post(
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
-    { name: "threed_model_right", maxCount: 1 }, // Support old field name
-    { name: "threed_model_left", maxCount: 1 }, // Support old field name
     { name: "invoice", maxCount: 1 },
   ]),
   sendToAdminOrder_1
