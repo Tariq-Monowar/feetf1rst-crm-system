@@ -73,6 +73,7 @@ model User {
   partnerConversationMessages partner_conversation_message[]
   partnerPayouts              partner_payout[]
   courierContacts             CourierContact[]
+  customModels                custom_models[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -543,6 +544,7 @@ model customers {
   insolesAnswers           insolesAnswers[]
   massschuheOrderHistories massschuhe_order_history[]
   courierContacts          CourierContact[]
+  customModels             custom_models[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([vorname, nachname])
@@ -1331,6 +1333,7 @@ model massschuhe_order {
 
   isPanding       Boolean?         @default(false)
   courierContacts CourierContact[]
+  customModels    custom_models[]
 
   @@unique([userId, orderNumber]) // Unique per partner
   @@index([createdAt])
@@ -1425,21 +1428,20 @@ model custom_shafts {
    * -------------------------------------------------------------------------------------------
    */
 
-  orderNumber           String? 
+  orderNumber           String?
   other_customer_number String?
-   
-  customerId            String? 
-  invoice               String?
 
-  totalPrice            Float? 
+  customerId String?
+  invoice    String?
+
+  totalPrice Float?
 
   // common for (Halbprobenerstellung || Massschafterstellung)
-  image3d_1 String? 
-  image3d_2 String? 
+  image3d_1 String?
+  image3d_2 String?
 
   isCustomeModels Boolean? @default(false)
   // if isCustomeModels is true then we dont need to add the massschuhe_order_id
-
 
   /**
    * Halbprobenerstellung Started ওইয়ার্ডার ১
@@ -1492,7 +1494,6 @@ model custom_shafts {
    * --------------------------------------------------------------------------
    */
 
-
   Massschafterstellung_json1 Json?
   ledertyp_image             String?
   zipper_image               String?
@@ -1511,6 +1512,10 @@ model custom_shafts {
 
   //---------------------- fiRST Page------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
@@ -1535,6 +1540,10 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * //এই পেইজে একটা জুতার তলার ছবি আছে
    * Mehr_ansehen_image       String?
@@ -1572,7 +1581,7 @@ model custom_shafts {
    * --------------------------------------------------------------------------
    */
   bodenkonstruktion_json Json?
-  staticImage String?
+  staticImage            String?
   /**
    * Bodenkonstruktion Ended
    * --------------------------------------------------------------------------
@@ -1596,8 +1605,9 @@ model custom_shafts {
 
   isCompleted Boolean? @default(false)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  customModels custom_models[]
 
   @@index([status]) // স্ট্যাটাস অনুসারে দ্রুত সার্চের জন্য
   @@index([customerId]) // কাস্টমার অনুসারে দ্রুত সার্চের জন্য
@@ -1650,6 +1660,32 @@ enum custom_shafts_status {
   // Bodenerstellung
 
   // Geliefert
+}
+
+model custom_models {
+  id Int @id @default(autoincrement())
+
+  custom_models_name          String?
+  custom_models_image         String?
+  custom_models_price         Float?
+  custom_models_verschlussart String?
+  custom_models_gender        String?
+  custom_models_description   String?
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  //relation with shoes
+  custom_shafts_id String?
+  custom_shafts    custom_shafts? @relation(fields: [custom_shafts_id], references: [id], onDelete: SetNull)
+
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  massschuheOrder    massschuhe_order? @relation(fields: [massschuhe_orderId], references: [id])
+  massschuhe_orderId String?
 }
 
 model admin_order_transitions {

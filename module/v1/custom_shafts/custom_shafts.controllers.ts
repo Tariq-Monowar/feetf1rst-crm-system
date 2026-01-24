@@ -509,16 +509,6 @@ export const createTustomShafts = async (req, res) => {
       };
     }
 
-    // Add custom model fields only if isCustomeModels is true
-    if (isCustomModels) {
-      shaftData.custom_models_name = custom_models_name || null;
-      shaftData.custom_models_image = files.custom_models_image?.[0]?.location || null;
-      shaftData.custom_models_price = parsePrice(custom_models_price);
-      shaftData.custom_models_verschlussart = custom_models_verschlussart || null;
-      shaftData.custom_models_gender = custom_models_gender || null;
-      shaftData.custom_models_description = custom_models_description || null;
-    }
-
     // Create the custom shaft
     const customShaft = await prisma.custom_shafts.create({
       data: shaftData,
@@ -542,12 +532,6 @@ export const createTustomShafts = async (req, res) => {
         totalPrice: true,
         isCustomeModels: true,
         maßschaftKollektionId: true,
-        custom_models_name: true,
-        custom_models_image: true,
-        custom_models_price: true,
-        custom_models_verschlussart: true,
-        custom_models_gender: true,
-        custom_models_description: true,
         catagoary: true,
         maßschaft_kollektion: {
           select: {
@@ -560,21 +544,45 @@ export const createTustomShafts = async (req, res) => {
       },
     });
 
+    // Create custom_models record if isCustomModels is true
+    let customModel = null;
+    if (isCustomModels) {
+      customModel = await (prisma as any).custom_models.create({
+        data: {
+          custom_shafts: {
+            connect: { id: customShaft.id }
+          },
+          partner: {
+            connect: { id: id }
+          },
+          customer: {
+            connect: { id: customerId }
+          },
+          custom_models_name: custom_models_name || null,
+          custom_models_image: files.custom_models_image?.[0]?.location || null,
+          custom_models_price: parsePrice(custom_models_price),
+          custom_models_verschlussart: custom_models_verschlussart || null,
+          custom_models_gender: custom_models_gender || null,
+          custom_models_description: custom_models_description || null,
+        },
+        select: {
+          id: true,
+          custom_models_name: true,
+          custom_models_image: true,
+          custom_models_price: true,
+          custom_models_verschlussart: true,
+          custom_models_gender: true,
+          custom_models_description: true,
+        },
+      });
+    }
+
     // Format response
     const responseData: any = {
       ...customShaft,
-      maßschaft_kollektion: customShaft.maßschaft_kollektion || null,
+      maßschaft_kollektion: (customShaft as any).maßschaft_kollektion || null,
+      custom_models: customModel || null,
     };
-
-    // Remove custom model fields if isCustomeModels is false
-    if (!isCustomModels) {
-      delete responseData.custom_models_name;
-      delete responseData.custom_models_image;
-      delete responseData.custom_models_price;
-      delete responseData.custom_models_verschlussart;
-      delete responseData.custom_models_gender;
-      delete responseData.custom_models_description;
-    }
 
     res.status(201).json({
       success: true,
