@@ -782,13 +782,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       partnerId: true,
       massschuhe_order_id: true,
       isCustomeModels: true,
-      // Custom model fields (will be conditionally included in response)
-      custom_models_name: true,
-      custom_models_image: true,
-      custom_models_price: true,
-      custom_models_verschlussart: true,
-      custom_models_gender: true,
-      custom_models_description: true,
     };
 
     // Build select fields based on category - include JSON fields
@@ -862,16 +855,16 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
             createdAt: true,
             updatedAt: true,
           },
-          custom_models: {
-            select: {
-              id: true,
-              custom_models_name: true,
-              custom_models_image: true,
-              custom_models_price: true,
-              custom_models_verschlussart: true,
-              custom_models_gender: true,
-              custom_models_description: true,
-            },
+        },
+        customModels: {
+          select: {
+            id: true,
+            custom_models_name: true,
+            custom_models_image: true,
+            custom_models_price: true,
+            custom_models_verschlussart: true,
+            custom_models_gender: true,
+            custom_models_description: true,
           },
         },
         user: {
@@ -925,22 +918,15 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       customer: shaftData.customer || null,
     };
 
-    // Only include custom model fields if isCustomeModels is true
-    if (shaftData.isCustomeModels === true) {
-      formattedShaft.custom_models_name = shaftData.custom_models_name || null;
-      formattedShaft.custom_models_image = formatImage(shaftData.custom_models_image);
-      formattedShaft.custom_models_price = shaftData.custom_models_price || null;
-      formattedShaft.custom_models_verschlussart = shaftData.custom_models_verschlussart || null;
-      formattedShaft.custom_models_gender = shaftData.custom_models_gender || null;
-      formattedShaft.custom_models_description = shaftData.custom_models_description || null;
+    // Format customModels if it exists (it's an array, take the first one)
+    if (shaftData.customModels && Array.isArray(shaftData.customModels) && shaftData.customModels.length > 0) {
+      const customModel: any = shaftData.customModels[0];
+      formattedShaft.custom_models = {
+        ...customModel,
+        custom_models_image: formatImage(customModel.custom_models_image),
+      };
     } else {
-      // Remove custom model fields if isCustomeModels is false
-      delete formattedShaft.custom_models_name;
-      delete formattedShaft.custom_models_image;
-      delete formattedShaft.custom_models_price;
-      delete formattedShaft.custom_models_verschlussart;
-      delete formattedShaft.custom_models_gender;
-      delete formattedShaft.custom_models_description;
+      formattedShaft.custom_models = null;
     }
 
     // Format maßschaft_kollektion if it exists
