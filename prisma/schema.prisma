@@ -1659,7 +1659,7 @@ enum custom_shafts_status {
 model custom_models {
   id String @id @default(cuid())
   // id Int @id @default(autoincrement())
-
+  custom_models_id Int? @unique
 
   custom_models_name          String?
   custom_models_image         String?

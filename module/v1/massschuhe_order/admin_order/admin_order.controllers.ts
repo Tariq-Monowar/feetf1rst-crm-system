@@ -628,12 +628,6 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       whereCondition.catagoary = catagoary;
     }
 
-    // Apply cursor-based pagination
-    // If cursor (ID) is provided, fetch records with id less than cursor (for descending order)
-    if (cursor) {
-      whereCondition.id = { lt: cursor };
-    }
-
     // Build search conditions
     if (search) {
       const searchConditions: any[] = [
@@ -666,12 +660,18 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       whereCondition.OR = searchConditions;
     }
 
-    // Cursor-based pagination: Always order by id (ascending) for consistent cursor behavior
+    // Apply cursor-based pagination
+    // If cursor (ID) is provided, fetch records with id less than cursor (for descending order)
+    if (cursor) {
+      whereCondition.id = { lt: cursor };
+    }
+
+    // Order by createdAt descending to show latest first
     // Fetch limit + 1 to check if there's a next page
     const data = await prisma.custom_shafts.findMany({
       where: whereCondition,
       take: limit + 1, // Fetch one extra to check if there's more
-      orderBy: { id: "desc" },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         orderNumber: true,
