@@ -52,13 +52,28 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
 
+    // Parse Halbprobenerstellung_json if it's a string
+    let parsedJson = Halbprobenerstellung_json;
+    if (typeof Halbprobenerstellung_json === 'string') {
+      try {
+        parsedJson = JSON.parse(Halbprobenerstellung_json);
+      } catch (e) {
+        // If parsing fails, use as is
+        parsedJson = Halbprobenerstellung_json;
+      }
+    }
+
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
       data: {
-        massschuhe_order_id: orderId,
-        partnerId: userId,
+        massschuhe_order: {
+          connect: { id: orderId }
+        },
+        user: {
+          connect: { id: userId }
+        },
         totalPrice: parsedTotalPrice,
-        Halbprobenerstellung_json,
+        Halbprobenerstellung_json: parsedJson,
         image3d_1,
         image3d_2,
         invoice,
@@ -248,12 +263,33 @@ export const sendToAdminOrder_2 = async (req, res) => {
       return isNaN(parsed) ? null : parsed;
     };
 
+    // Parse JSON fields if they are strings
+    let parsedJson1 = Massschafterstellung_json1;
+    if (typeof Massschafterstellung_json1 === 'string') {
+      try {
+        parsedJson1 = JSON.parse(Massschafterstellung_json1);
+      } catch (e) {
+        parsedJson1 = Massschafterstellung_json1;
+      }
+    }
+
+    let parsedJson2 = Massschafterstellung_json2;
+    if (typeof Massschafterstellung_json2 === 'string') {
+      try {
+        parsedJson2 = JSON.parse(Massschafterstellung_json2);
+      } catch (e) {
+        parsedJson2 = Massschafterstellung_json2;
+      }
+    }
+
     // Prepare data object
     const shaftData: any = {
-      massschuhe_order_id: orderId,
-      partnerId: id,
-      customerId: order.customerId,
-
+      massschuhe_order: {
+        connect: { id: orderId }
+      },
+      user: {
+        connect: { id: id }
+      },
       image3d_1: files.image3d_1?.[0]?.location || null,
       image3d_2: files.image3d_2?.[0]?.location || null,
       paintImage: files.paintImage?.[0]?.location || null,
@@ -261,16 +297,29 @@ export const sendToAdminOrder_2 = async (req, res) => {
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
       other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
-      Massschafterstellung_json1,
-      Massschafterstellung_json2,
+      Massschafterstellung_json1: parsedJson1,
+      Massschafterstellung_json2: parsedJson2,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
       catagoary: "Massschafterstellung",
       isCompleted: false,
       isCustomeModels: isCustomModels,
-      maßschaftKollektionId: isCustomModels ? null : mabschaftKollektionId,
     };
+
+    // Add customer relation if exists
+    if (order.customerId) {
+      shaftData.customer = {
+        connect: { id: order.customerId }
+      };
+    }
+
+    // Add maßschaft_kollektion relation if not custom models
+    if (!isCustomModels && mabschaftKollektionId) {
+      shaftData.maßschaft_kollektion = {
+        connect: { id: mabschaftKollektionId }
+      };
+    }
 
     // Add custom model fields only if isCustomeModels is true
     if (isCustomModels) {
@@ -439,13 +488,27 @@ export const sendToAdminOrder_3 = async (req, res) => {
 
     const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
 
+    // Parse bodenkonstruktion_json if it's a string
+    let parsedJson = bodenkonstruktion_json;
+    if (typeof bodenkonstruktion_json === 'string') {
+      try {
+        parsedJson = JSON.parse(bodenkonstruktion_json);
+      } catch (e) {
+        parsedJson = bodenkonstruktion_json;
+      }
+    }
+
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
       data: {
-        massschuhe_order_id: orderId,
-        partnerId: userId,
+        massschuhe_order: {
+          connect: { id: orderId }
+        },
+        user: {
+          connect: { id: userId }
+        },
         totalPrice: parsedTotalPrice,
-        bodenkonstruktion_json,
+        bodenkonstruktion_json: parsedJson,
         invoice,
         staticImage,
         orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
