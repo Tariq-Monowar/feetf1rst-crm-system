@@ -1503,12 +1503,6 @@ model custom_shafts {
   Mehr_ansehen_image         String?
   invoice2                   String?
 
-  custom_models_name          String?
-  custom_models_image         String?
-  custom_models_price         Float?
-  custom_models_verschlussart String?
-  custom_models_gender        String?
-  custom_models_description   String?
 
   //---------------------- fiRST Page------------
   /**
@@ -1663,7 +1657,9 @@ enum custom_shafts_status {
 }
 
 model custom_models {
-  id Int @id @default(autoincrement())
+  id String @id @default(cuid())
+  // id Int @id @default(autoincrement())
+
 
   custom_models_name          String?
   custom_models_image         String?
