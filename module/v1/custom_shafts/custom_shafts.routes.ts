@@ -27,8 +27,10 @@ router.post(
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
-    { name: "zipper_image", maxCount: 1 },
     { name: "invoice", maxCount: 1 },
+    { name: "paintImage", maxCount: 1 },
+    { name: "invoice2", maxCount: 1 },
+    { name: "zipper_image", maxCount: 1 },
     { name: "custom_models_image", maxCount: 1 },
   ]),
   createTustomShafts
