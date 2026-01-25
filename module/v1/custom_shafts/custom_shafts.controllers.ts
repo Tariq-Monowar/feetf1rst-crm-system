@@ -1110,6 +1110,120 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
 
     //=======================khanba logic end=======================
 
+    // if (status === "Ausgeführt") {
+
+    //   const massschuheOrder = await prisma.massschuhe_order.findUnique({
+    //     where: { id: existingCustomShaft.massschuhe_order_id },
+    //     select: {
+    //       id: true,
+    //       status: true,
+    //       userId: true,
+    //       orderNumber: true,
+    //       customerId: true,
+    //       customer: {
+    //         select: {
+    //           customerNumber: true,
+    //         },
+    //       },
+    //     },
+    //   });
+
+    //   // if (!massschuheOrder) {
+    //   //   await prisma.massschuhe_order.update({
+    //   //     where: { id: massschuheOrder.id },
+    //   //     data: { status: "Geliefert" },
+    //   //     select: {
+    //   //       id: true,
+    //   //       status: true,
+    //   //     },
+    //   //   });
+
+    //   //   return res.status(400).json({
+    //   //     success: false,
+    //   //     message: "sun issue in massschuhe order",
+    //   //     data: massschuheOrder,
+    //   //   });
+    //   // }
+
+    //   if (massschuheOrder) {
+    //     // if tound the order then update the status
+    //     // if status is Leistenerstellung then update the status to Schafterstellung
+    //     if (massschuheOrder.status === "Leistenerstellung") {
+    //       await prisma.massschuhe_order.update({
+    //         where: { id: massschuheOrder.id },
+    //         data: { status: "Schafterstellung", isPanding: false },
+    //         select: {
+    //           id: true,
+    //         },
+    //       });
+
+    //       // .. send notification to the partner
+    //       notificationSend(
+    //         massschuheOrder.userId,
+    //         "updated_massschuhe order_status" as any,
+    //         `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+    //        has been updated to the next phase.`,
+    //         massschuheOrder.id,
+    //         false,
+    //         "/dashboard/massschuhauftraege"
+    //       );
+    //     }
+
+    //     if (massschuheOrder.status === "Schafterstellung") {
+    //       if (existingCustomShaft.Massschafterstellung_json2 && existingCustomShaft.Massschafterstellung_json1) {
+    //         await prisma.massschuhe_order.update({
+    //           where: { id: massschuheOrder.id },
+    //           data: { status: "Geliefert", isPanding: false },
+    //         });
+
+    //         notificationSend(
+    //           massschuheOrder.userId,
+    //           "updated_massschuhe order_status" as any,
+    //           `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+    //          has been updated to the next phase.`,
+    //           massschuheOrder.id,
+    //           false,
+    //           "/dashboard/massschuhauftraege"
+    //         );
+    //       } else {
+    //         await prisma.massschuhe_order.update({
+    //           where: { id: massschuheOrder.id },
+    //           data: { status: "Bodenerstellung", isPanding: false },
+    //         });
+
+    //         notificationSend(
+    //           massschuheOrder.userId,
+    //           "updated_massschuhe order_status" as any,
+    //           `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+    //          has been updated to the next phase.`,
+    //           massschuheOrder.id,
+    //           false,
+    //           "/dashboard/massschuhauftraege"
+    //         );
+    //       }
+
+
+    //     }
+
+    //     if (massschuheOrder.status === "Bodenerstellung") {
+    //       await prisma.massschuhe_order.update({
+    //         where: { id: massschuheOrder.id },
+    //         data: { status: "Geliefert", isPanding: false },
+    //       });
+
+    //       notificationSend(
+    //         massschuheOrder.userId,
+    //         "updated_massschuhe order_status" as any,
+    //         `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+    //        has been updated to the next phase.`,
+    //         massschuheOrder.id,
+    //         false,
+    //         "/dashboard/massschuhauftraege"
+    //       );
+    //     }
+    //   }
+    // }
+
     res.status(200).json({
       success: true,
       message: "Custom shaft status updated successfully",
