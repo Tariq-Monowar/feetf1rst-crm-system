@@ -695,6 +695,12 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
             id: true,
             name: true,
           },
+          
+        },customer: {
+          select: {
+            id: true,
+            customerNumber: true,
+          },
         },
       } as any,
     });
