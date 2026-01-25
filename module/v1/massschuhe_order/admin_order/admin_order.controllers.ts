@@ -683,12 +683,17 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         other_customer_number: true,
         createdAt: true,
         isCustomeModels: true,
-        user: {
+        partner: {
           select: {
             id: true,
             name: true,
-            busnessName: true,
             image: true,
+          },
+        },
+        maßschaft_kollektion: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       } as any,
