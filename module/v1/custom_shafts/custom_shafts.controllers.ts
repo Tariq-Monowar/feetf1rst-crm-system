@@ -937,16 +937,10 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
 
     const validStatuses = [
       "Bestellung_eingegangen",
-      "In_Produktion",
+      "In_Produktiony", // Fixed: schema has "In_Produktiony" not "In_Produktion"
       "Qualitätskontrolle",
       "Versandt",
       "Ausgeführt",
-
-      // "Bestellung_eingegangen",
-      // "In_Produktiony",
-      // "Qualitätskontrolle",
-      // "Versandt",
-      // "Ausgeführt"
     ] as const;
 
     if (!validStatuses.includes(status as any)) {
@@ -959,6 +953,19 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
 
     const existingCustomShaft = await prisma.custom_shafts.findUnique({
       where: { id },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        catagoary: true, // Added: needed to determine which status transition to make
+        other_customer_number: true,
+        customerId: true,
+        massschuhe_order_id: true,
+        invoice2: true,
+        Massschafterstellung_json2: true,
+        Massschafterstellung_json1: true,
+ 
+      },
     });
 
     if (!existingCustomShaft) {
@@ -982,8 +989,8 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
     });
 
     //=======================khanba logic=======================
-    if (status === "Ausgeführt") {
-
+    // Only update massschuhe_order status if custom_shaft status is "Ausgeführt" and has a related order
+    if (status === "Ausgeführt" && existingCustomShaft.massschuhe_order_id) {
       const massschuheOrder = await prisma.massschuhe_order.findUnique({
         where: { id: existingCustomShaft.massschuhe_order_id },
         select: {
@@ -1001,77 +1008,103 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
       });
 
       if (!massschuheOrder) {
-        await prisma.massschuhe_order.update({
-          where: { id: massschuheOrder.id },
-          data: { status: "Geliefert" },
-          select: {
-            id: true,
-            status: true,
-          },
-        });
-
-        return res.status(400).json({
-          success: false,
-          message: "sun issue in massschuhe order",
-          data: massschuheOrder,
+        // Order not found, but custom_shaft status is updated, so continue
+        return res.status(200).json({
+          success: true,
+          message: "Custom shaft status updated successfully",
+          data: updatedCustomShaft,
+          warning: "Related massschuhe_order not found",
         });
       }
 
-      // if tound the order then update the status
-      // if status is Leistenerstellung then update the status to Schafterstellung
-      if (massschuheOrder.status === "Leistenerstellung") {
-        await prisma.massschuhe_order.update({
-          where: { id: massschuheOrder.id },
-          data: { status: "Schafterstellung", isPanding: false },
-          select: {
-            id: true,
-          },
-        });
+      // Determine which status transition to make based on custom_shaft category
+      const category = existingCustomShaft.catagoary;
 
-        // .. send notification to the partner
-        notificationSend(
-          massschuheOrder.userId,
-          "updated_massschuhe order_status" as any,
-          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+      // Category 1: Halbprobenerstellung
+      // When Halbprobenerstellung is completed, move from Leistenerstellung/Bettungsherstellung/Halbprobenerstellung to Schafterstellung
+      if (category === "Halbprobenerstellung") {
+        if (
+          massschuheOrder.status === "Leistenerstellung" ||
+          massschuheOrder.status === "Bettungsherstellung" ||
+          massschuheOrder.status === "Halbprobenerstellung"
+        ) {
+          await prisma.massschuhe_order.update({
+            where: { id: massschuheOrder.id },
+            data: { status: "Schafterstellung", isPanding: false },
+          });
+
+          notificationSend(
+            massschuheOrder.userId,
+            "updated_massschuhe order_status" as any,
+            `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
            has been updated to the next phase.`,
-          massschuheOrder.id,
-          false,
-          "/dashboard/massschuhauftraege"
-        );
+            massschuheOrder.id,
+            false,
+            "/dashboard/massschuhauftraege"
+          );
+        }
       }
 
-      if (massschuheOrder.status === "Schafterstellung") {
-        await prisma.massschuhe_order.update({
-          where: { id: massschuheOrder.id },
-          data: { status: "Bodenerstellung", isPanding: false },
-        });
+      // Category 2: Massschafterstellung
+      // When Massschafterstellung is completed, check if both JSONs exist (complete order) or just one (needs Bodenkonstruktion)
+      if (category === "Massschafterstellung") {
+        if (massschuheOrder.status === "Schafterstellung") {
+          // If both Massschafterstellung JSONs exist, order is complete, move to Geliefert
+          // Otherwise, move to Bodenerstellung for Bodenkonstruktion step
+          if (existingCustomShaft.Massschafterstellung_json2 && existingCustomShaft.Massschafterstellung_json1) {
+            await prisma.massschuhe_order.update({
+              where: { id: massschuheOrder.id },
+              data: { status: "Geliefert", isPanding: false },
+            });
 
-        notificationSend(
-          massschuheOrder.userId,
-          "updated_massschuhe order_status" as any,
-          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
-           has been updated to the next phase.`,
-          massschuheOrder.id,
-          false,
-          "/dashboard/massschuhauftraege"
-        );
+            notificationSend(
+              massschuheOrder.userId,
+              "updated_massschuhe order_status" as any,
+              `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+             has been updated to the next phase.`,
+              massschuheOrder.id,
+              false,
+              "/dashboard/massschuhauftraege"
+            );
+          } else {
+            // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
+            await prisma.massschuhe_order.update({
+              where: { id: massschuheOrder.id },
+              data: { status: "Bodenerstellung", isPanding: false },
+            });
+
+            notificationSend(
+              massschuheOrder.userId,
+              "updated_massschuhe order_status" as any,
+              `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+             has been updated to the next phase.`,
+              massschuheOrder.id,
+              false,
+              "/dashboard/massschuhauftraege"
+            );
+          }
+        }
       }
 
-      if (massschuheOrder.status === "Bodenerstellung") {
-        await prisma.massschuhe_order.update({
-          where: { id: massschuheOrder.id },
-          data: { status: "Geliefert", isPanding: false },
-        });
+      // Category 3: Bodenkonstruktion
+      // When Bodenkonstruktion is completed, move from Bodenerstellung to Geliefert
+      if (category === "Bodenkonstruktion") {
+        if (massschuheOrder.status === "Bodenerstellung") {
+          await prisma.massschuhe_order.update({
+            where: { id: massschuheOrder.id },
+            data: { status: "Geliefert", isPanding: false },
+          });
 
-        notificationSend(
-          massschuheOrder.userId,
-          "updated_massschuhe order_status" as any,
-          `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
+          notificationSend(
+            massschuheOrder.userId,
+            "updated_massschuhe order_status" as any,
+            `The production status for order #${massschuheOrder.orderNumber} (Customer: ${massschuheOrder.customer.customerNumber})
            has been updated to the next phase.`,
-          massschuheOrder.id,
-          false,
-          "/dashboard/massschuhauftraege"
-        );
+            massschuheOrder.id,
+            false,
+            "/dashboard/massschuhauftraege"
+          );
+        }
       }
     }
 
