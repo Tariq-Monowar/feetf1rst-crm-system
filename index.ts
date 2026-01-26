@@ -64,6 +64,8 @@ server.listen(PORT, async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     await prisma.$connect();
     console.log("Database connected...");
+
+    console.log("Redis connected...");
     dailyReport();
     appointmentReminderCron();
   } catch (err) {

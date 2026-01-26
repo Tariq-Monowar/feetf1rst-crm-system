@@ -1,6 +1,7 @@
 import express from "express";
 
 import users from "./auth/users.routes";
+import account from "./auth/account/account.routes";
 import products from "./products/products.routes";
 import excel from "./excel/excel.routes";
 import questions from "./question/question.routes";
@@ -37,6 +38,7 @@ const router = express.Router();
 
 const moduleRoutes = [
   { path: "/users", route: users },
+  { path: "/users/account", route: account },
   { path: "/products", route: products },
   { path: "/excel", route: excel },
   { path: "/questions", route: questions },

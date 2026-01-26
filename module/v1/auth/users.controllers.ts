@@ -319,6 +319,7 @@ export const updateUser = async (req: Request, res: Response) => {
       bankName,
       bankNumber,
       bic,
+      bankInfo: bankInfoInput,
       vat_country,
       vat_number,
       barcodeLabel,
@@ -326,7 +327,7 @@ export const updateUser = async (req: Request, res: Response) => {
     
     const newImage = req.file as any;
 
-    // Get user with account info
+    // Get user
     const user = await prisma.user.findUnique({
       where: { id: String(id) },
       include: { accountInfos: true }
@@ -339,64 +340,79 @@ export const updateUser = async (req: Request, res: Response) => {
       });
     }
 
-    // Delete old image if new one is uploaded
+    // Delete old image if new one uploaded
     if (newImage?.location && user.image) {
       deleteFileFromS3(user.image);
     }
 
-    const userData: any = {
-      name: name ?? user.name,
-      phone: phone ?? user.phone,
-      image: newImage?.location ?? user.image,
-      absenderEmail: absenderEmail ?? user.absenderEmail,
-      busnessName: busnessName ?? user.busnessName,
-      hauptstandort: hauptstandort ?? user.hauptstandort,
-    };
+    // Parse hauptstandort
+    const parsedHauptstandort = Array.isArray(hauptstandort)
+      ? hauptstandort
+      : typeof hauptstandort === "string" && hauptstandort.trim()
+      ? hauptstandort.split(",").map(s => s.trim()).filter(Boolean)
+      : undefined;
 
     // Update user
     const updatedUser = await prisma.user.update({
       where: { id: String(id) },
-      data: userData,
-      include: { accountInfos: true }
+      data: {
+        name: name ?? user.name,
+        phone: phone ?? user.phone,
+        image: newImage?.location ?? user.image,
+        absenderEmail: absenderEmail ?? user.absenderEmail,
+        busnessName: busnessName ?? user.busnessName,
+        hauptstandort: parsedHauptstandort ?? user.hauptstandort,
+      },
     });
 
-    // Handle account info updates
+    // Handle account info
     const existingAccountInfo = user.accountInfos[0];
-    
-    const hasUpdates = vat_country || vat_number || barcodeLabel || bankName || bankNumber || bic;
+    const hasAccountUpdates = vat_country || vat_number || barcodeLabel || bankName || bankNumber || bic || bankInfoInput;
 
-    if (hasUpdates || existingAccountInfo) {
+    if (hasAccountUpdates || existingAccountInfo) {
+      // Parse bankInfo JSON if provided
+      let parsedBankInfo: any = {};
+      if (bankInfoInput) {
+        try {
+          parsedBankInfo = typeof bankInfoInput === 'string' ? JSON.parse(bankInfoInput) : bankInfoInput;
+        } catch (e) {
+          parsedBankInfo = {};
+        }
+      }
+
+      // Get current bank info
       const currentBankInfo = (existingAccountInfo?.bankInfo as any) || {};
-      
-      const bankInfo: any = {
-        bankName: bankName ?? currentBankInfo.bankName ?? null,
-        bankNumber: bankNumber ?? currentBankInfo.bankNumber ?? null,
-        bic: bic ?? currentBankInfo.bic ?? null,
+
+      // Merge bank info (priority: parsedBankInfo > individual fields > existing)
+      const bankInfo = {
+        bankName: parsedBankInfo.bankName ?? bankName ?? currentBankInfo.bankName ?? null,
+        bankNumber: parsedBankInfo.bankNumber ?? bankNumber ?? currentBankInfo.bankNumber ?? null,
+        bic: parsedBankInfo.bic ?? bic ?? currentBankInfo.bic ?? null,
       };
 
-      // Prepare account info data
-      const accountInfoData: any = {
+      const accountInfoData = {
         vat_country: vat_country ?? existingAccountInfo?.vat_country ?? null,
         vat_number: vat_number ?? existingAccountInfo?.vat_number ?? null,
         barcodeLabel: barcodeLabel ?? existingAccountInfo?.barcodeLabel ?? null,
-        bankInfo: bankInfo,
+        bankInfo,
       };
 
-      // Update existing or create new
+      const accountInfoModel = (prisma as any).accountInfo;
+      
       if (existingAccountInfo) {
-        await prisma.accountInfo.update({
+        await accountInfoModel.update({
           where: { id: existingAccountInfo.id },
           data: accountInfoData
         });
       } else {
-        await prisma.accountInfo.create({
+        await accountInfoModel.create({
           data: { ...accountInfoData, userId: user.id }
         });
       }
     }
 
-    // Get updated account info for response
-    const accountInfo = await prisma.accountInfo.findFirst({
+    // Get updated account info
+    const accountInfo = await (prisma as any).accountInfo.findFirst({
       where: { userId: String(id) }
     });
 
@@ -420,7 +436,6 @@ export const updateUser = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error updating user:', error);
     
-    // Handle unique constraint errors
     if (error.code === 'P2002') {
       const field = error.meta?.target?.[0];
       return res.status(400).json({
@@ -432,7 +447,8 @@ export const updateUser = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to update user profile",
-      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      error: error.message || "Unknown error",
+      ...(error.code && { code: error.code })
     });
   }
 };
@@ -687,6 +703,14 @@ export const checkAuthStatus = async (req, res) => {
           email: true,
           image: true,
           role: true,
+          accountInfos: {
+            select: {
+              bankInfo: true,
+              barcodeLabel: true,
+              vat_country: true,
+              vat_number: true,
+            },
+          },
         },
       });
     }
@@ -715,6 +739,7 @@ export const checkAuthStatus = async (req, res) => {
         },
       });
     } else {
+      const accountInfo = (user as any).accountInfos?.[0] || null;
       res.status(200).json({
         success: true,
         user: {
@@ -723,6 +748,7 @@ export const checkAuthStatus = async (req, res) => {
           email: user.email,
           image: user.image || null,
           role: user.role,
+          accountInfo: accountInfo,
         },
       });
     }
