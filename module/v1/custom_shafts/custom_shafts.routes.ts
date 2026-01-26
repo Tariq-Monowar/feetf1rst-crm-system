@@ -22,32 +22,32 @@ const router = express.Router();
 only this time partner can able to make an order for customer. usiong this 
 */
 // Error handler for multer
-const handleMulterError = (err: any, req: Request, res: Response, next: NextFunction) => {
-  if (err) {
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      const field = err.field || 'unknown';
-      return res.status(400).json({
-        success: false,
-        message: `Unexpected file field: ${field}`,
-        allowedFields: [
-          'image3d_1',
-          'image3d_2',
-          'invoice',
-          'paintImage',
-          'invoice2',
-          'zipper_image',
-          'custom_models_image'
-        ],
-      });
-    }
-    return res.status(400).json({
-      success: false,
-      message: err.message || "File upload error",
-      error: err.code || "UPLOAD_ERROR",
-    });
-  }
-  next();
-};
+// const handleMulterError = (err: any, req: Request, res: Response, next: NextFunction) => {
+//   if (err) {
+//     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+//       const field = err.field || 'unknown';
+//       return res.status(400).json({
+//         success: false,
+//         message: `Unexpected file field: ${field}`,
+//         allowedFields: [
+//           'image3d_1',
+//           'image3d_2',
+//           'invoice',
+//           'paintImage',
+//           'invoice2',
+//           'zipper_image',
+//           'custom_models_image'
+//         ],
+//       });
+//     }
+//     return res.status(400).json({
+//       success: false,
+//       message: err.message || "File upload error",
+//       error: err.code || "UPLOAD_ERROR",
+//     });
+//   }
+//   next();
+// };
 
 router.post(
   "/create",
@@ -60,8 +60,9 @@ router.post(
     { name: "invoice2", maxCount: 1 },
     { name: "zipper_image", maxCount: 1 },
     { name: "custom_models_image", maxCount: 1 },
+    { name: "staticImage", maxCount: 1 },
   ]),
-  handleMulterError,
+  // handleMulterError,
   createTustomShafts
 );
 

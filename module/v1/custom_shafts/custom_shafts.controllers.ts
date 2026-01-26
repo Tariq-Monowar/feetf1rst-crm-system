@@ -491,6 +491,7 @@ export const createTustomShafts = async (req, res) => {
       invoice2: files.invoice2?.[0]?.location || null,
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
+      staticImage: files.staticImage?.[0]?.location || null,
       other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
@@ -526,6 +527,7 @@ export const createTustomShafts = async (req, res) => {
         invoice2: true,
         invoice: true,
         zipper_image: true,
+        staticImage: true,
         other_customer_number: true,
         Massschafterstellung_json1: true,
         Massschafterstellung_json2: true,
@@ -612,6 +614,7 @@ export const createTustomShafts = async (req, res) => {
     }
 
     if (err.code === "P2003") {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid customer ID or Maßschaft Kollektion ID provided",
