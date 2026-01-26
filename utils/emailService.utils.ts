@@ -52,6 +52,14 @@ export const sendForgotPasswordOTP = async (
   await sendEmail(email, "OTP Code for Password Reset", htmlContent);
 };
 
+export const sendTwoFactorOtp = async (
+  email: string,
+  otp: string
+): Promise<void> => {
+  const htmlContent = emailForgotPasswordOTP(email, otp); // Reuse same template
+  await sendEmail(email, "Two-Factor Authentication OTP", htmlContent);
+};
+
 // Helper function to download image from URL
 const downloadImage = (url: string): Promise<Buffer> => {
   return new Promise((resolve, reject) => {

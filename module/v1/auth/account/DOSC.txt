@@ -1,59 +1,53 @@
-  //forgot passwors
-  fastify.post("/forgotpassword/sendotp", forgotPasswordSendOtp);
-  fastify.post("/forgotpassword/verifyotp", forgotPasswordVerifyOtp);
-  fastify.post("/forgotpassword/reset", forgotPasswordReset);
-  fastify.post("/forgotpassword/recentotp", forgotPasswordRecentOtp);
-----------------------------
+  //TwoFactor authentication (2FA)
+  fastify.post("/2fa/email/sendotp", email2FASendOtp);
+  fastify.post("/2fa/email/verifyotp", email2FAVerifyOtp);
+  fastify.post("/2fa/email/recentotp", email2FARecentOtp);
+  -----------------------------------
 
-
-export const forgotPasswordSendOtp = async (request, reply) => {
+  
+export const email2FASendOtp = async (request, reply) => {
   try {
     const { email } = request.body;
 
     if (!email) {
       return reply.status(400).send({
         success: false,
-        // message: "Email is required!",
-        message: "murubbi! email koi?",
+        message: "Email is required!",
       });
     }
 
     const prisma = request.server.prisma;
     const redis = request.server.redis;
 
-    const existingUser = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!existingUser) {
+    if (!user) {
       return reply.status(404).send({
         success: false,
-        // message: "User with this email does not exist",
-        message: "murobbi apnar account nai! age register krn?",
+        message: "User does not exist",
       });
     }
 
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     const otpExpiry = Date.now() + 5 * 60 * 1000;
 
-    forgotPasswordEmail(email, otp);
-
     await redis
       .multi()
-      .hset(`forgot-password-otp:${email}`, {
-        email,
+      .hset(`2fa-otp:${email}`, {
         otp,
         expiration: otpExpiry.toString(),
-        userId: existingUser.id.toString(),
-        permission_to_update_password: "true",
+        userId: user.id.toString(),
       })
-      .expire(`forgot-password-otp:${email}`, 5 * 60)
+      .expire(`2fa-otp:${email}`, 5 * 60)
       .exec();
+
+    sendTwoFactorOtp(email, otp);
 
     return reply.status(200).send({
       success: true,
-      // message: "OTP sent to your email for password reset",
-      message: "hay Mr. Flutter Developer! OTP send korechi! apnar email e",
+      message: "2FA OTP sent to your email",
       otp: process.env.NODE_ENV === "development" ? otp : null,
     });
   } catch (error) {
@@ -67,7 +61,7 @@ export const forgotPasswordSendOtp = async (request, reply) => {
   }
 };
 
-export const forgotPasswordVerifyOtp = async (request, reply) => {
+export const email2FAVerifyOtp = async (request, reply) => {
   try {
     const { email, otp } = request.body;
 
@@ -79,11 +73,10 @@ export const forgotPasswordVerifyOtp = async (request, reply) => {
         message: `${missingField} is required!`,
       });
     }
-
-    const redis = request.server.redis;
     const prisma = request.server.prisma;
+    const redis = request.server.redis;
 
-    const otpData = await redis.hgetall(`forgot-password-otp:${email}`);
+    const otpData = await redis.hgetall(`2fa-otp:${email}`);
 
     if (!Object.keys(otpData || {}).length) {
       return reply.status(400).send({
@@ -107,31 +100,27 @@ export const forgotPasswordVerifyOtp = async (request, reply) => {
       });
     }
 
-    if (otpData.permission_to_update_password !== "true") {
-      return reply.status(400).send({
-        success: false,
-        message: "Permission to update password not granted!",
-      });
-    }
+    const secret = authenticator.generateSecret();
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.update({
       where: { email },
+      data: {
+        two_factor_authentication: 1,
+        secret: secret,
+      },
     });
 
-    if (!user) {
-      return reply.status(404).send({
-        success: false,
-        message: "User not found!",
-      });
-    }
-
-    await redis.expire(`forgot-password-otp:${email}`, 10 * 60);
+    await redis.del(`2fa-otp:${email}`);
 
     return reply.status(200).send({
       success: true,
-      // message: "OTP verified successfully! You can now reset your password.",
-      message:
-        "hay Mr. Flutter Developer! OTP verified successfully! You can now reset your password.",
+      message: "Two-factor authentication enabled successfully!",
+      data: {
+        id: user.id,
+        email: user.email,
+        two_factor_authentication: user.two_factor_authentication,
+        secret: user.secret,
+      },
     });
   } catch (error) {
     request.log.error(error);
@@ -144,80 +133,7 @@ export const forgotPasswordVerifyOtp = async (request, reply) => {
   }
 };
 
-export const forgotPasswordReset = async (request, reply) => {
-  try {
-    const { email, password } = request.body;
-
-    const missingField = ["email", "password"].find(
-      (field) => !request.body[field]
-    );
-
-    if (missingField) {
-      return reply.status(400).send({
-        success: false,
-        message: `${missingField} is required!`,
-      });
-    }
-
-    const redis = request.server.redis;
-    const prisma = request.server.prisma;
-
-    const otpData = await redis.hgetall(`forgot-password-otp:${email}`);
-    console.log(otpData);
-
-    if (!Object.keys(otpData || {}).length) {
-      return reply.status(400).send({
-        success: false,
-        // message: "Password reset session expired!",
-        message: "bodda apnar time expired! abr suro dori krn!",
-      });
-    }
-
-    if (otpData.permission_to_update_password !== "true") {
-      return reply.status(400).send({
-        success: false,
-        // message: "Permission to update password not granted!",
-        message: "amk 500৳ TK pay krn! thik kre dibo?",
-      });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user) {
-      return reply.status(404).send({
-        success: false,
-        message: "User not found!",
-      });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    await prisma.user.update({
-      where: { email },
-      data: { password: hashedPassword },
-    });
-
-    await redis.del(`forgot-password-otp:${email}`);
-
-    return reply.status(200).send({
-      success: true,
-      // message: "Password reset successfully!",
-      message: "hay Mr. Flutter Developer! Password reset successfully!",
-    });
-  } catch (error) {
-    request.log.error(error);
-    return reply.status(500).send({
-      success: false,
-      // message: "Internal Server Error",
-      message: "Flutter Developer durbol!",
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-  }
-};
-
-export const forgotPasswordRecentOtp = async (request, reply) => {
+export const email2FARecentOtp = async (request, reply) => {
   try {
     const { email } = request.body;
 
@@ -228,27 +144,26 @@ export const forgotPasswordRecentOtp = async (request, reply) => {
       });
     }
 
-    const redis = request.server.redis;
     const prisma = request.server.prisma;
+    const redis = request.server.redis;
 
-    const existingUser = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!existingUser) {
+    if (!user) {
       return reply.status(404).send({
         success: false,
-        message: "User with this email does not exist",
+        message: "User does not exist",
       });
     }
 
-    const otpData = await redis.hgetall(`forgot-password-otp:${email}`);
+    const otpData = await redis.hgetall(`2fa-otp:${email}`);
 
     if (!Object.keys(otpData || {}).length) {
       return reply.status(404).send({
         success: false,
-        // message: "No active OTP session found. Please request a new OTP.",
-        message: "bodda apnar time expired! abr suro dori krn!",
+        message: "No active 2FA OTP session found. Please request a new OTP.",
       });
     }
 
@@ -257,19 +172,19 @@ export const forgotPasswordRecentOtp = async (request, reply) => {
 
     await redis
       .multi()
-      .hset(`forgot-password-otp:${email}`, {
+      .hset(`2fa-otp:${email}`, {
         ...otpData,
         otp: newOtp,
         expiration: newExpiry.toString(),
       })
-      .expire(`forgot-password-otp:${email}`, 5 * 60)
+      .expire(`2fa-otp:${email}`, 5 * 60)
       .exec();
 
-    sendForgotPasswordOTP(email, newOtp);
+    sendTwoFactorOtp(email, newOtp);
 
     return reply.status(200).send({
       success: true,
-      message: "New OTP sent successfully",
+      message: "2FA OTP resent successfull",
       otp: process.env.NODE_ENV === "development" ? newOtp : null,
     });
   } catch (error) {
@@ -277,7 +192,7 @@ export const forgotPasswordRecentOtp = async (request, reply) => {
     return reply.status(500).send({
       success: false,
       // message: "Internal Server Error",
-      message: "Flutter Developer durbol!",
+      message: "developer durbol!",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

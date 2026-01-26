@@ -80,7 +80,6 @@ model User {
   @@map("users")
 }
 
-
 model accountInfo {
   id String @id @default(uuid())
 
@@ -88,12 +87,13 @@ model accountInfo {
   vat_number  String?
 
   barcodeLabel String?
-  
-  /* 
-  * 1. bankName   String?
-  * 2. bankNumber String?
-  */
+
+  /**
+   * 1. bankName   String?
+   * 2. bankNumber String?
+   */
   bankInfo Json?
+  two_factor_auth Boolean @default(false)
 
   //relation
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1528,6 +1528,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1551,6 +1552,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
