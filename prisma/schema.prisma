@@ -22,19 +22,18 @@ model User {
 
   phone         String?
   absenderEmail String?
-  bankName      String?
-  bankNumber    String?
-  busnessName   String? // Geschäftspartner Name / Account Name
+
+  busnessName String? // Geschäftspartner Name / Account Name
+
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
-  barcodeLabel  String?
 
-  createdAt              DateTime                @default(now()) @map("created_at")
-  updatedAt              DateTime                @updatedAt
-  suggestions            SuggestionFeetf1rst[]
-  sentMessages           Message[]               @relation("sent_messages")
-  receivedMessages       Message[]               @relation("received_messages")
-  accounta               account[]
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt
+  suggestions      SuggestionFeetf1rst[]
+  sentMessages     Message[]             @relation("sent_messages")
+  receivedMessages Message[]             @relation("received_messages")
+
   appointments           appointment[]
   improvementSuggestions ImprovementSuggestion[]
   messageVisibility      MessageVisibility[]
@@ -74,18 +73,31 @@ model User {
   partnerPayouts              partner_payout[]
   courierContacts             CourierContact[]
   customModels                custom_models[]
+  accountInfos                accountInfo[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
   @@map("users")
 }
 
-model account {
-  id         String    @id @default(uuid())
-  expires_at DateTime?
-  user_id    String
-  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  token      String?
+
+model accountInfo {
+  id String @id @default(uuid())
+
+  vat_country String?
+  vat_number  String?
+
+  barcodeLabel String?
+  
+  /* 
+  * 1. bankName   String?
+  * 2. bankNumber String?
+  */
+  bankInfo Json?
+
+  //relation
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
 }
 
 model ucode {
@@ -1503,9 +1515,14 @@ model custom_shafts {
   Mehr_ansehen_image         String?
   invoice2                   String?
 
-
   //---------------------- fiRST Page------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -1534,6 +1551,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -1657,9 +1680,9 @@ enum custom_shafts_status {
 }
 
 model custom_models {
-  id String @id @default(cuid())
+  id               String @id @default(cuid())
   // id Int @id @default(autoincrement())
-  custom_models_id Int? @unique
+  custom_models_id Int?   @unique
 
   custom_models_name          String?
   custom_models_image         String?

@@ -690,16 +690,16 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
             image: true,
           },
         },
+        customer: {
+          select: {
+            id: true,
+            customerNumber: true,
+          },
+        },
         maßschaft_kollektion: {
           select: {
             id: true,
             name: true,
-          },
-          
-        },customer: {
-          select: {
-            id: true,
-            customerNumber: true,
           },
         },
       } as any,

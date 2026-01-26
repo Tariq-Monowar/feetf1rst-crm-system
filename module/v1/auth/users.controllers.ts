@@ -306,83 +306,137 @@ export const loginUser = async (req: Request, res: Response) => {
   }
 };
 
+
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const { name, email } = req.body;
-    const newImage = req.file as any; // S3 file object
+    const {
+      name,
+      phone,
+      absenderEmail,
+      busnessName,
+      hauptstandort,
+      bankName,
+      bankNumber,
+      bic,
+      vat_country,
+      vat_number,
+      barcodeLabel,
+    } = req.body;
+    
+    const newImage = req.file as any;
 
-    const existingUser = await prisma.user.findUnique({
+    // Get user with account info
+    const user = await prisma.user.findUnique({
       where: { id: String(id) },
+      include: { accountInfos: true }
     });
 
-    if (!existingUser) {
-      res.status(404).json({
+    if (!user) {
+      return res.status(404).json({
+        success: false,
         message: "User not found",
       });
-      return;
     }
 
-    // Check if email is being changed and validate uniqueness
-    if (email && email !== existingUser.email) {
-      // Check if email exists in user table
-      const existingEmailUser = await prisma.user.findUnique({
-        where: { email },
-      });
-      if (existingEmailUser) {
-        res.status(400).json({
-          message: "Email already exists",
-        });
-        return;
-      }
-
-      // Check if email exists in employees table
-      const existingEmailEmployee = await prisma.employees.findUnique({
-        where: { email },
-      });
-      if (existingEmailEmployee) {
-        res.status(400).json({
-          message: "Email already exists as an employee",
-        });
-        return;
-      }
+    // Delete old image if new one is uploaded
+    if (newImage?.location && user.image) {
+      deleteFileFromS3(user.image);
     }
 
-    // With S3, req.file.location is the full S3 URL
-    const newImageUrl = newImage?.location || null;
+    const userData: any = {
+      name: name ?? user.name,
+      phone: phone ?? user.phone,
+      image: newImage?.location ?? user.image,
+      absenderEmail: absenderEmail ?? user.absenderEmail,
+      busnessName: busnessName ?? user.busnessName,
+      hauptstandort: hauptstandort ?? user.hauptstandort,
+    };
 
-    // Delete old image from S3 if a new image is being uploaded and old image exists
-    if (newImageUrl && existingUser.image) {
-      await deleteFileFromS3(existingUser.image);
-    }
-
-    const user = await prisma.user.update({
+    // Update user
+    const updatedUser = await prisma.user.update({
       where: { id: String(id) },
-      data: {
-        name: name || existingUser.name,
-        email: email || existingUser.email,
-        image: newImageUrl || existingUser.image, // Store the full S3 URL
-      },
+      data: userData,
+      include: { accountInfos: true }
+    });
+
+    // Handle account info updates
+    const existingAccountInfo = user.accountInfos[0];
+    
+    const hasUpdates = vat_country || vat_number || barcodeLabel || bankName || bankNumber || bic;
+
+    if (hasUpdates || existingAccountInfo) {
+      const currentBankInfo = (existingAccountInfo?.bankInfo as any) || {};
+      
+      const bankInfo: any = {
+        bankName: bankName ?? currentBankInfo.bankName ?? null,
+        bankNumber: bankNumber ?? currentBankInfo.bankNumber ?? null,
+        bic: bic ?? currentBankInfo.bic ?? null,
+      };
+
+      // Prepare account info data
+      const accountInfoData: any = {
+        vat_country: vat_country ?? existingAccountInfo?.vat_country ?? null,
+        vat_number: vat_number ?? existingAccountInfo?.vat_number ?? null,
+        barcodeLabel: barcodeLabel ?? existingAccountInfo?.barcodeLabel ?? null,
+        bankInfo: bankInfo,
+      };
+
+      // Update existing or create new
+      if (existingAccountInfo) {
+        await prisma.accountInfo.update({
+          where: { id: existingAccountInfo.id },
+          data: accountInfoData
+        });
+      } else {
+        await prisma.accountInfo.create({
+          data: { ...accountInfoData, userId: user.id }
+        });
+      }
+    }
+
+    // Get updated account info for response
+    const accountInfo = await prisma.accountInfo.findFirst({
+      where: { userId: String(id) }
     });
 
     res.status(200).json({
       success: true,
       message: "User updated successfully",
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image, // Already a full URL from S3
-      },
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        image: updatedUser.image,
+        absenderEmail: updatedUser.absenderEmail,
+        busnessName: updatedUser.busnessName,
+        hauptstandort: updatedUser.hauptstandort,
+        role: updatedUser.role,
+        accountInfo: accountInfo || null
+      }
     });
-  } catch (error) {
+
+  } catch (error: any) {
+    console.error('Error updating user:', error);
+    
+    // Handle unique constraint errors
+    if (error.code === 'P2002') {
+      const field = error.meta?.target?.[0];
+      return res.status(400).json({
+        success: false,
+        message: `${field === 'email' ? 'Email' : 'Field'} already exists`
+      });
+    }
+
     res.status(500).json({
       success: false,
-      message: "Something went wrong",
-      error,
+      message: "Failed to update user profile",
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
     });
   }
 };
+
 
 export const changePassword = async (req: Request, res: Response) => {
   try {
@@ -500,8 +554,8 @@ export const createPartnership = async (req: Request, res: Response) => {
 export const updatePartnerProfile = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const { name } = req.body;
-    const newImage = req.file as any; // S3 file object
+    const { name,  } = req.body;
+    const newImage = req.file as any;
 
     const existingUser = await prisma.user.findUnique({
       where: { id: String(id) },
@@ -514,10 +568,8 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
       return;
     }
 
-    // With S3, req.file.location is the full S3 URL
     const newImageUrl = newImage?.location || null;
 
-    // Delete old image from S3 if a new image is being uploaded and old image exists
     if (newImageUrl && existingUser.image) {
       await deleteFileFromS3(existingUser.image);
     }
@@ -526,7 +578,7 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
       where: { id: String(id) },
       data: {
         name: name || existingUser.name,
-        image: newImageUrl || existingUser.image, // Store the full S3 URL
+        image: newImageUrl || existingUser.image,
       },
     });
 
@@ -537,7 +589,7 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        image: user.image, // Already a full URL from S3
+        image: user.image,
         role: user.role,
       },
     });

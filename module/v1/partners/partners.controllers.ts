@@ -80,11 +80,20 @@ export const createPartnership = async (req: Request, res: Response) => {
         name: name ?? undefined,
         phone: phone ?? undefined,
         absenderEmail: absenderEmail ?? undefined,
-        bankName: bankName ?? undefined,
-        bankNumber: bankNumber ?? undefined,
         busnessName: busnessName ?? undefined,
         hauptstandort: parsedHauptstandort ?? [],
         image: newImage ? newImage.location : undefined,
+        accountInfos: {
+          create: {
+            bankInfo: (bankName || bankNumber) ? {
+              bankName: bankName ?? null,
+              bankNumber: bankNumber ?? null,
+            } : undefined,
+          },
+        },
+      },
+      include: {
+        accountInfos: true,
       },
     });
 
@@ -149,12 +158,46 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
         image: newImage ? newImage.location : existingUser.image,
         phone: phone || existingUser.phone,
         absenderEmail: absenderEmail || existingUser.absenderEmail,
-        bankName: bankName || existingUser.bankName,
-        bankNumber: bankNumber || existingUser.bankNumber,
         busnessName: busnessName || existingUser.busnessName,
         hauptstandort: hauptstandort || existingUser.hauptstandort,
       },
+      include: {
+        accountInfos: true,
+      },
     });
+
+    // Update or create accountInfo if bankName or bankNumber is provided
+    if (bankName !== undefined || bankNumber !== undefined) {
+      const existingAccountInfo = await (prisma as any).accountInfo.findFirst({
+        where: { userId: String(id) },
+      });
+
+      const currentBankInfo = existingAccountInfo?.bankInfo || {};
+      const bankInfoUpdate = {
+        bankName: bankName !== undefined ? bankName : currentBankInfo.bankName ?? null,
+        bankNumber: bankNumber !== undefined ? bankNumber : currentBankInfo.bankNumber ?? null,
+      };
+
+      if (existingAccountInfo) {
+        await (prisma as any).accountInfo.update({
+          where: { id: existingAccountInfo.id },
+          data: { bankInfo: bankInfoUpdate },
+        });
+      } else {
+        await (prisma as any).accountInfo.create({
+          data: {
+            userId: String(id),
+            bankInfo: bankInfoUpdate,
+          },
+        });
+      }
+    }
+
+    // Fetch updated accountInfo
+    const accountInfo = await (prisma as any).accountInfo.findFirst({
+      where: { userId: String(id) },
+    });
+    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
 
     return res.status(200).json({
       success: true,
@@ -162,6 +205,8 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
       user: {
         ...user,
         image: user.image || null,
+        bankName: bankInfo?.bankName || null,
+        bankNumber: bankInfo?.bankNumber || null,
       },
     });
   } catch (error) {
@@ -219,6 +264,9 @@ export const getAllPartners = async (req: Request, res: Response) => {
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
+        include: {
+          accountInfos: true,
+        },
       }),
       prisma.user.count({
         where: {
@@ -243,10 +291,19 @@ export const getAllPartners = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const partnersWithImageUrls = partners.map((partner) => ({
-      ...partner,
-      image: partner.image || null,
-    }));
+    const partnersWithImageUrls = partners.map((partner) => {
+      const accountInfo = partner.accountInfos?.[0];
+      const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
+      return {
+        ...partner,
+        image: partner.image || null,
+        bankName: bankInfo?.bankName || null,
+        bankNumber: bankInfo?.bankNumber || null,
+        barcodeLabel: accountInfo?.barcodeLabel || null,
+        vat_country: accountInfo?.vat_country || null,
+        vat_number: accountInfo?.vat_number || null,
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -273,6 +330,9 @@ export const getPartnerById = async (req: Request, res: Response) => {
 
     const partner = await prisma.user.findUnique({
       where: { id, role: "PARTNER" },
+      include: {
+        accountInfos: true,
+      },
     });
 
     if (!partner) {
@@ -280,13 +340,23 @@ export const getPartnerById = async (req: Request, res: Response) => {
         success: false,
         message: "Partner not found",
       });
+      return;
     }
+
+    // Extract bankInfo from accountInfos
+    const accountInfo = partner.accountInfos?.[0];
+    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
 
     res.status(200).json({
       success: true,
       partner: {
         ...partner,
         image: partner.image || null,
+        bankName: bankInfo?.bankName || null,
+        bankNumber: bankInfo?.bankNumber || null,
+        barcodeLabel: accountInfo?.barcodeLabel || null,
+        vat_country: accountInfo?.vat_country || null,
+        vat_number: accountInfo?.vat_number || null,
       },
     });
   } catch (error) {
@@ -399,13 +469,47 @@ export const updatePartnerByAdmin = async (
         image: newImage ? newImage.location : user.image,
         phone: phone ?? user.phone,
         absenderEmail: absenderEmail ?? user.absenderEmail,
-        bankName: bankName ?? user.bankName,
-        bankNumber: bankNumber ?? user.bankNumber,
         busnessName: busnessName ?? user.busnessName,
         hauptstandort: parsedHauptstandort ?? user.hauptstandort,
         role: nextRole ?? user.role,
       },
+      include: {
+        accountInfos: true,
+      },
     });
+
+    // Update or create accountInfo if bankName or bankNumber is provided
+    if (bankName !== undefined || bankNumber !== undefined) {
+      const existingAccountInfo = await (prisma as any).accountInfo.findFirst({
+        where: { userId: id },
+      });
+
+      const currentBankInfo = existingAccountInfo?.bankInfo || {};
+      const bankInfoUpdate = {
+        bankName: bankName !== undefined ? bankName : currentBankInfo.bankName ?? null,
+        bankNumber: bankNumber !== undefined ? bankNumber : currentBankInfo.bankNumber ?? null,
+      };
+
+      if (existingAccountInfo) {
+        await (prisma as any).accountInfo.update({
+          where: { id: existingAccountInfo.id },
+          data: { bankInfo: bankInfoUpdate },
+        });
+      } else {
+        await (prisma as any).accountInfo.create({
+          data: {
+            userId: id,
+            bankInfo: bankInfoUpdate,
+          },
+        });
+      }
+    }
+
+    // Fetch updated accountInfo
+    const accountInfo = await (prisma as any).accountInfo.findFirst({
+      where: { userId: id },
+    });
+    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
 
     res.status(200).json({
       success: true,
@@ -418,8 +522,8 @@ export const updatePartnerByAdmin = async (
         image: updated.image || null,
         phone: updated.phone,
         absenderEmail: updated.absenderEmail,
-        bankName: updated.bankName,
-        bankNumber: updated.bankNumber,
+        bankName: bankInfo?.bankName || null,
+        bankNumber: bankInfo?.bankNumber || null,
         busnessName: updated.busnessName,
         hauptstandort: updated.hauptstandort,
       },

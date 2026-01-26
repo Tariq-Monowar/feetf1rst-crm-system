@@ -593,6 +593,24 @@ export const createTustomShafts = async (req, res) => {
     console.error("Create Custom Shaft Error:", err);
     cleanupFiles();
 
+    // Handle multer errors (unexpected file fields)
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      const field = err.field || 'unknown';
+      return res.status(400).json({
+        success: false,
+        message: `Unexpected file field: ${field}`,
+        allowedFields: [
+          'image3d_1',
+          'image3d_2',
+          'invoice',
+          'paintImage',
+          'invoice2',
+          'zipper_image',
+          'custom_models_image'
+        ],
+      });
+    }
+
     if (err.code === "P2003") {
       return res.status(400).json({
         success: false,
