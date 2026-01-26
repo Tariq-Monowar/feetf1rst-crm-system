@@ -703,10 +703,15 @@ export const checkAuthStatus = async (req, res) => {
           email: true,
           image: true,
           role: true,
+          busnessName: true,
+          hauptstandort: true,
+          absenderEmail: true,
+          phone: true,
           accountInfos: {
             select: {
               bankInfo: true,
               barcodeLabel: true,
+              two_factor_auth: true,
               vat_country: true,
               vat_number: true,
             },
