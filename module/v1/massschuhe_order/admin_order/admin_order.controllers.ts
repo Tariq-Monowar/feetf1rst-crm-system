@@ -38,9 +38,9 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
-      where: { id: orderId },
-      select: { id: true },
-    });
+        where: { id: orderId },
+        select: { id: true },
+      });
 
     if (!order) {
       cleanupFiles();
@@ -65,7 +65,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
-      data: {
+        data: {
         massschuhe_order: {
           connect: { id: orderId }
         },
@@ -80,22 +80,22 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
           10000 + Math.random() * 90000,
         )}`,
-        catagoary: "Halbprobenerstellung",
+          catagoary: "Halbprobenerstellung",
         isCompleted: false,
         status: "Neu",
-      },
-      select: {
-        id: true,
+        },
+        select: {
+          id: true,
         totalPrice: true,
-        image3d_1: true,
-        image3d_2: true,
-        invoice: true,
+          image3d_1: true,
+          image3d_2: true,
+          invoice: true,
         orderNumber: true,
-        catagoary: true,
+          catagoary: true,
         status: true,
         Halbprobenerstellung_json: true,
-      },
-    });
+        },
+      });
 
     // Update the massschuhe_order to isPanding true
     await prisma.massschuhe_order.update({
@@ -104,15 +104,15 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     });
 
     // Create transition record
-    await prisma.admin_order_transitions.create({
-      data: {
-        massschuhe_order_id: orderId,
-        partnerId: userId,
-        catagoary: "Halbprobenerstellung",
+      await prisma.admin_order_transitions.create({
+        data: {
+          massschuhe_order_id: orderId,
+          partnerId: userId,
+          catagoary: "Halbprobenerstellung",
         price: data.totalPrice,
-        note: "Halbprobenerstellung send to admin",
-      },
-    });
+          note: "Halbprobenerstellung send to admin",
+        },
+      });
 
     // Format response nicely for frontend
     return res.status(200).json({
@@ -234,26 +234,26 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
     // Validate mabschaftKollektionId if not custom models
     if (!isCustomModels) {
-      if (!mabschaftKollektionId) {
+    if (!mabschaftKollektionId) {
         cleanupFiles();
-        return res.status(400).json({
-          success: false,
+      return res.status(400).json({
+        success: false,
           message: "maßschaftKollektionId must be provided when custom_models is false",
-        });
-      }
+      });
+    }
 
       const kollektion = await prisma.maßschaft_kollektion.findUnique({
         where: { id: mabschaftKollektionId },
         select: { id: true },
       });
 
-      if (!kollektion) {
+    if (!kollektion) {
         cleanupFiles();
-        return res.status(404).json({
-          success: false,
-          message: "Maßschaft Kollektion not found",
-        });
-      }
+      return res.status(404).json({
+        success: false,
+        message: "Maßschaft Kollektion not found",
+      });
+    }
     }
 
     // Helper: Parse price values
@@ -319,14 +319,14 @@ export const sendToAdminOrder_2 = async (req, res) => {
     if (!isCustomModels && mabschaftKollektionId) {
       shaftData.maßschaft_kollektion = {
         connect: { id: mabschaftKollektionId }
-      };
+    };
     }
 
     // Create the custom shaft
     const customShaft = await prisma.custom_shafts.create({
       data: shaftData,
-      select: {
-        id: true,
+          select: {
+            id: true,
         orderNumber: true,
         status: true,
         customerId: true,
@@ -389,8 +389,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
           custom_models_verschlussart: true,
           custom_models_gender: true,
           custom_models_description: true,
-        },
-      });
+      },
+    });
     }
 
     // Update order status
@@ -447,7 +447,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
 
 export const sendToAdminOrder_3 = async (req, res) => {
-  const files = req.files as any;
+    const files = req.files as any;
 
   const cleanupFiles = () => {
     if (!files) return;
@@ -671,43 +671,43 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     // Order by createdAt descending to show latest first
     // Fetch limit + 1 to check if there's a next page
     const data = await prisma.custom_shafts.findMany({
-      where: whereCondition,
+        where: whereCondition,
       take: limit + 1, // Fetch one extra to check if there's more
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
+        orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
         orderNumber: true,
         catagoary: true,
         status: true,
         totalPrice: true,
         other_customer_number: true,
-        createdAt: true,
+              createdAt: true,
         isCustomeModels: true,
         user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
           },
-        },
         customer: {
-          select: {
-            id: true,
+            select: {
+              id: true,
             customerNumber: true,
+            },
           },
-        },
         maßschaft_kollektion: {
-          select: {
-            id: true,
+            select: {
+              id: true,
             name: true,
+            },
           },
-        },
       } as any,
     });
 
     // Check if there's a next page
     const hasNextPage = data.length > limit;
-    
+
     // If we fetched an extra item, remove it
     const items = hasNextPage ? data.slice(0, limit) : data;
 
@@ -908,7 +908,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     const formatImage = (s3Url: string | null) => s3Url || null;
 
     // Parse JSON fields if they are strings (like in sendToAdminOrder_1)
- 
+
     // Format the response
     const shaftData: any = customShaft;
     const formattedShaft: any = {

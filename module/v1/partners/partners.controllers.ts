@@ -295,8 +295,8 @@ export const getAllPartners = async (req: Request, res: Response) => {
       const accountInfo = partner.accountInfos?.[0];
       const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
       return {
-        ...partner,
-        image: partner.image || null,
+      ...partner,
+      image: partner.image || null,
         bankName: bankInfo?.bankName || null,
         bankNumber: bankInfo?.bankNumber || null,
         barcodeLabel: accountInfo?.barcodeLabel || null,

@@ -1994,3 +1994,26 @@ enum messageType {
   Normal
   System
 }
+
+/*
+ * it's news created by admin for partner
+ * image, title, subtitle, short description full subscription
+*/
+model news {
+  id String @id @default(uuid())
+
+  image String
+  title String
+  subtitle String
+  shortDescription String
+  fullSubscription String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([image])
+  @@index([title])
+  @@index([subtitle])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
