@@ -30,7 +30,7 @@ export const loginEmployee = async (req: Request, res: Response) => {
         password: true,
         employeeName: true,
         image: true,
-        jobPosition: true, 
+        jobPosition: true,
         partnerId: true,
       },
     });
@@ -63,6 +63,65 @@ export const loginEmployee = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error("Error in loginEmployee:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message || "Unknown error",
+    });
+  }
+};
+
+export const loginEmployeeById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.body;
+    const partnerId = req.user.id;
+
+    const employee = await prisma.employees.findUnique({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        accountName: true,
+        employeeName: true,
+        email: true,
+        image: true,
+        jobPosition: true,
+        financialAccess: true,
+        role: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            hauptstandort: true,
+            busnessName: true,
+            absenderEmail: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    if (!employee) {
+      return res.status(400).json({
+        success: false,
+        message: "employee not found",
+      });
+    }
+
+    const token = jwt.sign(
+      { id: employee.id, email: employee.email, role: "EMPLOYEE" },
+      process.env.JWT_SECRET
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data: employee,
+      token: token,
+    });
+  } catch (error) {
+    console.error("Error in loginEmployeeById:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",

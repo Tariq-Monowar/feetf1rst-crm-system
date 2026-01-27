@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -27,9 +28,26 @@ const prisma = new PrismaClient();
 
 
 export const createEmployee = async (req: Request, res: Response) => {
+  // cleanup files
+  const file = req.file as any;
+
+  const cleanupFiles = () => {
+    if (file?.location) {
+      deleteFileFromS3(file.location);
+    }
+  };
+
   try {
-    const { accountName, employeeName, email, password, financialAccess } =
+    const {
+      accountName,
+      employeeName,
+      email,
+      password,
+      financialAccess,
+      jobPosition,
+    } =
       req.body;
+
 
     const missingField = [
       "accountName",
@@ -37,7 +55,9 @@ export const createEmployee = async (req: Request, res: Response) => {
       "email",
       "password",
     ].find((field) => !req.body[field]);
+
     if (missingField) {
+      cleanupFiles();
       return res
         .status(400)
         .json({ success: false, message: `${missingField} is required!` });
@@ -47,6 +67,7 @@ export const createEmployee = async (req: Request, res: Response) => {
       where: { email },
     });
     if (existingUser) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Email already registered!",
@@ -58,23 +79,42 @@ export const createEmployee = async (req: Request, res: Response) => {
     });
 
     if (existingEmployee) {
+      cleanupFiles();
       return res
         .status(400)
         .json({ success: false, message: "Employee already exists!" });
     }
- 
+
+
+    // Convert financialAccess to boolean
+    const financialAccessBool = financialAccess === true || financialAccess === "true" || financialAccess === 1;
 
     const employeeData = {
       accountName,
       employeeName,
       email,
       password,
-      financialAccess,
+      financialAccess: financialAccessBool,
       partnerId: req.user.id,
+      image: file?.location || null,
+      jobPosition: jobPosition || null,
+      role: "EMPLOYEE" as const,
     };
 
     const newEmployee = await prisma.employees.create({
       data: employeeData,
+      select: {
+        id: true,
+        accountName: true,
+        employeeName: true,
+        email: true,
+        financialAccess: true,
+        jobPosition: true,
+        image: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     res.status(201).json({
@@ -82,12 +122,13 @@ export const createEmployee = async (req: Request, res: Response) => {
       message: "Employee created successfully",
       data: newEmployee,
     });
-  } catch (error) {
+  } catch (error: any) {
+    cleanupFiles();
     console.error("Create Employee error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error.message,
+      error: error.message || "Unknown error",
     });
   }
 };
@@ -121,6 +162,18 @@ export const getAllEmployees = async (req: Request, res: Response) => {
       orderBy: {
         createdAt: "desc",
       },
+      select: {
+        id: true,
+        accountName: true,
+        employeeName: true,
+        email: true,
+        financialAccess: true,
+        jobPosition: true,
+        image: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     const totalPages = Math.ceil(totalCount / limitNumber);
@@ -147,6 +200,16 @@ export const getAllEmployees = async (req: Request, res: Response) => {
 };
 
 export const updateEmployee = async (req: Request, res: Response) => {
+  // cleanup files
+  const file = req.file as any;
+  const oldImageUrl = req.body.oldImageUrl;
+
+  const cleanupFiles = () => {
+    if (file?.location) {
+      deleteFileFromS3(file.location);
+    }
+  };
+
   try {
     const { id } = req.params;
     const partnerId = req.user.id;
@@ -156,6 +219,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
     });
 
     if (!existingEmployee) {
+      cleanupFiles();
       return res
         .status(404)
         .json({ success: false, message: "Employee not found" });
@@ -163,18 +227,73 @@ export const updateEmployee = async (req: Request, res: Response) => {
 
     // Check if the employee belongs to the requesting partner
     if (existingEmployee.partnerId !== partnerId) {
+      cleanupFiles();
       return res.status(403).json({
         success: false,
         message: "You do not have permission to update this employee",
       });
     }
 
-    // Prevent updating partnerId to ensure employees can't be transferred
-    const { partnerId: _, ...updateData } = req.body;
+    // Extract fields from req.body
+    const {
+      accountName,
+      employeeName,
+      email,
+      password,
+      financialAccess,
+      jobPosition,
+      partnerId: _,
+      oldImageUrl: __,
+      ...restData
+    } = req.body;
+
+    // Build update data
+    const updateData: any = { ...restData };
+
+    if (accountName !== undefined) updateData.accountName = accountName;
+    if (employeeName !== undefined) updateData.employeeName = employeeName;
+    if (email !== undefined) updateData.email = email;
+    if (password !== undefined) updateData.password = password;
+    if (jobPosition !== undefined) updateData.jobPosition = jobPosition || null;
+
+    // Convert financialAccess to boolean if provided
+    if (financialAccess !== undefined) {
+      updateData.financialAccess =
+        financialAccess === true ||
+        financialAccess === "true" ||
+        financialAccess === 1;
+    }
+
+    // Handle image upload
+    if (file?.location) {
+      // Delete old image if it exists
+      if (existingEmployee.image) {
+        deleteFileFromS3(existingEmployee.image);
+      }
+      updateData.image = file.location;
+    } else if (oldImageUrl === null || oldImageUrl === "null") {
+      // If explicitly setting image to null, delete old image
+      if (existingEmployee.image) {
+        deleteFileFromS3(existingEmployee.image);
+      }
+      updateData.image = null;
+    }
 
     const updatedEmployee = await prisma.employees.update({
       where: { id },
       data: updateData,
+      select: {
+        id: true,
+        accountName: true,
+        employeeName: true,
+        email: true,
+        financialAccess: true,
+        jobPosition: true,
+        image: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     res.status(200).json({
@@ -182,12 +301,13 @@ export const updateEmployee = async (req: Request, res: Response) => {
       message: "Employee updated successfully",
       data: updatedEmployee,
     });
-  } catch (error) {
+  } catch (error: any) {
+    cleanupFiles();
     console.error("Update Employee error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error.message,
+      error: error.message || "Unknown error",
     });
   }
 };
@@ -218,6 +338,10 @@ export const deleteEmployee = async (req: Request, res: Response) => {
     await prisma.employees.delete({
       where: { id },
     });
+
+    if (existingEmployee.image) {
+      deleteFileFromS3(existingEmployee.image);
+    }
 
     res.status(200).json({
       success: true,
