@@ -285,12 +285,11 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       select: {
         id: true,
         orderNumber: true,
-        status: true,
         orderFor: true,
         price: true,
         note: true,
         custom_shafts_catagoary: true,
-        custom_shafts:{
+        custom_shafts: {
           select: {
             invoice: true,
             invoice2: true,
