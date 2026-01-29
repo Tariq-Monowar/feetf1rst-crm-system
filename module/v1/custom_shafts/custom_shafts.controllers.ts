@@ -583,6 +583,19 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
+    // Create admin_order_transitions record
+    await prisma.admin_order_transitions.create({
+      data: {
+        orderNumber: customShaft.orderNumber,
+        customerId: customerId,
+        partnerId: id,
+        orderFor: "shoes",
+        custom_shafts_id: customShaft.id,
+        custom_shafts_catagoary: category,
+        price: totalPrice ? parseFloat(totalPrice) : null,
+        note: isCustomModels ? `${category} (Custom Model) send to admin` : `${category} send to admin`,
+      },
+    });
     // Format response
     const responseData: any = {
       ...customShaft,
