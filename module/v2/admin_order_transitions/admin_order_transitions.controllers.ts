@@ -285,6 +285,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       select: {
         id: true,
         orderNumber: true,
+        status: true,
         orderFor: true,
         price: true,
         note: true,
