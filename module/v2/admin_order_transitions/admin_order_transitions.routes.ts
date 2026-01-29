@@ -4,6 +4,7 @@ import {
   getTotalPrice,
   getTotalPriceRatio,
   getAllTransitions,
+  getOneMonthPayment
 } from "./admin_order_transitions.controllers";
 
 const router = express.Router();
@@ -26,5 +27,13 @@ router.get(
   getAllTransitions
 );
 
+/*
+least one month payment list stated and todat (today to one month before)
+*/
+router.get(
+  "/least-one-month-payment",
+  verifyUser("PARTNER", "ADMIN"),
+  getOneMonthPayment
+);
 
 export default router;

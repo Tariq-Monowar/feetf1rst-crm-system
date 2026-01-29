@@ -315,3 +315,47 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+// API 4: Get one month payment
+export const getOneMonthPayment = async (req: Request, res: Response) => {
+    try {
+      const { id } = req.user;
+
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);  
+      thirtyDaysAgo.setHours(0, 0, 0, 0); 
+      
+      const result = await prisma.$queryRaw<Array<{ total_price: number }>>`
+        SELECT COALESCE(SUM(price), 0)::float as total_price
+        FROM "admin_order_transitions"
+        WHERE "partnerId" = ${id}::text
+          AND "createdAt" >= ${thirtyDaysAgo}::timestamp
+          AND "createdAt" <= ${today}::timestamp
+      `;
+      
+      const totalPrice = result[0]?.total_price || 0;
+      
+      return res.status(200).json({
+        success: true,
+        message: "One month payment calculated successfully",
+        data: {
+          totalPrice: parseFloat(totalPrice.toFixed(2)),
+          dateRange: {
+            from: thirtyDaysAgo.toISOString(),
+            to: today.toISOString(),
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Get One Month Payment Error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Something went wrong while calculating one month payment",
+        error: error.message,
+      });
+    }
+  };
