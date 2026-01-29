@@ -13,6 +13,7 @@ import {
   updateCustomShaftStatus,
   deleteCustomShaft,
   totalPriceResponse,
+  createCustomBodenkonstruktionOrder,
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -64,6 +65,16 @@ router.post(
   ]),
   // handleMulterError,
   createTustomShafts
+);
+
+router.post(
+  "/custom-bodenkonstruktion/create",
+  verifyUser("PARTNER", "ADMIN"),
+  upload.fields([
+    { name: "invoice", maxCount: 1 },
+    { name: "staticImage", maxCount: 1 },
+  ]),
+  createCustomBodenkonstruktionOrder
 );
 
 
@@ -121,5 +132,7 @@ router.delete(
   verifyUser("PARTNER", "ADMIN"),
   deleteMaßschaftKollektion
 );
+
+
 
 export default router;

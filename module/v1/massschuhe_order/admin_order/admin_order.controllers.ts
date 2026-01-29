@@ -882,6 +882,9 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     } else if (categoryCheck.catagoary === "Bodenkonstruktion") {
       selectFields.bodenkonstruktion_json = true;
       selectFields.staticImage = true;
+      selectFields.customerName = true;
+      selectFields.deliveryDate = true;
+      selectFields.isCustomBodenkonstruktion = true;
     } else if (categoryCheck.catagoary === "row") {
       // For row category, include Massschafterstellung fields
       selectFields.Massschafterstellung_json1 = true;
@@ -1106,17 +1109,6 @@ export const createCourierContact = async (req: Request, res: Response) => {
     // }
 
     //check valid customerId
-    const customer = await prisma.customers.findUnique({
-      where: { id: customerId },
-      select: { id: true },
-    });
-
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
-      });
-    }
 
     // //check valid orderId
     // const order = await prisma.massschuhe_order.findUnique({
@@ -1168,7 +1160,7 @@ export const createCourierContact = async (req: Request, res: Response) => {
     const data = {
       partnerId: userId,
       orderId: orderId || null,
-      customerId: customerId,
+      customerId: customerId || null,
       address: address,
       companyName: companyName,
       phone: phone,

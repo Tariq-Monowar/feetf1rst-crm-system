@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 // Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../utils/notification.utils";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
+import { generateNextOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 const prisma = new PrismaClient();
 
@@ -642,6 +643,166 @@ export const createTustomShafts = async (req, res) => {
       success: false,
       message: "Something went wrong",
       error: err.message,
+    });
+  }
+};
+
+export const createCustomBodenkonstruktionOrder = async (req: Request, res: Response) => {
+  const files = req.files as any;
+  const { id } = req.user;
+
+  const cleanupFiles = () => {
+    if (!files) return;
+    Object.keys(files).forEach((key) => {
+      files[key].forEach((file: any) => {
+        if (file.location) {
+          deleteFileFromS3(file.location);
+        }
+      });
+    });
+  };
+
+  try {
+    const { customerName, totalPrice, bodenkonstruktion_json, deliveryDate } = req.body;
+    
+    // Validate required fields
+    if (!customerName) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "customerName is required",
+      });
+    }
+
+    if (!totalPrice) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required",
+      });
+    }
+
+    if (!bodenkonstruktion_json) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "bodenkonstruktion_json is required",
+      });
+    }
+
+    // Parse totalPrice properly - handle string, number, or null
+    let parsedTotalPrice: number | null = null;
+    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
+      const parsed = parseFloat(totalPrice.toString());
+      parsedTotalPrice = isNaN(parsed) ? null : parsed;
+    }
+
+    // Validate totalPrice
+    if (!parsedTotalPrice || parsedTotalPrice <= 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required and must be greater than 0",
+      });
+    }
+
+    // Parse bodenkonstruktion_json if it's a string
+    let parsedJson = bodenkonstruktion_json;
+    if (typeof bodenkonstruktion_json === 'string') {
+      try {
+        parsedJson = JSON.parse(bodenkonstruktion_json);
+      } catch (e) {
+        parsedJson = bodenkonstruktion_json;
+      }
+    }
+
+    // Parse deliveryDate if provided
+    let parsedDeliveryDate: Date | null = null;
+    if (deliveryDate) {
+      if (typeof deliveryDate === 'string') {
+        parsedDeliveryDate = new Date(deliveryDate);
+        if (isNaN(parsedDeliveryDate.getTime())) {
+          cleanupFiles();
+          return res.status(400).json({
+            success: false,
+            message: "Invalid deliveryDate format",
+          });
+        }
+      } else if (deliveryDate instanceof Date) {
+        parsedDeliveryDate = deliveryDate;
+      }
+    }
+
+    const invoice = files?.invoice?.[0]?.location || null;
+    const staticImage = files?.staticImage?.[0]?.location || null;
+ 
+
+    // Create custom shaft order without customer or order connections
+    const data = await prisma.custom_shafts.create({
+      data: {
+        user: {
+          connect: { id: id }
+        },
+        customerName: customerName,
+        totalPrice: parsedTotalPrice,
+        bodenkonstruktion_json: parsedJson,
+        deliveryDate: parsedDeliveryDate,
+        invoice,
+        staticImage: staticImage || null,
+        isCustomBodenkonstruktion: true,
+        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
+          10000 + Math.random() * 90000,
+        )}`,
+        catagoary: "Bodenkonstruktion",
+        isCompleted: false,
+        status: "Neu",
+      },
+      select: {
+        id: true,
+        customerName: true,
+        totalPrice: true,
+        invoice: true,
+        staticImage: true,
+        orderNumber: true,
+        catagoary: true,
+        status: true,
+        bodenkonstruktion_json: true,
+        deliveryDate: true,
+        isCustomBodenkonstruktion: true,
+      },
+    });
+
+    // Generate orderNumber for this partner
+    const orderNumber = await generateNextOrderNumber(id);
+
+    // Extract the custom shaft ID
+    const customShaftId = (data as any).id;
+
+    // Create transition record - without customerId and massschuhe_order_id
+    await prisma.admin_order_transitions.create({
+      data: {
+        orderNumber: orderNumber,
+        orderFor: "shoes",
+        partnerId: id,
+        custom_shafts_id: customShaftId,
+        custom_shafts_catagoary: "Bodenkonstruktion",
+        price: parsedTotalPrice,
+        note: "Custom Bodenkonstruktion send to admin",
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Custom Bodenkonstruktion order created successfully",
+      data,
+    });
+  } catch (error: any) {
+    console.error("Create Custom Bodenkonstruktion Order Error:", error);
+    cleanupFiles();
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
     });
   }
 };
@@ -1512,3 +1673,6 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+// i need to create an order for BODENKONSTRUKTION
