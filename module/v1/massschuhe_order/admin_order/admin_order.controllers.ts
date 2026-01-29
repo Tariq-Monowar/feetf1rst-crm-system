@@ -320,6 +320,10 @@ export const sendToAdminOrder_2 = async (req, res) => {
       }
     }
 
+    // Determine category: Komplettfertigung if both JSON fields are present, otherwise Massschafterstellung
+    const hasBothJsonFields = Massschafterstellung_json1 && Massschafterstellung_json2;
+    const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
+
     // Prepare data object
     const shaftData: any = {
       massschuhe_order: {
@@ -341,7 +345,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       totalPrice: parsedTotalPrice,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
-      catagoary: "Massschafterstellung",
+      catagoary: category,
       isCompleted: false,
       isCustomeModels: isCustomModels,
     };
@@ -449,11 +453,11 @@ export const sendToAdminOrder_2 = async (req, res) => {
         partnerId: id,
         customerId: order.customerId,
         custom_shafts_id: customShaft.id,
-        custom_shafts_catagoary: "Massschafterstellung",
+        custom_shafts_catagoary: category,
         price: parsedTotalPrice, // Use parsed value directly, not customShaft.totalPrice
         note: isCustomModels
-          ? "Massschafterstellung (Custom Model) send to admin"
-          : "Massschafterstellung send to admin",
+          ? `${category} (Custom Model) send to admin`
+          : `${category} send to admin`,
       },
     });
 

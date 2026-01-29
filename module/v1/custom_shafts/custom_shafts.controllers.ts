@@ -477,6 +477,10 @@ export const createTustomShafts = async (req, res) => {
       }
     }
 
+    // Determine category: Komplettfertigung if both JSON fields are present, otherwise row
+    const hasBothJsonFields = parsedJson1 && parsedJson2;
+    const category = hasBothJsonFields ? "Komplettfertigung" : "row";
+
     // Prepare data object
     const shaftData: any = {
       user: {
@@ -498,7 +502,7 @@ export const createTustomShafts = async (req, res) => {
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
-      catagoary: "row",
+      catagoary: category,
       isCompleted: false,
       isCustomeModels: isCustomModels,
     };

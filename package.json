@@ -12,7 +12,8 @@
     "migrate:employees-role": "ts-node scripts/migrate-employees-role.ts",
     "migrate:barcodeLabel": "ts-node scripts/migrate-barcodeLabel.ts",
     "update_image_to_zipper_image": "ts-node scripts/update_image-to-zipper_image.ts",
-    "formate:transitions": "ts-node scripts/format-transitions-orderNumber.ts"
+    "formate:transitions": "ts-node scripts/format-transitions-orderNumber.ts",
+    "conbune:Massschafterstellung": "ts-node scripts/combine-Massschafterstellung.ts"
   },
   "keywords": [],
   "author": "",

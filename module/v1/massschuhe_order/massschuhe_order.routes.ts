@@ -81,12 +81,8 @@ router.get(
   getMassschuheProfitCount
 );
 
-// router.put("/:id", verifyUser("ADMIN", "PARTNER"), updateMassschuheOrder);
-// router.patch("/:id", verifyUser("ADMIN", "PARTNER"), updateMassschuheOrder);
 router.delete("/delete-all",  deleteAllMassschuheOrders);
 router.delete("/:id", verifyUser("ADMIN", "PARTNER"), deleteMassschuheOrder);
-
-// router.post("/create", verifyUser("ADMIN", "PARTNER"), createMassschuheOrder);
 
 
 export default router;
