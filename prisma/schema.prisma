@@ -1750,7 +1750,7 @@ model admin_order_transitions {
   transitionsNumber String?
 
   // status    massschuhe_order_status?
-  status   admin_order_transitions_status @default(panding)
+  // status   admin_order_transitions_status @default(panding)
   orderFor transitions_for?
 
   /**
@@ -1785,16 +1785,16 @@ model admin_order_transitions {
   @@index([massschuhe_order_id])
   @@index([storeId])
   @@index([partnerId])
-  @@index([status])
+ 
   @@index([orderFor])
   @@index([createdAt])
   @@index([partnerId, orderNumber]) // Composite index for fast orderNumber lookup per partner
 }
 
-enum admin_order_transitions_status {
-  panding
-  complated
-}
+// enum admin_order_transitions_status {
+//   panding
+//   complated
+// }
 
 enum transitions_for {
   insole
