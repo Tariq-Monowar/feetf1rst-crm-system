@@ -285,6 +285,12 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         price: true,
         note: true,
         custom_shafts_catagoary: true,
+        custom_shafts:{
+          select: {
+            invoice: true,
+            invoice2: true,
+          },
+        },
         customer: {
           select: {
             vorname: true,
@@ -298,7 +304,23 @@ export const getAllTransitions = async (req: Request, res: Response) => {
 
     // Determine pagination info
     const hasMore = transitions.length > limit;
-    const data = hasMore ? transitions.slice(0, limit) : transitions;
+    const transitionsData = hasMore ? transitions.slice(0, limit) : transitions;
+
+    // Conditionally format invoice fields based on category
+    const data = transitionsData.map((transition) => {
+      const isKomplettfertigung = transition.custom_shafts_catagoary === "Komplettfertigung";
+      
+      // If Komplettfertigung, return both invoices; otherwise only invoice
+      const custom_shafts = transition.custom_shafts ? {
+        invoice: transition.custom_shafts.invoice,
+        ...(isKomplettfertigung && { invoice2: transition.custom_shafts.invoice2 }),
+      } : null;
+
+      return {
+        ...transition,
+        custom_shafts,
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -358,4 +380,4 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
         error: error.message,
       });
     }
-  };
+};
