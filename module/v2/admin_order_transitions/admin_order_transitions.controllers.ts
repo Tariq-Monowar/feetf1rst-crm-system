@@ -31,6 +31,28 @@ const formatDateLocal = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+//------------------------------
+export const generateNextOrderNumber = async (partnerId: string): Promise<string> => {
+  const result = await prisma.$queryRaw<Array<{ orderNumber: string }>>`
+    SELECT "orderNumber"
+    FROM "admin_order_transitions"
+    WHERE "partnerId" = ${partnerId}::text
+      AND "orderNumber" IS NOT NULL
+      AND "orderNumber" ~ '^[0-9]+$'
+    ORDER BY CAST("orderNumber" AS INTEGER) DESC
+    LIMIT 1
+  `;
+  
+  if (!result || result.length === 0 || !result[0]?.orderNumber) {
+    return "10000";
+  }
+  
+  const maxNumber = parseInt(result[0].orderNumber, 10);
+  return String(maxNumber + 1);
+};
+//-------------------------------------
+
+
 // API 1: Simple total price calculation
 export const getTotalPrice = async (req: Request, res: Response) => {
   try {
@@ -257,6 +279,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
+        orderNumber: true,
         status: true,
         orderFor: true,
         price: true,

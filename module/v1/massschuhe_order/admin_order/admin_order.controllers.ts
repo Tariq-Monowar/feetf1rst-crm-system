@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
+import { generateNextOrderNumber } from "../../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 // Removed getImageUrl - images are now S3 URLs
 const prisma = new PrismaClient();
@@ -117,9 +118,13 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
+    // Generate orderNumber for this partner
+    const orderNumber = await generateNextOrderNumber(userId);
+
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
         data: {
+          orderNumber: orderNumber,
           orderFor: "shoes",
           massschuhe_order_id: orderId,
           custom_shafts_id: data.id,
@@ -432,9 +437,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
       data: { isPanding: true },
     });
 
+    // Generate orderNumber for this partner
+    const orderNumber = await generateNextOrderNumber(id);
+
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
+        orderNumber: orderNumber,
         orderFor: "shoes",
         massschuhe_order_id: orderId,
         partnerId: id,
@@ -592,9 +601,13 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
+    // Generate orderNumber for this partner
+    const orderNumber = await generateNextOrderNumber(userId);
+
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
+        orderNumber: orderNumber,
         orderFor: "shoes",
         massschuhe_order_id: orderId,
         customerId: order.customerId,

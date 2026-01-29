@@ -11,7 +11,8 @@
     "migrate:rename-transitions": "ts-node scripts/rename-transitions-table.ts",
     "migrate:employees-role": "ts-node scripts/migrate-employees-role.ts",
     "migrate:barcodeLabel": "ts-node scripts/migrate-barcodeLabel.ts",
-    "update_image_to_zipper_image": "ts-node scripts/update_image-to-zipper_image.ts"
+    "update_image_to_zipper_image": "ts-node scripts/update_image-to-zipper_image.ts",
+    "formate:transitions": "ts-node scripts/format-transitions-orderNumber.ts"
   },
   "keywords": [],
   "author": "",
