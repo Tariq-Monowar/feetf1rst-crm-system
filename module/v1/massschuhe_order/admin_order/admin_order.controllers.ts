@@ -39,7 +39,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
         where: { id: orderId },
-        select: { id: true },
+        select: { id: true, customerId: true },
       });
 
     if (!order) {
@@ -50,7 +50,21 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
       });
     }
 
-    const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
+    // Parse totalPrice properly - handle string, number, or null
+    let parsedTotalPrice: number | null = null;
+    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
+      const parsed = parseFloat(totalPrice.toString());
+      parsedTotalPrice = isNaN(parsed) ? null : parsed;
+    }
+
+    // Validate totalPrice
+    if (!parsedTotalPrice || parsedTotalPrice <= 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required and must be greater than 0",
+      });
+    }
 
     // Parse Halbprobenerstellung_json if it's a string
     let parsedJson = Halbprobenerstellung_json;
@@ -103,13 +117,16 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
-    // Create transition record
-      await prisma.admin_order_transitions.create({
+    // Create transition record - use parsedTotalPrice directly to ensure it's not null
+    await prisma.admin_order_transitions.create({
         data: {
+          orderFor: "shoes",
           massschuhe_order_id: orderId,
+          custom_shafts_id: data.id,
+          customerId: order.customerId,
           partnerId: userId,
-          catagoary: "Halbprobenerstellung",
-        price: data.totalPrice,
+          custom_shafts_catagoary: "Halbprobenerstellung",
+          price: parsedTotalPrice, // Use parsed value directly, not data.totalPrice
           note: "Halbprobenerstellung send to admin",
         },
       });
@@ -263,6 +280,22 @@ export const sendToAdminOrder_2 = async (req, res) => {
       return isNaN(parsed) ? null : parsed;
     };
 
+    // Parse totalPrice properly - handle string, number, or null
+    let parsedTotalPrice: number | null = null;
+    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
+      const parsed = parseFloat(totalPrice.toString());
+      parsedTotalPrice = isNaN(parsed) ? null : parsed;
+    }
+
+    // Validate totalPrice
+    if (!parsedTotalPrice || parsedTotalPrice <= 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required and must be greater than 0",
+      });
+    }
+
     // Parse JSON fields if they are strings
     let parsedJson1 = Massschafterstellung_json1;
     if (typeof Massschafterstellung_json1 === 'string') {
@@ -300,7 +333,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
-      totalPrice: totalPrice ? parseFloat(totalPrice) : null,
+      totalPrice: parsedTotalPrice,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
       catagoary: "Massschafterstellung",
@@ -399,13 +432,16 @@ export const sendToAdminOrder_2 = async (req, res) => {
       data: { isPanding: true },
     });
 
-    // Create transition record
+    // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
+        orderFor: "shoes",
         massschuhe_order_id: orderId,
         partnerId: id,
-        catagoary: "Massschafterstellung",
-        price: customShaft.totalPrice,
+        customerId: order.customerId,
+        custom_shafts_id: customShaft.id,
+        custom_shafts_catagoary: "Massschafterstellung",
+        price: parsedTotalPrice, // Use parsed value directly, not customShaft.totalPrice
         note: isCustomModels
           ? "Massschafterstellung (Custom Model) send to admin"
           : "Massschafterstellung send to admin",
@@ -480,7 +516,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
       where: { id: orderId },
-      select: { id: true },
+      select: { id: true, customerId: true },
     });
 
     if (!order) {
@@ -491,7 +527,21 @@ export const sendToAdminOrder_3 = async (req, res) => {
       });
     }
 
-    const parsedTotalPrice = totalPrice ? parseFloat(totalPrice) : null;
+    // Parse totalPrice properly - handle string, number, or null
+    let parsedTotalPrice: number | null = null;
+    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
+      const parsed = parseFloat(totalPrice.toString());
+      parsedTotalPrice = isNaN(parsed) ? null : parsed;
+    }
+
+    // Validate totalPrice
+    if (!parsedTotalPrice || parsedTotalPrice <= 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required and must be greater than 0",
+      });
+    }
 
     // Parse bodenkonstruktion_json if it's a string
     let parsedJson = bodenkonstruktion_json;
@@ -542,13 +592,16 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
-    // Create transition record
+    // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
+        orderFor: "shoes",
         massschuhe_order_id: orderId,
+        customerId: order.customerId,
         partnerId: userId,
-        catagoary: "Bodenkonstruktion",
-        price: data.totalPrice,
+        custom_shafts_id: data.id,
+        custom_shafts_catagoary: "Bodenkonstruktion",
+        price: parsedTotalPrice, // Use parsed value directly, not data.totalPrice
         note: "Bodenkonstruktion send to admin",
       },
     });

@@ -92,7 +92,7 @@ model accountInfo {
    * 1. bankName   String?
    * 2. bankNumber String?
    */
-  bankInfo Json?
+  bankInfo        Json?
   two_factor_auth Boolean @default(false)
 
   //relation
@@ -557,6 +557,7 @@ model customers {
   massschuheOrderHistories massschuhe_order_history[]
   courierContacts          CourierContact[]
   customModels             custom_models[]
+  adminOrderTransitions    admin_order_transitions[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([vorname, nachname])
@@ -1529,6 +1530,17 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1552,6 +1564,17 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -1624,9 +1647,10 @@ model custom_shafts {
 
   isCompleted Boolean? @default(false)
 
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  customModels custom_models[]
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  customModels          custom_models[]
+  adminOrderTransitions admin_order_transitions[]
 
   @@index([status]) // স্ট্যাটাস অনুসারে দ্রুত সার্চের জন্য
   @@index([customerId]) // কাস্টমার অনুসারে দ্রুত সার্চের জন্য
@@ -1709,28 +1733,65 @@ model custom_models {
   massschuhe_orderId String?
 }
 
+/**
+ * date when created the order
+ * name of the customer if this transitions related with customer
+ * status (panding and complated) handle form admin panal
+ */
+
 model admin_order_transitions {
   id String @id @default(uuid())
 
-  status    massschuhe_order_status?
-  catagoary custom_shafts_catagoary?
+  // status    massschuhe_order_status?
+  status   admin_order_transitions_status @default(panding)
+  orderFor transitions_for?
+
+  /**
+   * if transitions for shoes
+   */
+  massschuhe_order_id     String?
+  custom_shafts_catagoary custom_shafts_catagoary?
+  massschuhe_order        massschuhe_order?        @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
+
+  custom_shafts_id String?
+  custom_shafts    custom_shafts? @relation(fields: [custom_shafts_id], references: [id], onDelete: SetNull)
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /**
+   * if transitions for store
+   */
+  storeId String?
+  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   price Float?
   note  String?
-
-  // relation with massschuhe_order
-  massschuhe_order_id String?
-  massschuhe_order    massschuhe_order? @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
-
-  //store
-  storeId String?
-  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([custom_shafts_id])
+  @@index([massschuhe_order_id])
+  @@index([storeId])
+  @@index([partnerId])
+  @@index([status])
+  @@index([orderFor])
+  @@index([createdAt])
+}
+
+enum admin_order_transitions_status {
+  panding
+  complated
+}
+
+enum transitions_for {
+  insole
+  shoes
+  store
 }
 
 model CourierContact {
@@ -1995,16 +2056,16 @@ enum messageType {
   System
 }
 
-/*
+/**
  * it's news created by admin for partner
  * image, title, subtitle, short description full subscription
-*/
+ */
 model news {
   id String @id @default(uuid())
 
-  image String
-  title String
-  subtitle String
+  image            String
+  title            String
+  subtitle         String
   shortDescription String
   fullSubscription String
 
