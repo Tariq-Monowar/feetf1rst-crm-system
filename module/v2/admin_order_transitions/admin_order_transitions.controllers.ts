@@ -252,6 +252,9 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     }
 
     // Handle cursor pagination
+    // Cursor is the ID of the last item from previous page
+    // We fetch that record to get its createdAt timestamp, then get records created before it
+    // This ensures consistent pagination even if records are added/updated between requests
     if (cursor) {
       const cursorTransition = await prisma.admin_order_transitions.findUnique({
         where: { id: cursor },
@@ -259,6 +262,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       });
 
       if (!cursorTransition) {
+        // Invalid cursor - return empty result
         return res.status(200).json({
           success: true,
           message: "Transitions retrieved successfully",
@@ -267,6 +271,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         });
       }
 
+      // Get records created before the cursor record (for desc order = older records)
       whereCondition.createdAt = {
         lt: cursorTransition.createdAt,
       };
@@ -289,6 +294,8 @@ export const getAllTransitions = async (req: Request, res: Response) => {
           select: {
             invoice: true,
             invoice2: true,
+            status: true,
+            isCompleted: true,
           },
         },
         customer: {
@@ -313,6 +320,8 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       // If Komplettfertigung, return both invoices; otherwise only invoice
       const custom_shafts = transition.custom_shafts ? {
         invoice: transition.custom_shafts.invoice,
+        status: transition.custom_shafts.status,
+        isCompleted: transition.custom_shafts.isCompleted,
         ...(isKomplettfertigung && { invoice2: transition.custom_shafts.invoice2 }),
       } : null;
 
@@ -339,36 +348,76 @@ export const getAllTransitions = async (req: Request, res: Response) => {
 };
 
 
-// API 4: Get one month payment
+// Helper function to format date in readable format (e.g., "1 January 2025")
+const formatDateReadable = (date: Date): string => {
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const day = date.getDate();
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  return `${day} ${month} ${year}`;
+};
+
+// API 4: Get one month payment (last month + current month)
 export const getOneMonthPayment = async (req: Request, res: Response) => {
     try {
       const { id } = req.user;
 
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
-      
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);  
-      thirtyDaysAgo.setHours(0, 0, 0, 0); 
-      
-      const result = await prisma.$queryRaw<Array<{ total_price: number }>>`
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const currentDay = now.getDate();
+
+      // Current month: from 1st of current month to today
+      const currentMonthStart = new Date(currentYear, currentMonth, 1, 0, 0, 0, 0);
+      const currentMonthEnd = new Date(currentYear, currentMonth, currentDay, 23, 59, 59, 999);
+
+      // Last month: from 1st to last day of previous month
+      const lastMonthStart = new Date(currentYear, currentMonth - 1, 1, 0, 0, 0, 0);
+      const lastMonthEnd = new Date(currentYear, currentMonth, 0, 23, 59, 59, 999); // Last day of previous month
+
+      // Get current month payment
+      const currentMonthResult = await prisma.$queryRaw<Array<{ total_price: number }>>`
         SELECT COALESCE(SUM(price), 0)::float as total_price
         FROM "admin_order_transitions"
         WHERE "partnerId" = ${id}::text
-          AND "createdAt" >= ${thirtyDaysAgo}::timestamp
-          AND "createdAt" <= ${today}::timestamp
+          AND "createdAt" >= ${currentMonthStart}::timestamp
+          AND "createdAt" <= ${currentMonthEnd}::timestamp
       `;
-      
-      const totalPrice = result[0]?.total_price || 0;
+
+      // Get last month payment
+      const lastMonthResult = await prisma.$queryRaw<Array<{ total_price: number }>>`
+        SELECT COALESCE(SUM(price), 0)::float as total_price
+        FROM "admin_order_transitions"
+        WHERE "partnerId" = ${id}::text
+          AND "createdAt" >= ${lastMonthStart}::timestamp
+          AND "createdAt" <= ${lastMonthEnd}::timestamp
+      `;
+
+      const currentMonthTotal = currentMonthResult[0]?.total_price || 0;
+      const lastMonthTotal = lastMonthResult[0]?.total_price || 0;
       
       return res.status(200).json({
         success: true,
         message: "One month payment calculated successfully",
         data: {
-          totalPrice: parseFloat(totalPrice.toFixed(2)),
-          dateRange: {
-            from: thirtyDaysAgo.toISOString(),
-            to: today.toISOString(),
+          lastMonth: {
+            totalPrice: parseFloat(lastMonthTotal.toFixed(2)),
+            period: `${formatDateReadable(lastMonthStart)} - ${formatDateReadable(lastMonthEnd)}`,
+            dateRange: {
+              from: lastMonthStart.toISOString(),
+              to: lastMonthEnd.toISOString(),
+            },
+          },
+          currentMonth: {
+            totalPrice: parseFloat(currentMonthTotal.toFixed(2)),
+            period: `${formatDateReadable(currentMonthStart)} - ${formatDateReadable(currentMonthEnd)}`,
+            dateRange: {
+              from: currentMonthStart.toISOString(),
+              to: currentMonthEnd.toISOString(),
+            },
           },
         },
       });

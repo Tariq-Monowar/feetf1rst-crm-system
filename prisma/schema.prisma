@@ -1648,6 +1648,7 @@ model custom_shafts {
   catagoary custom_shafts_catagoary?
 
   isCompleted Boolean? @default(false)
+  
 
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
