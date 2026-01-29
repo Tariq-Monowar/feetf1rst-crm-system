@@ -1676,6 +1676,8 @@ enum custom_shafts_catagoary {
   //স্টেপয়ার ৩
   Bodenkonstruktion
 
+  Komplettfertigung
+
   // এটা কোন স্টেপ না সরাসরি ওইয়ার্ডার করার জন্য ব্যবহার হয়।
   row
 }
@@ -1741,6 +1743,7 @@ model custom_models {
 
 model admin_order_transitions {
   id String @id @default(uuid())
+  orderNumber String?
 
   // status    massschuhe_order_status?
   status   admin_order_transitions_status @default(panding)

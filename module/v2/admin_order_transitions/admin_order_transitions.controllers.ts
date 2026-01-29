@@ -261,6 +261,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         orderFor: true,
         price: true,
         note: true,
+        custom_shafts_catagoary: true,
         customer: {
           select: {
             vorname: true,
