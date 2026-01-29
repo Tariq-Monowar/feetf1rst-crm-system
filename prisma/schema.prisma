@@ -1749,8 +1749,7 @@ model admin_order_transitions {
   orderNumber       String?
   transitionsNumber String?
 
-  status    massschuhe_order_status?
-  // status   admin_order_transitions_status @default(panding)
+  status   admin_order_transitions_status @default(panding)
   orderFor transitions_for?
 
   /**
