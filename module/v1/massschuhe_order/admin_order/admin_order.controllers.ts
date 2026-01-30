@@ -39,9 +39,9 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
-        where: { id: orderId },
-        select: { id: true, customerId: true },
-      });
+      where: { id: orderId },
+      select: { id: true, customerId: true },
+    });
 
     if (!order) {
       cleanupFiles();
@@ -80,7 +80,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
-        data: {
+      data: {
         massschuhe_order: {
           connect: { id: orderId }
         },
@@ -95,22 +95,22 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
           10000 + Math.random() * 90000,
         )}`,
-          catagoary: "Halbprobenerstellung",
+        catagoary: "Halbprobenerstellung",
         isCompleted: false,
         status: "Neu",
-        },
-        select: {
-          id: true,
+      },
+      select: {
+        id: true,
         totalPrice: true,
-          image3d_1: true,
-          image3d_2: true,
-          invoice: true,
+        image3d_1: true,
+        image3d_2: true,
+        invoice: true,
         orderNumber: true,
-          catagoary: true,
+        catagoary: true,
         status: true,
         Halbprobenerstellung_json: true,
-        },
-      });
+      },
+    });
 
     // Update the massschuhe_order to isPanding true
     await prisma.massschuhe_order.update({
@@ -123,18 +123,18 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
-        data: {
-          orderNumber: orderNumber,
-          orderFor: "shoes",
-          massschuhe_order_id: orderId,
-          custom_shafts_id: data.id,
-          customerId: order.customerId,
-          partnerId: userId,
-          custom_shafts_catagoary: "Halbprobenerstellung",
-          price: parsedTotalPrice, // Use parsed value directly, not data.totalPrice
-          note: "Halbprobenerstellung send to admin",
-        },
-      });
+      data: {
+        orderNumber: orderNumber,
+        orderFor: "shoes",
+        massschuhe_order_id: orderId,
+        custom_shafts_id: data.id,
+        customerId: order.customerId,
+        partnerId: userId,
+        custom_shafts_catagoary: "Halbprobenerstellung",
+        price: parsedTotalPrice, // Use parsed value directly, not data.totalPrice
+        note: "Halbprobenerstellung send to admin",
+      },
+    });
 
     // Format response nicely for frontend
     return res.status(200).json({
@@ -154,11 +154,16 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
   }
 };
 
-
 export const sendToAdminOrder_2 = async (req, res) => {
   const files = req.files as any;
   const { id } = req.user;
-
+  const { orderId } = req.params;
+  const { custom_models } = req.query;
+  const isCourierContact = req.query.isCourierContact;
+  /*
+   * Helper function to clean up uploaded files from S3
+   * Called when validation fails or errors occur to prevent orphaned files
+   */
   const cleanupFiles = () => {
     if (!files) return;
     Object.keys(files).forEach((key) => {
@@ -170,11 +175,10 @@ export const sendToAdminOrder_2 = async (req, res) => {
     });
   };
 
-  // Get orderId from route params and custom_models from query
-  const { orderId } = req.params;
-  const { custom_models } = req.query;
-
-  // Helper: Parse boolean
+  /*
+   * Helper function to parse boolean values from various formats
+   * Handles: boolean, string "true"/"1", and other truthy/falsy values
+   */
   const parseBoolean = (value: any): boolean => {
     if (typeof value === "boolean") return value;
     if (typeof value === "string") {
@@ -183,25 +187,52 @@ export const sendToAdminOrder_2 = async (req, res) => {
     return Boolean(value);
   };
 
+  /*
+   * Helper function to parse price values safely
+   * Returns null for invalid/empty values, otherwise returns parsed number
+   */
+  const parsePrice = (value: any): number | null => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = parseFloat(value.toString());
+    return isNaN(parsed) ? null : parsed;
+  };
+
+  /*
+   * Helper function to parse JSON strings safely
+   * Returns parsed object if valid JSON string, otherwise returns original value
+   */
+  const parseJsonField = (value: any): any => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch (e) {
+        return value;
+      }
+    }
+    return value;
+  };
+
   const isCustomModels = parseBoolean(custom_models);
 
-  // Extract fields from req.body
   const {
     mabschaftKollektionId,
-
     totalPrice,
-
     custom_models_name,
     custom_models_price,
     custom_models_verschlussart,
     custom_models_gender,
     custom_models_description,
-
     Massschafterstellung_json1,
     Massschafterstellung_json2,
   } = req.body;
 
   try {
+    /*
+     * ============================================
+     * VALIDATION SECTION
+     * ============================================
+     */
+
     if (!orderId) {
       cleanupFiles();
       return res.status(400).json({
@@ -240,7 +271,6 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    // Validate customer
     const customer = await prisma.customers.findUnique({
       where: { id: order.customerId },
       select: { id: true, customerNumber: true },
@@ -254,45 +284,35 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    // Validate mabschaftKollektionId if not custom models
-    if (!isCustomModels) {
-    if (!mabschaftKollektionId) {
-        cleanupFiles();
+    if (!isCustomModels && !mabschaftKollektionId) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
-          message: "maßschaftKollektionId must be provided when custom_models is false",
+        message: "maßschaftKollektionId must be provided when custom_models is false",
       });
     }
 
+    if (!isCustomModels) {
       const kollektion = await prisma.maßschaft_kollektion.findUnique({
         where: { id: mabschaftKollektionId },
         select: { id: true },
       });
 
-    if (!kollektion) {
+      if (!kollektion) {
         cleanupFiles();
-      return res.status(404).json({
-        success: false,
-        message: "Maßschaft Kollektion not found",
-      });
-    }
+        return res.status(404).json({
+          success: false,
+          message: "Maßschaft Kollektion not found",
+        });
+      }
     }
 
-    // Helper: Parse price values
-    const parsePrice = (value: any): number | null => {
-      if (value === undefined || value === null || value === "") return null;
-      const parsed = parseFloat(value.toString());
-      return isNaN(parsed) ? null : parsed;
-    };
-
-    // Parse totalPrice properly - handle string, number, or null
     let parsedTotalPrice: number | null = null;
     if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
       const parsed = parseFloat(totalPrice.toString());
       parsedTotalPrice = isNaN(parsed) ? null : parsed;
     }
 
-    // Validate totalPrice
     if (!parsedTotalPrice || parsedTotalPrice <= 0) {
       cleanupFiles();
       return res.status(400).json({
@@ -301,37 +321,67 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    // Parse JSON fields if they are strings
-    let parsedJson1 = Massschafterstellung_json1;
-    if (typeof Massschafterstellung_json1 === 'string') {
-      try {
-        parsedJson1 = JSON.parse(Massschafterstellung_json1);
-      } catch (e) {
-        parsedJson1 = Massschafterstellung_json1;
+    /*
+     * Validate courier contact data if isCourierContact is "yes"
+     * Validates all required fields, address format, and price
+     * Stores validated data for later use after order creation
+     */
+    let courierContactData: any = null;
+    if (isCourierContact == "yes") {
+      const { courier_address, courier_companyName, courier_phone, courier_email, courier_price } = req.body;
+
+      const requiredFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
+      for (const field of requiredFields) {
+        if (!req.body[field]) {
+          cleanupFiles();
+          return res.status(400).json({
+            success: false,
+            message: `${field} is required when isCourierContact is yes`,
+          });
+        }
       }
+      const parsedAddress = parseJsonField(courier_address);
+
+      if (typeof parsedAddress !== "object" || parsedAddress === null || Array.isArray(parsedAddress)) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "courier_address must be a JSON object",
+        });
+      }
+
+      const parsedCourierPrice = parsePrice(courier_price);
+      if (!parsedCourierPrice || parsedCourierPrice <= 0) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "courier_price must be a valid number greater than 0",
+        });
+      }
+
+      courierContactData = {
+        address: parsedAddress,
+        companyName: courier_companyName,
+        phone: courier_phone,
+        email: courier_email,
+        price: parsedCourierPrice,
+      };
     }
 
-    let parsedJson2 = Massschafterstellung_json2;
-    if (typeof Massschafterstellung_json2 === 'string') {
-      try {
-        parsedJson2 = JSON.parse(Massschafterstellung_json2);
-      } catch (e) {
-        parsedJson2 = Massschafterstellung_json2;
-      }
-    }
+    /*
+     * ============================================
+     * DATA PREPARATION SECTION
+     * ============================================
+     */
 
-    // Determine category: Komplettfertigung if both JSON fields are present, otherwise Massschafterstellung
+    const parsedJson1 = parseJsonField(Massschafterstellung_json1);
+    const parsedJson2 = parseJsonField(Massschafterstellung_json2);
     const hasBothJsonFields = Massschafterstellung_json1 && Massschafterstellung_json2;
     const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
 
-    // Prepare data object
     const shaftData: any = {
-      massschuhe_order: {
-        connect: { id: orderId }
-      },
-      user: {
-        connect: { id: id }
-      },
+      massschuhe_order: { connect: { id: orderId } },
+      user: { connect: { id: id } },
       image3d_1: files.image3d_1?.[0]?.location || null,
       image3d_2: files.image3d_2?.[0]?.location || null,
       paintImage: files.paintImage?.[0]?.location || null,
@@ -350,25 +400,24 @@ export const sendToAdminOrder_2 = async (req, res) => {
       isCustomeModels: isCustomModels,
     };
 
-    // Add customer relation if exists
     if (order.customerId) {
-      shaftData.customer = {
-        connect: { id: order.customerId }
-      };
+      shaftData.customer = { connect: { id: order.customerId } };
     }
 
-    // Add maßschaft_kollektion relation if not custom models
     if (!isCustomModels && mabschaftKollektionId) {
-      shaftData.maßschaft_kollektion = {
-        connect: { id: mabschaftKollektionId }
-    };
+      shaftData.maßschaft_kollektion = { connect: { id: mabschaftKollektionId } };
     }
 
-    // Create the custom shaft
+    /*
+     * ============================================
+     * DATABASE OPERATIONS SECTION
+     * ============================================
+     */
+
     const customShaft = await prisma.custom_shafts.create({
       data: shaftData,
-          select: {
-            id: true,
+      select: {
+        id: true,
         orderNumber: true,
         status: true,
         customerId: true,
@@ -400,30 +449,22 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
-    // Create custom_models record if isCustomModels is true
     let customModel = null;
     if (isCustomModels) {
       customModel = await (prisma as any).custom_models.create({
         data: {
-          custom_shafts: {
-            connect: { id: customShaft.id }
-          },
-          partner: {
-            connect: { id: id }
-          },
-          customer: order.customerId ? {
-            connect: { id: order.customerId }
-          } : undefined,
-          massschuheOrder: {
-            connect: { id: orderId }
-          },
+          custom_shafts: { connect: { id: customShaft.id } },
+          partner: { connect: { id: id } },
+          customer: order.customerId ? { connect: { id: order.customerId } } : undefined,
+          massschuheOrder: { connect: { id: orderId } },
           custom_models_name: custom_models_name || null,
           custom_models_image: files.custom_models_image?.[0]?.location || null,
           custom_models_price: parsePrice(custom_models_price),
           custom_models_verschlussart: custom_models_verschlussart || null,
           custom_models_gender: custom_models_gender || null,
           custom_models_description: custom_models_description || null,
-        },select: {
+        },
+        select: {
           id: true,
           custom_models_name: true,
           custom_models_image: true,
@@ -431,20 +472,17 @@ export const sendToAdminOrder_2 = async (req, res) => {
           custom_models_verschlussart: true,
           custom_models_gender: true,
           custom_models_description: true,
-      },
-    });
+        },
+      });
     }
 
-    // Update order status
     await prisma.massschuhe_order.update({
       where: { id: orderId },
       data: { isPanding: true },
     });
 
-    // Generate orderNumber for this partner
     const orderNumber = await generateNextOrderNumber(id);
 
-    // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
@@ -454,16 +492,34 @@ export const sendToAdminOrder_2 = async (req, res) => {
         customerId: order.customerId,
         custom_shafts_id: customShaft.id,
         custom_shafts_catagoary: category,
-        price: parsedTotalPrice, // Use parsed value directly, not customShaft.totalPrice
+        price: parsedTotalPrice,
         note: isCustomModels
           ? `${category} (Custom Model) send to admin`
           : `${category} send to admin`,
       },
     });
 
-    // Parse JSON fields if they are strings
+    if (isCourierContact == "yes" && courierContactData) {
+      await prisma.courierContact.create({
+        data: {
+          partnerId: id,
+          address: courierContactData.address,
+          companyName: courierContactData.companyName,
+          phone: courierContactData.phone,
+          email: courierContactData.email,
+          price: courierContactData.price,
+          customerId: order.customerId || null,
+          orderId: orderId,
+        },
+      });
+    }
 
-    // Format response
+    /*
+     * ============================================
+     * RESPONSE SECTION
+     * ============================================
+     */
+
     const responseData: any = {
       ...customShaft,
       maßschaft_kollektion: customShaft.maßschaft_kollektion || null,
@@ -474,6 +530,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       success: true,
       message: "Custom shaft created successfully",
       data: responseData,
+      Courier_contact: courierContactData,
     });
   } catch (err: any) {
     console.error("Create Custom Shaft Error:", err);
@@ -494,9 +551,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
   }
 };
 
-
 export const sendToAdminOrder_3 = async (req, res) => {
-    const files = req.files as any;
+  const files = req.files as any;
 
   const cleanupFiles = () => {
     if (!files) return;
@@ -595,7 +651,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
         catagoary: true,
         status: true,
         bodenkonstruktion_json: true,
-        
+
       },
     });
 
@@ -639,7 +695,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
   }
 };
 
-
+//----------------------------------------------------------
 export const getAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
@@ -741,37 +797,37 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     // Order by createdAt descending to show latest first
     // Fetch limit + 1 to check if there's a next page
     const data = await prisma.custom_shafts.findMany({
-        where: whereCondition,
+      where: whereCondition,
       take: limit + 1, // Fetch one extra to check if there's more
-        orderBy: { createdAt: "desc" },
-            select: {
-              id: true,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
         orderNumber: true,
         catagoary: true,
         status: true,
         totalPrice: true,
         other_customer_number: true,
-              createdAt: true,
+        createdAt: true,
         isCustomeModels: true,
         user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
-          },
-        customer: {
-            select: {
-              id: true,
-            customerNumber: true,
-            },
-          },
-        maßschaft_kollektion: {
-            select: {
-              id: true,
+          select: {
+            id: true,
             name: true,
-            },
+            image: true,
           },
+        },
+        customer: {
+          select: {
+            id: true,
+            customerNumber: true,
+          },
+        },
+        maßschaft_kollektion: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       } as any,
     });
 
@@ -1068,60 +1124,10 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   }
 };
 
-
-// model CourierContact {
-//   id String @id @default(uuid())
-
-//   partnerId String?
-//   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-
-//   orderId String?
-//   order   massschuhe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
-
-//   address Json?
-//   companyName String?
-//   phone String?
-//   email String?
-//   price Float? @default(13)
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
-
-
 export const createCourierContact = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const { address, companyName, phone, email, price, customerId, orderId } = req.body;
-
-    if (!customerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer ID is required",
-      });
-    }
-
-    // if (!orderId) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Order ID is required",
-    //   });
-    // }
-
-    //check valid customerId
-
-    // //check valid orderId
-    // const order = await prisma.massschuhe_order.findUnique({
-    //   where: { id: orderId },
-    //   select: { id: true },
-    // });
-
-    // if (!order) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: "Order not found",
-    //   });
-    // }
 
     //check valid input field
     const requiredFields = [
@@ -1131,6 +1137,7 @@ export const createCourierContact = async (req: Request, res: Response) => {
       "email",
       "price",
     ];
+
     for (const field of requiredFields) {
       if (!req.body[field]) {
         return res.status(400).json({
@@ -1196,7 +1203,6 @@ export const createCourierContact = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const customerListOrderContact = async (req: Request, res: Response) => {
   try {

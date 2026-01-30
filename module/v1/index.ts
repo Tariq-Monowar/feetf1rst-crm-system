@@ -27,7 +27,10 @@ import customerPrice from "./customerPrice/customerPrice.routes";
 import workeshopNote from "./workshopNote/workshopNote.routes";
 import storage from "./storage/storage.routes";
 import bestellubersicht from "./bestellubersicht/Bestellubersicht.routes";
-import custom_shafts from "./custom_shafts/custom_shafts.routes";
+
+import custom_shafts from "./admin_order/custom_shafts.routes";
+import admin_product from "./admin_order/admin_product/admin_product.routes";
+
 import customer_files from "./customer_files/customer_files.routes";
 import massschuhe_order from "./massschuhe_order/massschuhe_order.routes";
 import admin_order from "./massschuhe_order/admin_order/admin_order.routes";
@@ -69,7 +72,16 @@ const moduleRoutes = [
   { path: "/store/admin-store", route: admin_store },
 
   { path: "/bestellubersicht", route: bestellubersicht },
+
+  /*
+  * এই রাউটের কাজ হচ্ছে, অ্যা্যাডমিন প্রডাক্ট বানাবে
+  * পার্টনার সেই পোডাক্ট কিনবে অ্যাাডমিনের কাছে থেকে
+  */
   { path: "/custom_shafts", route: custom_shafts },
+  { path: "/admin_product", route: admin_product },
+
+
+
   { path: "/customer-files", route: customer_files },
 
   //massschuhe order

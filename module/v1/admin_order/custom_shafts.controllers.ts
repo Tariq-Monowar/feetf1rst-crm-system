@@ -377,16 +377,31 @@ export const createTustomShafts = async (req, res) => {
     });
   };
 
-  // Get custom_models from query
-  const { custom_models } = req.query;
+  const { custom_models, isCourierContact } = req.query;
 
-  // Helper: Parse boolean
   const parseBoolean = (value: any): boolean => {
     if (typeof value === "boolean") return value;
     if (typeof value === "string") {
       return value.toLowerCase() === "true" || value === "1";
     }
     return Boolean(value);
+  };
+
+  const parsePrice = (value: any): number | null => {
+    if (value === undefined || value === null || value === "") return null;
+    const parsed = parseFloat(value.toString());
+    return isNaN(parsed) ? null : parsed;
+  };
+
+  const parseJsonField = (value: any): any => {
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch (e) {
+        return value;
+      }
+    }
+    return value;
   };
 
   const isCustomModels = parseBoolean(custom_models);
@@ -452,12 +467,53 @@ export const createTustomShafts = async (req, res) => {
       }
     }
 
-    // Helper: Parse price values
-    const parsePrice = (value: any): number | null => {
-      if (value === undefined || value === null || value === "") return null;
-      const parsed = parseFloat(value.toString());
-      return isNaN(parsed) ? null : parsed;
-    };
+    /*
+     * Validate courier contact data if isCourierContact is "yes"
+     * Validates all required fields, address format, and price
+     * Stores validated data for later use after order creation
+     */
+    let courierContactData: any = null;
+    if (isCourierContact == "yes") {
+      const { courier_address, courier_companyName, courier_phone, courier_email, courier_price } = req.body;
+
+      const requiredFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
+      for (const field of requiredFields) {
+        if (!req.body[field]) {
+          cleanupFiles();
+          return res.status(400).json({
+            success: false,
+            message: `${field} is required when isCourierContact is yes`,
+          });
+        }
+      }
+
+      const parsedAddress = parseJsonField(courier_address);
+
+      if (typeof parsedAddress !== "object" || parsedAddress === null || Array.isArray(parsedAddress)) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "courier_address must be a JSON object",
+        });
+      }
+
+      const parsedCourierPrice = parsePrice(courier_price);
+      if (!parsedCourierPrice || parsedCourierPrice <= 0) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "courier_price must be a valid number greater than 0",
+        });
+      }
+
+      courierContactData = {
+        address: parsedAddress,
+        companyName: courier_companyName,
+        phone: courier_phone,
+        email: courier_email,
+        price: parsedCourierPrice,
+      };
+    }
 
     // Parse JSON fields if they are strings
     let parsedJson1 = Massschafterstellung_json1;
@@ -597,6 +653,22 @@ export const createTustomShafts = async (req, res) => {
         note: isCustomModels ? `${category} (Custom Model) send to admin` : `${category} send to admin`,
       },
     });
+
+    // Create courier contact if isCourierContact is "yes" (after order is created)
+    if (isCourierContact == "yes" && courierContactData) {
+      await prisma.courierContact.create({
+        data: {
+          partnerId: id,
+          address: courierContactData.address,
+          companyName: courierContactData.companyName,
+          phone: courierContactData.phone,
+          email: courierContactData.email,
+          price: courierContactData.price,
+          customerId: customerId || null,
+        },
+      });
+    }
+
     // Format response
     const responseData: any = {
       ...customShaft,
@@ -608,6 +680,7 @@ export const createTustomShafts = async (req, res) => {
       success: true,
       message: "Custom shaft created successfully",
       data: responseData,
+      Courier_contact: courierContactData,
     });
   } catch (err: any) {
     console.error("Create Custom Shaft Error:", err);
@@ -772,13 +845,10 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
       },
     });
 
-    // Generate orderNumber for this partner
     const orderNumber = await generateNextOrderNumber(id);
 
-    // Extract the custom shaft ID
     const customShaftId = (data as any).id;
 
-    // Create transition record - without customerId and massschuhe_order_id
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
@@ -1673,6 +1743,3 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
     });
   }
 };
-
-
-// i need to create an order for BODENKONSTRUKTION

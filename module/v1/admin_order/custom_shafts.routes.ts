@@ -96,11 +96,16 @@ router.get(
   totalPriceResponse
 );
 
+// canselOrder
+// router.post(
+//   "/cansel-order",
+//   verifyUser("PARTNER", "ADMIN"),
+//   canselOrder
+// );
 
-/*
-* this created by admin panel for partner.
-* admin can create a new maßschaft kollektion for partner.
-*/
+
+//==========================ধরিস না======================
+
 router.post(
   "/create/mabschaft_kollektion",
   verifyUser("PARTNER", "ADMIN"),
