@@ -14,7 +14,8 @@
     "update_image_to_zipper_image": "ts-node scripts/update_image-to-zipper_image.ts",
     "formate:transitions": "ts-node scripts/format-transitions-orderNumber.ts",
     "conbune:Massschafterstellung": "ts-node scripts/combine-Massschafterstellung.ts",
-    "ststis-admin_order_transitions": "ts-node scripts/status-admin_order_transitions.ts"
+    "ststis-admin_order_transitions": "ts-node scripts/status-admin_order_transitions.ts",
+    "order_number:admin_order_transitions": "ts-node scripts/order_number-admin_order_transitions.ts"
   },
   "keywords": [],
   "author": "",

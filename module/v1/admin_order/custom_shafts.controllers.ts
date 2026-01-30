@@ -303,10 +303,7 @@ export const getMaßschaftKollektionById = async (
   }
 };
 
-export const deleteMaßschaftKollektion = async (
-  req: Request,
-  res: Response
-) => {
+export const deleteMaßschaftKollektion = async (req, res) => {
   try {
     const { id } = req.params;
     // i wanna remove form every whare that is using this kollektion
