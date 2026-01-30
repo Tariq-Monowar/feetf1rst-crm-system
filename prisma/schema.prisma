@@ -1605,7 +1605,7 @@ model custom_shafts {
   catagoary custom_shafts_catagoary?
 
   isCompleted Boolean? @default(false)
-  
+  isCanceled Boolean? @default(false)
 
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
@@ -1649,6 +1649,7 @@ enum custom_shafts_status {
   Zu_Kunde_abgeschickt
   Bei_uns_angekommen
   Beim_Kunden_angekommen
+
 
   Bestellung_eingegangen
   In_Produktiony
