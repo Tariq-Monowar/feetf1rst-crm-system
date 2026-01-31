@@ -1225,60 +1225,6 @@ model Bestellubersicht {
 }
 
 //===============================massschuhe_order=================================
-// model massschuhe_order {
-//   id String @id @default(uuid())
-
-//   customerId String
-//   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
-//   partnerId String
-//   user      User?  @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-
-//   ausführliche_diagnose String?
-//   versorgung_laut_arzt   String?
-
-//   //realtion with Versorgungen
-//   // diagnose
-//   versorgungenId String? // এটা diagnose এর সাথে রিলেশন হচ্ছে ID, এটা হচ্ছে versorgungenId
-//   versorgungen   Versorgungen? @relation(fields: [versorgungenId], references: [id], onDelete: SetNull)
-
-//   //employee relation but i need multiple employees
-//   // // MANY TO MANY EMPLOYEES
-//   // employees Employees[] @relation("OrderEmployees")
-
-//   einlagentyp         String?
-//   überzug            String?
-//   menge               Int? //quantity
-//   versorgung_note     String? //Hast du sonstige Anmerkungen oder Notizen zur Versorgung... ?
-//   schuhmodell_wählen String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
-//   kostenvoranschlag   Boolean? @default(false)
-
-//   // price section
-//   fußanalyse        Float?
-//   einlagenversorgung Float?
-//   totalPrice         Float
-
-//   // i wanna relation this with werkstattzettel
-//   werkstattzettel   Werkstattzettel? @relation(fields: [werkstattzettelId], references: [id], onDelete: SetNull, name: "massschuhe_order_relation")
-//   werkstattzettelId String?
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   @@index([customerId])
-//   @@index([partnerId])
-//   @@index([createdAt])
-//   @@index([updatedAt])
-//   @@index([werkstattzettelId])
-//   @@index([versorgungenId])
-//   @@index([einlagentyp])
-//   @@index([überzug])
-//   @@index([menge])
-//   @@index([versorgung_note])
-//   @@index([schuhmodell_wählen])
-//   @@index([kostenvoranschlag])
-// }
-
 /**
  * @massschuhe_order "This is the main part of our application"
  * এটা হচ্চে জুতার অর্ডার মডেল
@@ -1601,11 +1547,12 @@ model custom_shafts {
   massschuhe_order_id String?
   massschuhe_order    massschuhe_order? @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
 
-  status    custom_shafts_status?    @default(Neu) // অর্ডার স্ট্যাটাস (ডিফল্ট: অর্ডার প্রাপ্ত)
+  status    custom_shafts_status?    @default(Neu)
+
   catagoary custom_shafts_catagoary?
 
-  isCompleted Boolean? @default(false)
-  isCanceled Boolean? @default(false)
+  // isCompleted Boolean? @default(false)
+  order_status  admin_order_status? @default(active)
 
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
@@ -1618,7 +1565,7 @@ model custom_shafts {
   @@index([partnerId]) // পার্টনার অনুসারে দ্রুত সার্চের জন্য
   @@index([createdAt]) // তারিখ অনুসারে দ্রুত সার্চের জন্য
   @@index([catagoary]) // Category filtering
-  @@index([isCompleted]) // Completion status filtering
+  @@index([order_status]) // Completion status filtering
   @@index([catagoary, status]) // Composite: category + status (most common filter)
   @@index([catagoary, createdAt]) // Composite: category + date sorting
   @@index([partnerId, catagoary]) // Composite: partner + category
@@ -1626,6 +1573,12 @@ model custom_shafts {
   @@index([orderNumber]) // Order number search
   @@index([other_customer_number]) // Customer number search
   @@index([massschuhe_order_id]) // Order relation lookup
+}
+
+enum admin_order_status {
+  active
+  canceled
+  completed
 }
 
 enum custom_shafts_catagoary {
@@ -1840,6 +1793,7 @@ enum notificationType {
   Appointment_Reminder
   Appointment_Created
   updated_massschuhe_order_status
+  admin_order_canceled
   test
 }
 

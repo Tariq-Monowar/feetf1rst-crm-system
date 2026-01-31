@@ -96,8 +96,6 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
           10000 + Math.random() * 90000,
         )}`,
         catagoary: "Halbprobenerstellung",
-        isCompleted: false,
-        status: "Neu",
       },
       select: {
         id: true,
@@ -639,8 +637,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
           10000 + Math.random() * 90000,
         )}`,
         catagoary: "Bodenkonstruktion",
-        isCompleted: false,
-        status: "Neu",
       },
       select: {
         id: true,

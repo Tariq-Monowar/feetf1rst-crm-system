@@ -14,6 +14,7 @@ import {
   deleteCustomShaft,
   totalPriceResponse,
   createCustomBodenkonstruktionOrder,
+  cancelAdminOrder
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -96,12 +97,12 @@ router.get(
   totalPriceResponse
 );
 
-// canselOrder
-// router.post(
-//   "/cansel-order",
-//   verifyUser("PARTNER", "ADMIN"),
-//   canselOrder
-// );
+// cancelOrder
+router.post(
+  "/cancel-order/:orderId",
+  verifyUser("PARTNER", "ADMIN"),
+  cancelAdminOrder
+);
 
 
 //==========================ধরিস না======================

@@ -3,19 +3,23 @@ import { PrismaClient } from "@prisma/client";
 
 // Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../utils/notification.utils";
-import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
+import {
+  deleteFileFromS3,
+  deleteMultipleFilesFromS3,
+} from "../../../utils/s3utils";
 import { generateNextOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 const prisma = new PrismaClient();
 
 export const createMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
 
   try {
-    const { name, price, catagoary, gender, description, verschlussart } = req.body;
+    const { name, price, catagoary, gender, description, verschlussart } =
+      req.body;
 
     const missingField = [
       "name",
@@ -80,7 +84,7 @@ export const createMaßschaftKollektion = async (
 
 export const getAllMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -165,7 +169,7 @@ export const getAllMaßschaftKollektion = async (
 
 export const updateMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
   const { id } = req.params;
@@ -187,7 +191,8 @@ export const updateMaßschaftKollektion = async (
       return;
     }
 
-    const { name, price, catagoary, gender, description, verschlussart } = req.body;
+    const { name, price, catagoary, gender, description, verschlussart } =
+      req.body;
 
     const updateData: any = {};
 
@@ -267,7 +272,7 @@ export const updateMaßschaftKollektion = async (
 
 export const getMaßschaftKollektionById = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -322,7 +327,10 @@ export const deleteMaßschaftKollektion = async (req, res) => {
     }
 
     // Delete image from S3 if it's an S3 URL
-    if (existingKollektion.image && existingKollektion.image.startsWith("http")) {
+    if (
+      existingKollektion.image &&
+      existingKollektion.image.startsWith("http")
+    ) {
       await deleteFileFromS3(existingKollektion.image);
     }
 
@@ -391,7 +399,7 @@ export const createTustomShafts = async (req, res) => {
   };
 
   const parseJsonField = (value: any): any => {
-    if (typeof value === 'string') {
+    if (typeof value === "string") {
       try {
         return JSON.parse(value);
       } catch (e) {
@@ -446,7 +454,8 @@ export const createTustomShafts = async (req, res) => {
         cleanupFiles();
         return res.status(400).json({
           success: false,
-          message: "maßschaftKollektionId must be provided when custom_models is false",
+          message:
+            "maßschaftKollektionId must be provided when custom_models is false",
         });
       }
 
@@ -471,9 +480,21 @@ export const createTustomShafts = async (req, res) => {
      */
     let courierContactData: any = null;
     if (isCourierContact == "yes") {
-      const { courier_address, courier_companyName, courier_phone, courier_email, courier_price } = req.body;
+      const {
+        courier_address,
+        courier_companyName,
+        courier_phone,
+        courier_email,
+        courier_price,
+      } = req.body;
 
-      const requiredFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
+      const requiredFields = [
+        "courier_address",
+        "courier_companyName",
+        "courier_phone",
+        "courier_email",
+        "courier_price",
+      ];
       for (const field of requiredFields) {
         if (!req.body[field]) {
           cleanupFiles();
@@ -486,7 +507,11 @@ export const createTustomShafts = async (req, res) => {
 
       const parsedAddress = parseJsonField(courier_address);
 
-      if (typeof parsedAddress !== "object" || parsedAddress === null || Array.isArray(parsedAddress)) {
+      if (
+        typeof parsedAddress !== "object" ||
+        parsedAddress === null ||
+        Array.isArray(parsedAddress)
+      ) {
         cleanupFiles();
         return res.status(400).json({
           success: false,
@@ -514,7 +539,7 @@ export const createTustomShafts = async (req, res) => {
 
     // Parse JSON fields if they are strings
     let parsedJson1 = Massschafterstellung_json1;
-    if (typeof Massschafterstellung_json1 === 'string') {
+    if (typeof Massschafterstellung_json1 === "string") {
       try {
         parsedJson1 = JSON.parse(Massschafterstellung_json1);
       } catch (e) {
@@ -523,7 +548,7 @@ export const createTustomShafts = async (req, res) => {
     }
 
     let parsedJson2 = Massschafterstellung_json2;
-    if (typeof Massschafterstellung_json2 === 'string') {
+    if (typeof Massschafterstellung_json2 === "string") {
       try {
         parsedJson2 = JSON.parse(Massschafterstellung_json2);
       } catch (e) {
@@ -538,10 +563,10 @@ export const createTustomShafts = async (req, res) => {
     // Prepare data object
     const shaftData: any = {
       user: {
-        connect: { id: id }
+        connect: { id: id },
       },
       customer: {
-        connect: { id: customerId }
+        connect: { id: customerId },
       },
       image3d_1: files.image3d_1?.[0]?.location || null,
       image3d_2: files.image3d_2?.[0]?.location || null,
@@ -550,7 +575,9 @@ export const createTustomShafts = async (req, res) => {
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
       staticImage: files.staticImage?.[0]?.location || null,
-      other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
+      other_customer_number: customer?.customerNumber
+        ? String(customer.customerNumber)
+        : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
@@ -564,7 +591,7 @@ export const createTustomShafts = async (req, res) => {
     // Add maßschaft_kollektion relation if not custom models
     if (!isCustomModels && mabschaftKollektionId) {
       shaftData.maßschaft_kollektion = {
-        connect: { id: mabschaftKollektionId }
+        connect: { id: mabschaftKollektionId },
       };
     }
 
@@ -610,13 +637,13 @@ export const createTustomShafts = async (req, res) => {
       customModel = await (prisma as any).custom_models.create({
         data: {
           custom_shafts: {
-            connect: { id: customShaft.id }
+            connect: { id: customShaft.id },
           },
           partner: {
-            connect: { id: id }
+            connect: { id: id },
           },
           customer: {
-            connect: { id: customerId }
+            connect: { id: customerId },
           },
           custom_models_name: custom_models_name || null,
           custom_models_image: files.custom_models_image?.[0]?.location || null,
@@ -647,7 +674,9 @@ export const createTustomShafts = async (req, res) => {
         custom_shafts_id: customShaft.id,
         custom_shafts_catagoary: category,
         price: totalPrice ? parseFloat(totalPrice) : null,
-        note: isCustomModels ? `${category} (Custom Model) send to admin` : `${category} send to admin`,
+        note: isCustomModels
+          ? `${category} (Custom Model) send to admin`
+          : `${category} send to admin`,
       },
     });
 
@@ -684,19 +713,19 @@ export const createTustomShafts = async (req, res) => {
     cleanupFiles();
 
     // Handle multer errors (unexpected file fields)
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      const field = err.field || 'unknown';
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      const field = err.field || "unknown";
       return res.status(400).json({
         success: false,
         message: `Unexpected file field: ${field}`,
         allowedFields: [
-          'image3d_1',
-          'image3d_2',
-          'invoice',
-          'paintImage',
-          'invoice2',
-          'zipper_image',
-          'custom_models_image'
+          "image3d_1",
+          "image3d_2",
+          "invoice",
+          "paintImage",
+          "invoice2",
+          "zipper_image",
+          "custom_models_image",
         ],
       });
     }
@@ -717,7 +746,10 @@ export const createTustomShafts = async (req, res) => {
   }
 };
 
-export const createCustomBodenkonstruktionOrder = async (req: Request, res: Response) => {
+export const createCustomBodenkonstruktionOrder = async (
+  req: Request,
+  res: Response,
+) => {
   const files = req.files as any;
   const { id } = req.user;
 
@@ -733,8 +765,9 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
   };
 
   try {
-    const { customerName, totalPrice, bodenkonstruktion_json, deliveryDate } = req.body;
-    
+    const { customerName, totalPrice, bodenkonstruktion_json, deliveryDate } =
+      req.body;
+
     // Validate required fields
     if (!customerName) {
       cleanupFiles();
@@ -778,7 +811,7 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
 
     // Parse bodenkonstruktion_json if it's a string
     let parsedJson = bodenkonstruktion_json;
-    if (typeof bodenkonstruktion_json === 'string') {
+    if (typeof bodenkonstruktion_json === "string") {
       try {
         parsedJson = JSON.parse(bodenkonstruktion_json);
       } catch (e) {
@@ -789,7 +822,7 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
     // Parse deliveryDate if provided
     let parsedDeliveryDate: Date | null = null;
     if (deliveryDate) {
-      if (typeof deliveryDate === 'string') {
+      if (typeof deliveryDate === "string") {
         parsedDeliveryDate = new Date(deliveryDate);
         if (isNaN(parsedDeliveryDate.getTime())) {
           cleanupFiles();
@@ -805,13 +838,12 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
 
     const invoice = files?.invoice?.[0]?.location || null;
     const staticImage = files?.staticImage?.[0]?.location || null;
- 
 
     // Create custom shaft order without customer or order connections
     const data = await prisma.custom_shafts.create({
       data: {
         user: {
-          connect: { id: id }
+          connect: { id: id },
         },
         customerName: customerName,
         totalPrice: parsedTotalPrice,
@@ -824,8 +856,6 @@ export const createCustomBodenkonstruktionOrder = async (req: Request, res: Resp
           10000 + Math.random() * 90000,
         )}`,
         catagoary: "Bodenkonstruktion",
-        isCompleted: false,
-        status: "Neu",
       },
       select: {
         id: true,
@@ -1030,20 +1060,20 @@ export const getTustomShafts = async (req: Request, res: Response) => {
       image3d_2: shaft.image3d_2 || null,
       customer: shaft.customer
         ? {
-          ...shaft.customer,
-        }
+            ...shaft.customer,
+          }
         : null,
       maßschaft_kollektion: shaft.maßschaft_kollektion
         ? {
-          ...shaft.maßschaft_kollektion,
-          image: shaft.maßschaft_kollektion.image || null,
-        }
+            ...shaft.maßschaft_kollektion,
+            image: shaft.maßschaft_kollektion.image || null,
+          }
         : null,
       partner: user
         ? {
-          ...user,
-          image: user.image || null,
-        }
+            ...user,
+            image: user.image || null,
+          }
         : null,
     }));
 
@@ -1149,20 +1179,20 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
       image3d_2: customShaft.image3d_2 || null,
       customer: customShaft.customer
         ? {
-          ...customShaft.customer,
-        }
+            ...customShaft.customer,
+          }
         : null,
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
-          ...customShaft.maßschaft_kollektion,
-          image: customShaft.maßschaft_kollektion.image || null,
-        }
+            ...customShaft.maßschaft_kollektion,
+            image: customShaft.maßschaft_kollektion.image || null,
+          }
         : null,
       partner: user
         ? {
-          ...user,
-          image: user.image || null,
-        }
+            ...user,
+            image: user.image || null,
+          }
         : null,
     };
 
@@ -1230,7 +1260,6 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
         invoice2: true,
         Massschafterstellung_json2: true,
         Massschafterstellung_json1: true,
- 
       },
     });
 
@@ -1306,7 +1335,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1317,7 +1346,10 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
         if (massschuheOrder.status === "Schafterstellung") {
           // If both Massschafterstellung JSONs exist, order is complete, move to Geliefert
           // Otherwise, move to Bodenerstellung for Bodenkonstruktion step
-          if (existingCustomShaft.Massschafterstellung_json2 && existingCustomShaft.Massschafterstellung_json1) {
+          if (
+            existingCustomShaft.Massschafterstellung_json2 &&
+            existingCustomShaft.Massschafterstellung_json1
+          ) {
             await prisma.massschuhe_order.update({
               where: { id: massschuheOrder.id },
               data: { status: "Geliefert", isPanding: false },
@@ -1330,7 +1362,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           } else {
             // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
@@ -1346,7 +1378,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           }
         }
@@ -1368,7 +1400,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1468,7 +1500,6 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
     //         );
     //       }
 
-
     //     }
 
     //     if (massschuheOrder.status === "Bodenerstellung") {
@@ -1528,10 +1559,16 @@ export const deleteCustomShaft = async (req: Request, res: Response) => {
 
     // Delete files from S3 if they are S3 URLs
     const filesToDelete: string[] = [];
-    if (existingCustomShaft.image3d_1 && existingCustomShaft.image3d_1.startsWith("http")) {
+    if (
+      existingCustomShaft.image3d_1 &&
+      existingCustomShaft.image3d_1.startsWith("http")
+    ) {
       filesToDelete.push(existingCustomShaft.image3d_1);
     }
-    if (existingCustomShaft.image3d_2 && existingCustomShaft.image3d_2.startsWith("http")) {
+    if (
+      existingCustomShaft.image3d_2 &&
+      existingCustomShaft.image3d_2.startsWith("http")
+    ) {
       filesToDelete.push(existingCustomShaft.image3d_2);
     }
 
@@ -1736,6 +1773,146 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while calculating total price",
+      error: error.message,
+    });
+  }
+};
+
+export const cancelAdminOrder = async (req: Request, res: Response) => {
+  try {
+    const { role } = req.user;
+    const { orderId } = req.params;
+
+    const order = await prisma.custom_shafts.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        order_status: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        customer: {
+          select: {
+            customerNumber: true,
+            vorname: true,
+            nachname: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+    if (order.order_status === "canceled") {
+      return res.status(400).json({
+        success: false,
+        message: "Order already canceled",
+      });
+    }
+
+    if (role === "ADMIN") {
+      const updatedOrder = await prisma.custom_shafts.update({
+        where: { id: orderId },
+        data: {
+          order_status: "canceled",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (order.user?.id) {
+        if (order?.customer?.customerNumber) {
+          await notificationSend(
+            order.user.id,
+            "admin_order_canceled" as any,
+            `The order #${order.orderNumber} has been canceled by the admin. Customer: ${order.customer.vorname} ${order.customer.nachname} (Customer Number: ${order.customer.customerNumber})`,
+            order.id,
+            false,
+            `/dashboard/custom-shafts/${order.id}`,
+          );
+        } else {
+          await notificationSend(
+            order.user.id,
+            "admin_order_canceled" as any,
+            `The order #${order.orderNumber} has been canceled by the admin.`,
+            order.id,
+            false,
+            `/dashboard/custom-shafts/${order.id}`,
+          );
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Order canceled successfully",
+        data: updatedOrder,
+      });
+    }
+
+    if (role === "PARTNER" || role === "EMPLOYEE") {
+      if (order.status !== "Neu") {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Only orders with status 'Neu' can be canceled by partners or employees",
+        });
+      }
+
+      const updatedOrder = await prisma.custom_shafts.update({
+        where: { id: orderId },
+        data: {
+          order_status: "canceled",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      // Send notification to all admins
+      const admins = await prisma.user.findMany({
+        where: { role: "ADMIN" },
+        select: { id: true },
+      });
+
+      await Promise.all(
+        admins.map((admin) =>
+          notificationSend(
+            admin.id,
+            "admin_order_canceled" as any,
+            `The order #${order.orderNumber} has been canceled by the partner ${order.user?.name}.`,
+            order.id,
+            false,
+            `/dashboard/custom-shafts/${order.id}`,
+          ),
+        ),
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Order canceled successfully",
+        data: updatedOrder,
+      });
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "You do not have permission to cancel this order",
+    });
+  } catch (error: any) {
+    console.error("Cancel Admin Order Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while canceling the order",
       error: error.message,
     });
   }
