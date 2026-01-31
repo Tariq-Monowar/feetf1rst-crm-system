@@ -425,37 +425,44 @@ export const createTustomShafts = async (req, res) => {
   const {
     customerId,
     mabschaftKollektionId,
+    other_customer_name,
     totalPrice,
+
     custom_models_name,
     custom_models_price,
     custom_models_verschlussart,
     custom_models_gender,
     custom_models_description,
+
     Massschafterstellung_json1,
     Massschafterstellung_json2,
   } = req.body;
 
   try {
-    if (!customerId) {
+    // i need either this customerId or other_customer_name
+    if (!customerId && !other_customer_name) {
       cleanupFiles();
       return res.status(400).json({
         success: false,
-        message: "customerId is required",
+        message: "either customerId or other_customer_name is required",
       });
     }
 
-    // Validate customer
-    const customer = await prisma.customers.findUnique({
-      where: { id: customerId },
-      select: { id: true, customerNumber: true },
-    });
-
-    if (!customer) {
-      cleanupFiles();
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
+    let customer: { id: string; customerNumber: number } | null = null;
+    if (customerId) {
+      // Validate customer
+      customer = await prisma.customers.findUnique({
+        where: { id: customerId },
+        select: { id: true, customerNumber: true },
       });
+
+      if (!customer) {
+        cleanupFiles();
+        return res.status(404).json({
+          success: false,
+          message: "Customer not found",
+        });
+      }
     }
 
     // Validate mabschaftKollektionId if not custom models
@@ -575,9 +582,6 @@ export const createTustomShafts = async (req, res) => {
       user: {
         connect: { id: id },
       },
-      customer: {
-        connect: { id: customerId },
-      },
       image3d_1: files.image3d_1?.[0]?.location || null,
       image3d_2: files.image3d_2?.[0]?.location || null,
       paintImage: files.paintImage?.[0]?.location || null,
@@ -585,6 +589,7 @@ export const createTustomShafts = async (req, res) => {
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
       staticImage: files.staticImage?.[0]?.location || null,
+      other_customer_name: other_customer_name || null,
       other_customer_number: customer?.customerNumber
         ? String(customer.customerNumber)
         : null,
@@ -594,9 +599,15 @@ export const createTustomShafts = async (req, res) => {
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
       catagoary: category,
-      isCompleted: false,
       isCustomeModels: isCustomModels,
     };
+
+    // Connect customer only if customerId is provided
+    if (customerId) {
+      shaftData.customer = {
+        connect: { id: customerId },
+      };
+    }
 
     // Add maßschaft_kollektion relation if not custom models
     if (!isCustomModels && mabschaftKollektionId) {
@@ -606,62 +617,71 @@ export const createTustomShafts = async (req, res) => {
     }
 
     // Create the custom shaft
-    const customShaft = await prisma.custom_shafts.create({
-      data: shaftData,
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        customerId: true,
-        createdAt: true,
-        updatedAt: true,
-        partnerId: true,
-        image3d_1: true,
-        image3d_2: true,
-        paintImage: true,
-        invoice2: true,
-        invoice: true,
-        zipper_image: true,
-        staticImage: true,
-        other_customer_number: true,
-        Massschafterstellung_json1: true,
-        Massschafterstellung_json2: true,
-        totalPrice: true,
-        isCustomeModels: true,
-        maßschaftKollektionId: true,
-        catagoary: true,
-        maßschaft_kollektion: {
-          select: {
-            id: true,
-            name: true,
-            price: true,
-            image: true,
-          },
+    const selectFields: any = {
+      id: true,
+      orderNumber: true,
+      status: true,
+      customerId: true,
+      createdAt: true,
+      updatedAt: true,
+      partnerId: true,
+      image3d_1: true,
+      image3d_2: true,
+      paintImage: true,
+      invoice2: true,
+      invoice: true,
+      zipper_image: true,
+      staticImage: true,
+      other_customer_name: true,
+      other_customer_number: true,
+      Massschafterstellung_json1: true,
+      Massschafterstellung_json2: true,
+      totalPrice: true,
+      isCustomeModels: true,
+      maßschaftKollektionId: true,
+      catagoary: true,
+      maßschaft_kollektion: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          image: true,
         },
       },
+    };
+
+    const customShaft = await prisma.custom_shafts.create({
+      data: shaftData,
+      select: selectFields,
     });
 
     // Create custom_models record if isCustomModels is true
     let customModel = null;
     if (isCustomModels) {
-      customModel = await (prisma as any).custom_models.create({
-        data: {
-          custom_shafts: {
-            connect: { id: customShaft.id },
-          },
-          partner: {
-            connect: { id: id },
-          },
-          customer: {
-            connect: { id: customerId },
-          },
-          custom_models_name: custom_models_name || null,
-          custom_models_image: files.custom_models_image?.[0]?.location || null,
-          custom_models_price: parsePrice(custom_models_price),
-          custom_models_verschlussart: custom_models_verschlussart || null,
-          custom_models_gender: custom_models_gender || null,
-          custom_models_description: custom_models_description || null,
+      const customModelData: any = {
+        custom_shafts: {
+          connect: { id: customShaft.id },
         },
+        partner: {
+          connect: { id: id },
+        },
+        custom_models_name: custom_models_name || null,
+        custom_models_image: files.custom_models_image?.[0]?.location || null,
+        custom_models_price: parsePrice(custom_models_price),
+        custom_models_verschlussart: custom_models_verschlussart || null,
+        custom_models_gender: custom_models_gender || null,
+        custom_models_description: custom_models_description || null,
+      };
+
+      // Connect customer only if customerId is provided
+      if (customerId) {
+        customModelData.customer = {
+          connect: { id: customerId },
+        };
+      }
+
+      customModel = await (prisma as any).custom_models.create({
+        data: customModelData,
         select: {
           id: true,
           custom_models_name: true,
@@ -675,19 +695,25 @@ export const createTustomShafts = async (req, res) => {
     }
 
     // Create admin_order_transitions record
+    const transitionData: any = {
+      orderNumber: customShaft.orderNumber,
+      partnerId: id,
+      orderFor: "shoes",
+      custom_shafts_id: customShaft.id,
+      custom_shafts_catagoary: category,
+      price: totalPrice ? parseFloat(totalPrice) : null,
+      note: isCustomModels
+        ? `${category} (Custom Model) send to admin`
+        : `${category} send to admin`,
+    };
+
+    // Add customerId only if it exists
+    if (customerId) {
+      transitionData.customerId = customerId;
+    }
+
     await prisma.admin_order_transitions.create({
-      data: {
-        orderNumber: customShaft.orderNumber,
-        customerId: customerId,
-        partnerId: id,
-        orderFor: "shoes",
-        custom_shafts_id: customShaft.id,
-        custom_shafts_catagoary: category,
-        price: totalPrice ? parseFloat(totalPrice) : null,
-        note: isCustomModels
-          ? `${category} (Custom Model) send to admin`
-          : `${category} send to admin`,
-      },
+      data: transitionData,
     });
 
     // Create courier contact if isCourierContact is "yes" (after order is created)
@@ -1070,20 +1096,20 @@ export const getTustomShafts = async (req: Request, res: Response) => {
       image3d_2: shaft.image3d_2 || null,
       customer: shaft.customer
         ? {
-            ...shaft.customer,
-          }
+          ...shaft.customer,
+        }
         : null,
       maßschaft_kollektion: shaft.maßschaft_kollektion
         ? {
-            ...shaft.maßschaft_kollektion,
-            image: shaft.maßschaft_kollektion.image || null,
-          }
+          ...shaft.maßschaft_kollektion,
+          image: shaft.maßschaft_kollektion.image || null,
+        }
         : null,
       partner: user
         ? {
-            ...user,
-            image: user.image || null,
-          }
+          ...user,
+          image: user.image || null,
+        }
         : null,
     }));
 
@@ -1189,20 +1215,20 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
       image3d_2: customShaft.image3d_2 || null,
       customer: customShaft.customer
         ? {
-            ...customShaft.customer,
-          }
+          ...customShaft.customer,
+        }
         : null,
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
-            ...customShaft.maßschaft_kollektion,
-            image: customShaft.maßschaft_kollektion.image || null,
-          }
+          ...customShaft.maßschaft_kollektion,
+          image: customShaft.maßschaft_kollektion.image || null,
+        }
         : null,
       partner: user
         ? {
-            ...user,
-            image: user.image || null,
-          }
+          ...user,
+          image: user.image || null,
+        }
         : null,
     };
 

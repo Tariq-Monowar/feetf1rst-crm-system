@@ -1389,6 +1389,7 @@ model custom_shafts {
 
   orderNumber           String?
   other_customer_number String?
+  other_customer_name   String?
 
   customerId String?
   invoice    String?
