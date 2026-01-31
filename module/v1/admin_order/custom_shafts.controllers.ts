@@ -92,6 +92,7 @@ export const getAllMaßschaftKollektion = async (
     const search = (req.query.search as string) || "";
     const gender = (req.query.gender as string)?.trim() || "";
     const category = (req.query.category as string)?.trim() || ""; // <-- NEW
+    const sortPrice = (req.query.sortPrice as string)?.trim() || ""; // "asc" or "desc"
     const skip = (page - 1) * limit;
 
     const whereCondition: any = {};
@@ -124,6 +125,15 @@ export const getAllMaßschaftKollektion = async (
       };
     }
 
+    // ---------- SORTING ----------
+    // Determine orderBy based on sortPrice parameter
+    let orderBy: any = { createdAt: "desc" }; // default sorting
+    if (sortPrice === "asc") {
+      orderBy = { price: "asc" }; // min to max
+    } else if (sortPrice === "desc") {
+      orderBy = { price: "desc" }; // max to min
+    }
+
     // ---------- FETCH ----------
     const [totalCount, kollektion] = await Promise.all([
       prisma.maßschaft_kollektion.count({ where: whereCondition }),
@@ -131,7 +141,7 @@ export const getAllMaßschaftKollektion = async (
         where: whereCondition,
         skip,
         take: limit,
-        orderBy: { createdAt: "desc" },
+        orderBy,
       }),
     ]);
 
