@@ -295,7 +295,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
             invoice: true,
             invoice2: true,
             status: true,
-            isCompleted: true,
+            order_status: true,
           },
         },
         customer: {
@@ -314,14 +314,14 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     const transitionsData = hasMore ? transitions.slice(0, limit) : transitions;
 
     // Conditionally format invoice fields based on category
-    const data = transitionsData.map((transition) => {
+    const data = transitionsData.map((transition: any) => {
       const isKomplettfertigung = transition.custom_shafts_catagoary === "Komplettfertigung";
       
       // If Komplettfertigung, return both invoices; otherwise only invoice
       const custom_shafts = transition.custom_shafts ? {
         invoice: transition.custom_shafts.invoice,
         status: transition.custom_shafts.status,
-        isCompleted: transition.custom_shafts.isCompleted,
+        order_status: transition.custom_shafts.order_status,
         ...(isKomplettfertigung && { invoice2: transition.custom_shafts.invoice2 }),
       } : null;
 
