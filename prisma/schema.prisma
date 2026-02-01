@@ -1608,11 +1608,7 @@ enum custom_shafts_status {
   Bei_uns_angekommen
   Beim_Kunden_angekommen
 
-  Bestellung_eingegangen
-  In_Produktiony
-  Qualitätskontrolle
-  Versandt
-  Ausgeführt
+ 
 
   // //----------------------------------------
   // Leistenerstellung //started

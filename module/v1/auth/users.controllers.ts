@@ -233,16 +233,9 @@ export const loginUser = async (req: Request, res: Response) => {
       return;
     }
 
-    // Password validation - both employees and users use bcrypt (with fallback for old plain text)
     let isPasswordValid = false;
     if (isEmployee) {
-      // Try bcrypt first, fallback to plain text for backward compatibility
-      try {
-        isPasswordValid = await bcrypt.compare(password, user.password);
-      } catch {
-        // Fallback for old plain text passwords
-        isPasswordValid = user.password === password;
-      }
+      isPasswordValid = user.password === password;
     } else {
       isPasswordValid = await bcrypt.compare(password, user.password);
     }
