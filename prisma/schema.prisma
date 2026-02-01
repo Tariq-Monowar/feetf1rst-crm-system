@@ -74,6 +74,7 @@ model User {
   courierContacts             CourierContact[]
   customModels                custom_models[]
   accountInfos                accountInfo[]
+  employeeFeatureAccess       employee_feature_access[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -323,6 +324,7 @@ model Employees {
   customerOrders              customerOrders[]
   partnerConversationMembers  partner_conversation_members[]
   partnerConversationMessages partner_conversation_message[]
+  employeeFeatureAccess       employee_feature_access[]
 
   @@index([createdAt])
 }
@@ -1792,6 +1794,55 @@ model FeatureAccess {
   @@index([updatedAt])
   @@map("feature_access")
 }
+
+model employee_feature_access {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  partnerId String
+  partner   User @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+   // Dashboard Section
+  dashboard           Boolean @default(true)
+  teamchat            Boolean @default(true)
+  kundensuche         Boolean @default(true)
+  neukundenerstellung Boolean @default(true)
+  einlagenauftrage    Boolean @default(true)
+  massschuhauftrage   Boolean @default(true)
+  massschafte         Boolean @default(true)
+
+  // Product Management
+  produktverwaltung      Boolean @default(true)
+  sammelbestellungen     Boolean @default(true)
+  nachrichten            Boolean @default(true)
+  terminkalender         Boolean @default(true)
+  monatsstatistik        Boolean @default(true)
+  mitarbeitercontrolling Boolean @default(true)
+  einlagencontrolling    Boolean @default(true)
+  fusubungen             Boolean @default(true)
+  musterzettel           Boolean @default(true)
+  einstellungen          Boolean @default(true)
+
+  news_and_aktuelles Boolean @default(true)
+  produktkatalog     Boolean @default(true)
+  balance            Boolean @default(true)
+
+  automatisierte_nachrichten Boolean @default(true)
+  kasse_and_abholungen       Boolean @default(true)
+  finanzen_and_kasse         Boolean @default(true)
+  einnahmen_and_rechnungen    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, partnerId])
+  @@index([employeeId])
+  @@index([partnerId])
+}
+
+
 
 model notification {
   id String @id @default(uuid())
