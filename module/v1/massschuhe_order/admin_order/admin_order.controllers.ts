@@ -394,7 +394,6 @@ export const sendToAdminOrder_2 = async (req, res) => {
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
       catagoary: category,
-      isCompleted: false,
       isCustomeModels: isCustomModels,
     };
 
@@ -911,7 +910,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
-      isCompleted: true,
       createdAt: true,
       updatedAt: true,
       partnerId: true,
