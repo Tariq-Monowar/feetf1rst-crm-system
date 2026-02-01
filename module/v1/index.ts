@@ -36,6 +36,7 @@ import massschuhe_order from "./massschuhe_order/massschuhe_order.routes";
 import admin_order from "./massschuhe_order/admin_order/admin_order.routes";
 import customer_settings from "./customer_settings/customer_settings.routes";
 import admin_store from "./storage/admin_store/admin_store.routes";
+import employee_feature_access from "./employees/employee_feature_access/employee_feature_access.routes";
 
 const router = express.Router();
 
@@ -89,6 +90,7 @@ const moduleRoutes = [
   { path: "/massschuhe-order/admin-order", route: admin_order },
 
   { path: "/customer-settings", route: customer_settings },
+  { path: "/employees/feature-access", route: employee_feature_access },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

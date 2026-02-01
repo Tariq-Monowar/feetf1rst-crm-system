@@ -375,21 +375,29 @@ export const manageEmployeeFeatureAccess = async (
       }
     });
 
-    const employeeFeatureAccess = await prisma.employee_feature_access.upsert({
+    const existingAccess = await prisma.employee_feature_access.findFirst({
       where: {
-        employeeId_partnerId: {
-          employeeId,
-          partnerId,
-        },
-      },
-      update: filteredUpdates,
-      create: {
         employeeId,
         partnerId,
-        ...defaultEmployeeFeatureAccessData,
-        ...filteredUpdates,
       },
     });
+
+    let employeeFeatureAccess;
+    if (existingAccess) {
+      employeeFeatureAccess = await prisma.employee_feature_access.update({
+        where: { id: existingAccess.id },
+        data: filteredUpdates,
+      });
+    } else {
+      employeeFeatureAccess = await prisma.employee_feature_access.create({
+        data: {
+          employeeId,
+          partnerId,
+          ...defaultEmployeeFeatureAccessData,
+          ...filteredUpdates,
+        },
+      });
+    }
 
     const formattedData = convertToJSONFormat(employeeFeatureAccess);
 
