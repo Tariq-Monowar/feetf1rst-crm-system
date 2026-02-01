@@ -1467,6 +1467,7 @@ model custom_shafts {
   /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1490,6 +1491,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * //এই পেইজে একটা জুতার তলার ছবি আছে
@@ -1764,13 +1766,27 @@ model FeatureAccess {
   musterzettel           Boolean @default(true)
   einstellungen          Boolean @default(true)
 
-  //new feature access
-  // news_page    Boolean @default(true)
-  // balance_page Boolean @default(true)
-  // products_page Boolean @default(true)
   news_and_aktuelles Boolean @default(true)
-  produktkatalog Boolean @default(true)
-  balance Boolean @default(true)
+  produktkatalog     Boolean @default(true)
+  balance            Boolean @default(true)
+
+  /**
+   * title: Automatisierte Nachrichten
+   * /dashboard/automatisierte-nachrichten
+
+   * title: Kasse & Abholungen
+   * /dashboard/kasse
+
+   * title: Finanzen & Kasse
+   * /dashboard/finanzen-kasse
+
+   * title: Einnahmen & Rechnungen
+   * /dashboard/einnahmen
+   */
+  automatisierte_nachrichten Boolean @default(true)
+  kasse_and_abholungen       Boolean @default(true)
+  finanzen_and_kasse         Boolean @default(true)
+  einnahmen_and_rechnungen    Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

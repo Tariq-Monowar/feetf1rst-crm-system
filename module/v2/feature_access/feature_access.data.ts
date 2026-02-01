@@ -191,4 +191,46 @@ export const featureAccessData = [
     path: "/dashboard/balance-dashboard",
     nested: [],
   },
+    /**
+   * title: Automatisierte Nachrichten
+   * /dashboard/automatisierte-nachrichten
+
+   * title: Kasse & Abholungen
+   * /dashboard/kasse
+
+   * title: Finanzen & Kasse
+   * /dashboard/finanzen-kasse
+
+   * title: Einnahmen & Rechnungen
+   * /dashboard/einnahmen
+  
+    automatisierte_nachrichten Boolean @default(true)
+    kasse_and_abholungen       Boolean @default(true)
+    finanzen_and_kasse         Boolean @default(true)
+    einnahmen_and_rechnungen    Boolean @default(true)
+ */  
+  {
+    title: "Automatisierte Nachrichten",
+    action: true,
+    path: "/dashboard/automatisierte-nachrichten",
+    nested: [],
+  },
+  {
+    title: "Kasse & Abholungen",
+    action: true,
+    path: "/dashboard/kasse",
+    nested: [],
+  },
+  {
+    title: "Finanzen & Kasse",
+    action: true,
+    path: "/dashboard/finanzen-kasse",
+    nested: [],
+  },
+  {
+    title: "Einnahmen & Rechnungen",
+    action: true,
+    path: "/dashboard/einnahmen",
+    nested: [],
+  },
 ];

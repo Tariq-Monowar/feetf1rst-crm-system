@@ -24,16 +24,24 @@ const defaultFeatureAccessData = {
   news_and_aktuelles: true,
   produktkatalog: true,
   balance: true,
+  automatisierte_nachrichten: true,
+  kasse_and_abholungen: true,
+  finanzen_and_kasse: true,
+  einnahmen_and_rechnungen: true,
+};
+
+const validatePartner = async (partnerId: string) => {
+  const partner = await prisma.user.findUnique({
+    where: { id: partnerId, role: "PARTNER" },
+  });
+  return partner;
 };
 
 export const getFeatureAccess = async (req: Request, res: Response) => {
   try {
     const { partnerId } = req.params;
 
-    const partner = await prisma.user.findUnique({
-      where: { id: partnerId, role: "PARTNER" },
-    });
-
+    const partner = await validatePartner(partnerId);
     if (!partner) {
       return res.status(404).json({
         success: false,
@@ -41,26 +49,14 @@ export const getFeatureAccess = async (req: Request, res: Response) => {
       });
     }
 
-    let featureAccess = await prisma.featureAccess.findUnique({
-      where: { partnerId },
-    });
-
-    // If not exists, create with defaults
-    if (!featureAccess) {
-      featureAccess = await prisma.featureAccess.create({
-        data: {
-          partnerId,
-          ...defaultFeatureAccessData,
-        },
-      });
-    }
+    const featureAccess = await getOrCreateFeatureAccess(partnerId);
 
     res.status(200).json({
       success: true,
       message: "Feature access retrieved successfully",
       data: featureAccess,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get Feature Access error:", error);
     res.status(500).json({
       success: false,
@@ -75,11 +71,7 @@ export const manageFeatureAccess = async (req: Request, res: Response) => {
     const { partnerId } = req.params;
     const updates = req.body;
 
-    // Check if partner exists
-    const partner = await prisma.user.findUnique({
-      where: { id: partnerId, role: "PARTNER" },
-    });
-
+    const partner = await validatePartner(partnerId);
     if (!partner) {
       return res.status(404).json({
         success: false,
@@ -102,7 +94,7 @@ export const manageFeatureAccess = async (req: Request, res: Response) => {
       message: "Feature access updated successfully",
       data: featureAccess,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Manage Feature Access error:", error);
     res.status(500).json({
       success: false,
@@ -112,16 +104,54 @@ export const manageFeatureAccess = async (req: Request, res: Response) => {
   }
 };
 
-export const partnerFeatureAccess = async (req: Request, res: Response) => {
-  try {
-    console.log("partnerFeatureAccess");
-    const partnerId = req.user.id;
+const getOrCreateFeatureAccess = async (partnerId: string) => {
+  let featureAccess = await prisma.featureAccess.findUnique({
+    where: { partnerId },
+  });
 
-    // Check if partner exists
-    const partner = await prisma.user.findUnique({
-      where: { id: partnerId, role: "PARTNER" },
+  if (!featureAccess) {
+    return await prisma.featureAccess.create({
+      data: {
+        partnerId,
+        ...defaultFeatureAccessData,
+      },
+    });
+  }
+
+  const newFields = [
+    "news_and_aktuelles",
+    "produktkatalog",
+    "balance",
+    "automatisierte_nachrichten",
+    "kasse_and_abholungen",
+    "finanzen_and_kasse",
+    "einnahmen_and_rechnungen",
+  ];
+
+  const missingFields = newFields.filter(
+    (field) => featureAccess[field] === null || featureAccess[field] === undefined
+  );
+
+  if (missingFields.length > 0) {
+    const updateData: any = {};
+    missingFields.forEach((field) => {
+      updateData[field] = true;
     });
 
+    featureAccess = await prisma.featureAccess.update({
+      where: { partnerId },
+      data: updateData,
+    });
+  }
+
+  return featureAccess;
+};
+
+export const partnerFeatureAccess = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+
+    const partner = await validatePartner(partnerId);
     if (!partner) {
       return res.status(404).json({
         success: false,
@@ -129,42 +159,7 @@ export const partnerFeatureAccess = async (req: Request, res: Response) => {
       });
     }
 
-    // Get or create feature access
-    let featureAccess = await prisma.featureAccess.findUnique({
-      where: { partnerId },
-    });
-
-    // If not exists, create with defaults
-    if (!featureAccess) {
-      featureAccess = await prisma.featureAccess.create({
-        data: {
-          partnerId,
-          ...defaultFeatureAccessData,
-        },
-      });
-    } else {
-      // Update existing record if it's missing the new fields
-      const needsUpdate = 
-        featureAccess.news_and_aktuelles === null || 
-        featureAccess.news_and_aktuelles === undefined ||
-        featureAccess.produktkatalog === null || 
-        featureAccess.produktkatalog === undefined ||
-        featureAccess.balance === null || 
-        featureAccess.balance === undefined;
-
-      if (needsUpdate) {
-        featureAccess = await prisma.featureAccess.update({
-          where: { partnerId },
-          data: {
-            news_and_aktuelles: featureAccess.news_and_aktuelles ?? true,
-            produktkatalog: featureAccess.produktkatalog ?? true,
-            balance: featureAccess.balance ?? true,
-          },
-        });
-      }
-    }
-
-    // Convert to your desired JSON format
+    const featureAccess = await getOrCreateFeatureAccess(partnerId);
     const formattedData = convertToJSONFormat(featureAccess);
 
     res.status(200).json({
@@ -172,7 +167,7 @@ export const partnerFeatureAccess = async (req: Request, res: Response) => {
       message: "Feature access retrieved successfully",
       data: formattedData,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Partner Feature Access error:", error);
     res.status(500).json({
       success: false,
@@ -277,13 +272,31 @@ function convertToJSONFormat(featureAccess: any) {
       title: "Balance",
       path: "/dashboard/balance-dashboard",
     },
+    {
+      field: "automatisierte_nachrichten",
+      title: "Automatisierte Nachrichten",
+      path: "/dashboard/automatisierte-nachrichten",
+    },
+    {
+      field: "kasse_and_abholungen",
+      title: "Kasse & Abholungen",
+      path: "/dashboard/kasse",
+    },
+    {
+      field: "finanzen_and_kasse",
+      title: "Finanzen & Kasse",
+      path: "/dashboard/finanzen-kasse",
+    },
+    {
+      field: "einnahmen_and_rechnungen",
+      title: "Einnahmen & Rechnungen",
+      path: "/dashboard/einnahmen",
+    },
   ];
 
   const result = [];
 
   for (const mapping of fieldMapping) {
-    // Get action value, defaulting to true if undefined/null
-    // This handles cases where new fields might not exist in older database records
     const actionValue = featureAccess[mapping.field] ?? true;
 
     const item: any = {
@@ -293,9 +306,7 @@ function convertToJSONFormat(featureAccess: any) {
       nested: [],
     };
 
-    // // ALWAYS add nested items for settings, regardless of parent action value
     if (mapping.field === "einstellungen") {
-      // Pass the parent action value (true/false) to determine nested items' actions
       item.nested = getSettingsNestedItems(featureAccess.einstellungen);
     }
 
@@ -305,9 +316,7 @@ function convertToJSONFormat(featureAccess: any) {
   return result;
 }
 
-// Helper function: Get nested settings items
 function getSettingsNestedItems(parentAction: boolean) {
-  // Nested settings list
   const settingsNested = [
     { title: "Grundeinstellungen", path: "/dashboard/settings-profile" },
     {
@@ -351,9 +360,8 @@ function getSettingsNestedItems(parentAction: boolean) {
     },
   ];
 
-  // ALWAYS return all nested items, but set their action based on parent
   return settingsNested.map((item) => ({
     ...item,
-    action: parentAction, // If parent is false, all nested items will have action: false
+    action: parentAction,
   }));
 }
