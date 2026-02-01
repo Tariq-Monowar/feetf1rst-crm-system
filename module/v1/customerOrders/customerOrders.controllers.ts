@@ -1008,8 +1008,6 @@ export const getOrderById = async (req: Request, res: Response) => {
             role: true,
             phone: true,
             absenderEmail: true,
-            bankName: true,
-            bankNumber: true,
             busnessName: true,
             hauptstandort: true,
             workshopNote: {

@@ -173,4 +173,22 @@ export const featureAccessData = [
       },
     ],
   },
+  {
+    title: "News & Aktuelles",
+    action: true,
+    path: "/dashboard/news",
+    nested: [],
+  },
+  {
+    title: "Produktkatalog",
+    action: true,
+    path: "/dashboard/products",
+    nested: [],
+  },
+  {
+    title: "Balance",
+    action: true,
+    path: "/dashboard/balance-dashboard",
+    nested: [],
+  },
 ];

@@ -853,7 +853,7 @@ model customerOrders {
   email              String?
   geschaeftsstandort String?
   mitarbeiter        String?
-  fertigstellungBis  DateTime?
+  fertigstellungBis  DateTime? // pickup date
   versorgung         String?
 
   fussanalysePreis        Float?
@@ -1466,6 +1466,7 @@ model custom_shafts {
   //---------------------- fiRST Page------------
   /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1489,6 +1490,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * //এই পেইজে একটা জুতার তলার ছবি আছে
    * Mehr_ansehen_image       String?
@@ -1525,11 +1527,11 @@ model custom_shafts {
    * --------------------------------------------------------------------------
    * --------------------------------------------------------------------------
    */
-  bodenkonstruktion_json Json?
-  staticImage            String?
-  customerName           String?
-  deliveryDate           DateTime?
-  isCustomBodenkonstruktion         Boolean? @default(false)
+  bodenkonstruktion_json    Json?
+  staticImage               String?
+  customerName              String?
+  deliveryDate              DateTime?
+  isCustomBodenkonstruktion Boolean?  @default(false)
   /**
    * Bodenkonstruktion Ended
    * --------------------------------------------------------------------------
@@ -1548,12 +1550,12 @@ model custom_shafts {
   massschuhe_order_id String?
   massschuhe_order    massschuhe_order? @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
 
-  status    custom_shafts_status?    @default(Neu)
+  status custom_shafts_status? @default(Neu)
 
   catagoary custom_shafts_catagoary?
 
   // isCompleted Boolean? @default(false)
-  order_status  admin_order_status? @default(active)
+  order_status admin_order_status? @default(active)
 
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
@@ -1603,7 +1605,6 @@ enum custom_shafts_status {
   Zu_Kunde_abgeschickt
   Bei_uns_angekommen
   Beim_Kunden_angekommen
-
 
   Bestellung_eingegangen
   In_Produktiony
@@ -1696,7 +1697,6 @@ model admin_order_transitions {
   @@index([massschuhe_order_id])
   @@index([storeId])
   @@index([partnerId])
- 
   @@index([orderFor])
   @@index([createdAt])
   @@index([partnerId, orderNumber]) // Composite index for fast orderNumber lookup per partner
@@ -1763,6 +1763,14 @@ model FeatureAccess {
   fusubungen             Boolean @default(true)
   musterzettel           Boolean @default(true)
   einstellungen          Boolean @default(true)
+
+  //new feature access
+  // news_page    Boolean @default(true)
+  // balance_page Boolean @default(true)
+  // products_page Boolean @default(true)
+  news_and_aktuelles Boolean @default(true)
+  produktkatalog Boolean @default(true)
+  balance Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -21,6 +21,9 @@ const defaultFeatureAccessData = {
   fusubungen: true,
   musterzettel: true,
   einstellungen: true,
+  news_and_aktuelles: true,
+  produktkatalog: true,
+  balance: true,
 };
 
 export const getFeatureAccess = async (req: Request, res: Response) => {
@@ -139,6 +142,26 @@ export const partnerFeatureAccess = async (req: Request, res: Response) => {
           ...defaultFeatureAccessData,
         },
       });
+    } else {
+      // Update existing record if it's missing the new fields
+      const needsUpdate = 
+        featureAccess.news_and_aktuelles === null || 
+        featureAccess.news_and_aktuelles === undefined ||
+        featureAccess.produktkatalog === null || 
+        featureAccess.produktkatalog === undefined ||
+        featureAccess.balance === null || 
+        featureAccess.balance === undefined;
+
+      if (needsUpdate) {
+        featureAccess = await prisma.featureAccess.update({
+          where: { partnerId },
+          data: {
+            news_and_aktuelles: featureAccess.news_and_aktuelles ?? true,
+            produktkatalog: featureAccess.produktkatalog ?? true,
+            balance: featureAccess.balance ?? true,
+          },
+        });
+      }
     }
 
     // Convert to your desired JSON format
@@ -239,14 +262,33 @@ function convertToJSONFormat(featureAccess: any) {
       title: "Einstellungen",
       path: "/dashboard/settings",
     },
+    {
+      field: "news_and_aktuelles",
+      title: "News & Aktuelles",
+      path: "/dashboard/news",
+    },
+    {
+      field: "produktkatalog",
+      title: "Produktkatalog",
+      path: "/dashboard/products",
+    },
+    {
+      field: "balance",
+      title: "Balance",
+      path: "/dashboard/balance-dashboard",
+    },
   ];
 
   const result = [];
 
   for (const mapping of fieldMapping) {
+    // Get action value, defaulting to true if undefined/null
+    // This handles cases where new fields might not exist in older database records
+    const actionValue = featureAccess[mapping.field] ?? true;
+
     const item: any = {
       title: mapping.title,
-      action: featureAccess[mapping.field],
+      action: actionValue,
       path: mapping.path,
       nested: [],
     };
