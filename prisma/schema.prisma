@@ -1610,17 +1610,11 @@ enum custom_shafts_status {
   Bei_uns_angekommen
   Beim_Kunden_angekommen
 
- 
-
-  // //----------------------------------------
-  // Leistenerstellung //started
-
-  // Bettungsherstellung
-  // Halbprobenerstellung
-  // Schafterstellung
-  // Bodenerstellung
-
-  // Geliefert
+  Bestellung_eingegangen
+  In_Produktiony
+  Qualitätskontrolle
+  Versandt
+  Ausgeführt
 }
 
 model custom_models {
