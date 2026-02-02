@@ -436,7 +436,9 @@ export const createTustomShafts = async (req, res) => {
 
     Massschafterstellung_json1,
     Massschafterstellung_json2,
+
     versenden,
+
   } = req.body;
 
   try {
@@ -590,7 +592,7 @@ export const createTustomShafts = async (req, res) => {
 
     // Determine category: Komplettfertigung if both JSON fields are present, otherwise row
     const hasBothJsonFields = parsedJson1 && parsedJson2;
-    const category = hasBothJsonFields ? "Komplettfertigung" : "row";
+    const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
 
     // Prepare data object
     const shaftData: any = {
@@ -612,6 +614,8 @@ export const createTustomShafts = async (req, res) => {
       Massschafterstellung_json2: parsedJson2,
       versenden: hasVersenden ? parsedVersenden : null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
+      // generate order number i need to calculate previous order number and add 1
+      // orderNumber: await generateNextOrderNumber(id),
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
       catagoary: category,
@@ -719,9 +723,7 @@ export const createTustomShafts = async (req, res) => {
       custom_shafts_id: customShaft.id,
       custom_shafts_catagoary: category,
       price: totalPrice ? parseFloat(totalPrice) : null,
-      note: isCustomModels
-        ? `${category} (Custom Model) send to admin`
-        : `${category} send to admin`,
+      note: category,
     };
 
     // Add customerId only if it exists

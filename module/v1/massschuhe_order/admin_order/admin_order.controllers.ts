@@ -222,6 +222,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
     custom_models_description,
     Massschafterstellung_json1,
     Massschafterstellung_json2,
+    versenden,
   } = req.body;
 
   try {
@@ -303,6 +304,20 @@ export const sendToAdminOrder_2 = async (req, res) => {
           message: "Maßschaft Kollektion not found",
         });
       }
+    }
+
+    // Require either Versenden or CourierContact when creating order
+    const parsedVersenden = parseJsonField(versenden);
+    const hasVersenden = parsedVersenden != null && parsedVersenden !== "";
+    const hasCourierContact = isCourierContact === "yes";
+
+    if (!hasVersenden && !hasCourierContact) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message:
+          "Either Versenden (versenden JSON) or CourierContact (isCourierContact=yes with courier fields) is required when creating order",
+      });
     }
 
     let parsedTotalPrice: number | null = null;
@@ -390,6 +405,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
+      versenden: hasVersenden ? parsedVersenden : null,
       totalPrice: parsedTotalPrice,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
@@ -431,6 +447,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
         other_customer_number: true,
         Massschafterstellung_json1: true,
         Massschafterstellung_json2: true,
+        versenden: true,
         totalPrice: true,
         isCustomeModels: true,
         maßschaftKollektionId: true,
