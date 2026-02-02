@@ -22,7 +22,7 @@ export const loginEmployee = async (req: Request, res: Response) => {
       });
     }
 
-    const employee = await prisma.employees.findUnique({
+    const employee = await prisma.employees.findFirst({
       where: { email: email },
       select: {
         id: true,

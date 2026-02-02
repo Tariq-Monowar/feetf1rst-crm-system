@@ -52,7 +52,7 @@ export const createPartnership = async (req: Request, res: Response) => {
     }
 
     // Check if email exists in employees table
-    const existingEmployee = await prisma.employees.findUnique({
+    const existingEmployee = await prisma.employees.findFirst({
       where: { email },
     });
 
@@ -421,7 +421,7 @@ export const updatePartnerByAdmin = async (
       }
 
       // Check if email exists in employees table
-      const existingEmployeeEmail = await prisma.employees.findUnique({ where: { email } });
+      const existingEmployeeEmail = await prisma.employees.findFirst({ where: { email } });
       if (existingEmployeeEmail) {
         res
           .status(400)

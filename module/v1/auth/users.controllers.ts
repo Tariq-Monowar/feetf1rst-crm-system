@@ -111,7 +111,7 @@ export const createUser = async (req: Request, res: Response) => {
     }
 
     // Check if email exists in employees table
-    const existingEmployee = await prisma.employees.findUnique({
+    const existingEmployee = await prisma.employees.findFirst({
       where: { email },
     });
 
@@ -191,7 +191,7 @@ export const loginUser = async (req: Request, res: Response) => {
 
     // If not found in user table, check employees table
     if (!user) {
-      const employee = await prisma.employees.findUnique({
+      const employee = await prisma.employees.findFirst({
         where: {
           email,
         },
@@ -528,7 +528,7 @@ export const createPartnership = async (req: Request, res: Response) => {
     }
 
     // Check if email exists in employees table
-    const existingEmployee = await prisma.employees.findUnique({
+    const existingEmployee = await prisma.employees.findFirst({
       where: { email },
     });
 
