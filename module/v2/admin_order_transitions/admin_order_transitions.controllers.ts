@@ -297,6 +297,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
             invoice2: true,
             status: true,
             order_status: true,
+            other_customer_name: true,
           },
         },
         customer: {
