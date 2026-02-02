@@ -323,8 +323,10 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       const custom_shafts = transition.custom_shafts ? {
         id: transition.custom_shafts.id,
         invoice: transition.custom_shafts.invoice,
+        invoice2: transition.custom_shafts.invoice2,
         status: transition.custom_shafts.status,
         order_status: transition.custom_shafts.order_status,
+        other_customer_name: transition.custom_shafts.other_customer_name,
         ...(isKomplettfertigung && { invoice2: transition.custom_shafts.invoice2 }),
       } : null;
 
