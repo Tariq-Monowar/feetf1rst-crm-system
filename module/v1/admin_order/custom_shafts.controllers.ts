@@ -1319,6 +1319,14 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
       },
     });
 
+    // When status is Ausgeführt, mark related admin_order_transitions as complated
+    if (status === "Ausgeführt") {
+      await prisma.admin_order_transitions.updateMany({
+        where: { custom_shafts_id: id },
+        data: { status: "complated" },
+      });
+    }
+
     //=======================khanba logic=======================
     // Only update massschuhe_order status if custom_shaft status is "Ausgeführt" and has a related order
     if (status === "Ausgeführt" && existingCustomShaft.massschuhe_order_id) {
@@ -1400,6 +1408,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
               false,
               "/dashboard/massschuhauftraege",
             );
+            
           } else {
             // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
             await prisma.massschuhe_order.update({
