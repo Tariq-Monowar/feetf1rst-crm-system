@@ -292,6 +292,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         custom_shafts_catagoary: true,
         custom_shafts: {
           select: {
+            id: true,
             invoice: true,
             invoice2: true,
             status: true,
@@ -319,6 +320,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       
       // If Komplettfertigung, return both invoices; otherwise only invoice
       const custom_shafts = transition.custom_shafts ? {
+        id: transition.custom_shafts.id,
         invoice: transition.custom_shafts.invoice,
         status: transition.custom_shafts.status,
         order_status: transition.custom_shafts.order_status,

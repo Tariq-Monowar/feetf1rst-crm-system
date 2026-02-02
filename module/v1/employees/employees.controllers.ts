@@ -52,7 +52,6 @@ export const createEmployee = async (req: Request, res: Response) => {
     const missingField = [
       "accountName",
       "employeeName",
-      "email",
       "password",
     ].find((field) => !req.body[field]);
 
@@ -63,36 +62,13 @@ export const createEmployee = async (req: Request, res: Response) => {
         .json({ success: false, message: `${missingField} is required!` });
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-    if (existingUser) {
-      cleanupFiles();
-      return res.status(400).json({
-        success: false,
-        message: "Email already registered!",
-      });
-    }
-
-    const existingEmployee = await prisma.employees.findUnique({
-      where: { email },
-    });
-
-    if (existingEmployee) {
-      cleanupFiles();
-      return res
-        .status(400)
-        .json({ success: false, message: "Employee already exists!" });
-    }
-
-
     // Convert financialAccess to boolean
     const financialAccessBool = financialAccess === true || financialAccess === "true" || financialAccess === 1;
 
     const employeeData = {
       accountName,
       employeeName,
-      email,
+      email: email || null,
       password,
       financialAccess: financialAccessBool,
       partnerId: req.user.id,

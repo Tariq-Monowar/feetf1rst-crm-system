@@ -302,7 +302,7 @@ model Employees {
   accountName String
 
   employeeName    String
-  email           String  @unique
+  email           String?
   password        String
   financialAccess Boolean @default(false)
   jobPosition     String?
