@@ -1460,6 +1460,7 @@ model custom_shafts {
   ledertyp_image             String?
   zipper_image               String?
   paintImage                 String?
+  versenden                  Json?
 
   Massschafterstellung_json2 Json?
   Mehr_ansehen_image         String?
@@ -1467,6 +1468,7 @@ model custom_shafts {
 
   //---------------------- fiRST Page------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -1493,6 +1495,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -1765,20 +1768,17 @@ model FeatureAccess {
   /**
    * title: Automatisierte Nachrichten
    * /dashboard/automatisierte-nachrichten
-
    * title: Kasse & Abholungen
    * /dashboard/kasse
-
    * title: Finanzen & Kasse
    * /dashboard/finanzen-kasse
-
    * title: Einnahmen & Rechnungen
    * /dashboard/einnahmen
    */
   automatisierte_nachrichten Boolean @default(true)
   kasse_and_abholungen       Boolean @default(true)
   finanzen_and_kasse         Boolean @default(true)
-  einnahmen_and_rechnungen    Boolean @default(true)
+  einnahmen_and_rechnungen   Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1796,9 +1796,9 @@ model employee_feature_access {
   employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   partnerId String
-  partner   User @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-   // Dashboard Section
+  // Dashboard Section
   dashboard           Boolean @default(true)
   teamchat            Boolean @default(true)
   kundensuche         Boolean @default(true)
@@ -1826,7 +1826,7 @@ model employee_feature_access {
   automatisierte_nachrichten Boolean @default(true)
   kasse_and_abholungen       Boolean @default(true)
   finanzen_and_kasse         Boolean @default(true)
-  einnahmen_and_rechnungen    Boolean @default(true)
+  einnahmen_and_rechnungen   Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1835,8 +1835,6 @@ model employee_feature_access {
   @@index([employeeId])
   @@index([partnerId])
 }
-
-
 
 model notification {
   id String @id @default(uuid())

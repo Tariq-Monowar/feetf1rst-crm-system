@@ -436,6 +436,7 @@ export const createTustomShafts = async (req, res) => {
 
     Massschafterstellung_json1,
     Massschafterstellung_json2,
+    versenden,
   } = req.body;
 
   try {
@@ -488,6 +489,20 @@ export const createTustomShafts = async (req, res) => {
           message: "Maßschaft Kollektion not found",
         });
       }
+    }
+
+    // Require either Versenden or CourierContact when creating order
+    const parsedVersenden = parseJsonField(versenden);
+    const hasVersenden = parsedVersenden != null && parsedVersenden !== "";
+    const hasCourierContact = isCourierContact === "yes";
+
+    if (!hasVersenden && !hasCourierContact) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message:
+          "hoy Versenden data den nahou courier contact data den!",
+      });
     }
 
     /*
@@ -595,6 +610,7 @@ export const createTustomShafts = async (req, res) => {
         : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
+      versenden: hasVersenden ? parsedVersenden : null,
       totalPrice: totalPrice ? parseFloat(totalPrice) : null,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
       status: "Neu" as any,
@@ -636,6 +652,7 @@ export const createTustomShafts = async (req, res) => {
       other_customer_number: true,
       Massschafterstellung_json1: true,
       Massschafterstellung_json2: true,
+      versenden: true,
       totalPrice: true,
       isCustomeModels: true,
       maßschaftKollektionId: true,
