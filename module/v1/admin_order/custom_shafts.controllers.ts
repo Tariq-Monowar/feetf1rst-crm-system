@@ -516,7 +516,7 @@ export const createTustomShafts = async (req, res) => {
   const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
   const shaftData = {
-    partnerId: id,
+    user: { connect: { id } },
     image3d_1: getFile("image3d_1"),
     image3d_2: getFile("image3d_2"),
     paintImage: getFile("paintImage"),
