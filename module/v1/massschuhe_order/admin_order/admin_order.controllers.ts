@@ -316,7 +316,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Either Versenden (versenden JSON) or CourierContact (isCourierContact=yes with courier fields) is required when creating order",
+          "versenden is required!",
       });
     }
 
@@ -507,9 +507,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
         custom_shafts_id: customShaft.id,
         custom_shafts_catagoary: category,
         price: parsedTotalPrice,
-        note: isCustomModels
-          ? `${category} (Custom Model) send to admin`
-          : `${category} send to admin`,
+        note: category,
       },
     });
 
