@@ -485,10 +485,10 @@ export const createTustomShafts = async (req, res) => {
     }
   }
 
-  if (!hasVersenden && !isCourier) {
-    cleanupFiles();
-    return res.status(400).json({ success: false, message: "Either versenden or courier contact data is required" });
-  }
+  // if (!hasVersenden && !isCourier) {
+  //   cleanupFiles();
+  //   return res.status(400).json({ success: false, message: "Either versenden or courier contact data is required" });
+  // }
 
   let courierData = null;
   if (isCourier) {
