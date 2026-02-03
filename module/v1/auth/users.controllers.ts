@@ -253,14 +253,11 @@ export const loginUser = async (req: Request, res: Response) => {
       process.env.JWT_SECRET as string,
     );
 
-    // Handle admin login notification (non-blocking, log on failure)
+    // Handle admin login notification
     if (!isEmployee && user.role === "ADMIN") {
       const rawIp = req.ip || req.socket.remoteAddress || "Unknown";
       const ipAddress = rawIp.replace("::ffff:", "");
-      sendAdminLoginNotification(user.email, user.name, ipAddress).catch(
-        (err) =>
-          console.error("[Email] Admin login notification failed:", err?.message)
-      );
+      sendAdminLoginNotification(user.email, user.name, ipAddress);
     }
 
     // Format response based on user type
@@ -551,11 +548,8 @@ export const createPartnership = async (req: Request, res: Response) => {
       },
     });
 
-    // Send welcome email with credentials (non-blocking, log on failure)
-    sendPartnershipWelcomeEmail(email, password, undefined, undefined).catch(
-      (err) =>
-        console.error("[Email] Partnership welcome email failed:", err?.message)
-    );
+    // Send welcome email with credentials
+    sendPartnershipWelcomeEmail(email, password, undefined, undefined);
 
     res.status(201).json({
       success: true,

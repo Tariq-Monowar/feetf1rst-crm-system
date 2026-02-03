@@ -15,46 +15,18 @@ import {
 
 dotenv.config();
 
-// Explicit config for Ubuntu VPS: Gmail blocks datacenter IPs, port 587 may be blocked
-const getMailTransporter = () => {
-  const user = process.env.NODE_MAILER_USER || "";
-  const pass = process.env.NODE_MAILER_PASSWORD || "";
-
-  if (!user || !pass) {
-    console.error(
-      "[Email] NODE_MAILER_USER or NODE_MAILER_PASSWORD missing. Check .env (use NODE_MAILER_*, not node_mailer_*)."
-    );
-  }
-
-  const usePort465 = process.env.EMAIL_USE_PORT_465 === "true";
-  const port = usePort465 ? 465 : 587;
-  return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port,
-    secure: usePort465, // 465 = implicit SSL, 587 = STARTTLS
-    requireTLS: !usePort465,
-    auth: { user, pass },
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    debug: process.env.EMAIL_DEBUG === "true",
+const getMailTransporter = () =>
+  nodemailer.createTransport({
+    service: "gmail",
+    port: 587,
+    auth: {
+      user: process.env.NODE_MAILER_USER || "",
+      pass: process.env.NODE_MAILER_PASSWORD || "",
+    },
   });
-};
 
 const getMailFrom = () =>
   `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`;
-
-/** Call this to verify SMTP connection (e.g. from a debug route or startup script) */
-export const verifyEmailConnection = async (): Promise<boolean> => {
-  try {
-    const t = getMailTransporter();
-    await t.verify();
-    console.log("[Email] SMTP connection verified successfully.");
-    return true;
-  } catch (err: any) {
-    console.error("[Email] SMTP verification failed:", err?.message);
-    return false;
-  }
-};
 
 export const generateOTP = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -65,22 +37,13 @@ export const sendEmail = async (
   subject: string,
   htmlContent: string
 ): Promise<void> => {
-  try {
-    const mailTransporter = getMailTransporter();
-    await mailTransporter.sendMail({
-      from: getMailFrom(),
-      to,
-      subject,
-      html: htmlContent,
-    });
-  } catch (error: any) {
-    console.error(
-      `[Email] Failed to send "${subject}" to ${to}:`,
-      error?.message || error
-    );
-    if (error?.code) console.error("[Email] Error code:", error.code);
-    throw error;
-  }
+  const mailTransporter = getMailTransporter();
+  await mailTransporter.sendMail({
+    from: getMailFrom(),
+    to,
+    subject,
+    html: htmlContent,
+  });
 };
 
 export const sendForgotPasswordOTP = async (

@@ -4,7 +4,6 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:email": "ts-node scripts/test-email.ts",
     "start": "node build/index.js",
     "build": "tsc",
     "dev": "nodemon --exec ts-node index.ts",
