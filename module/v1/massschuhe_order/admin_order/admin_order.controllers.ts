@@ -188,15 +188,15 @@ export const sendToAdminOrder_2 = async (req, res) => {
     }
   };
 
-  const hasCustomName = b.custom_models_name && String(b.custom_models_name).trim();
+  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
   const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
   const hasCustomImage = getFile("custom_models_image");
 
-  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomImage ||
-    (b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim()) ||
+  const anyCustomModel = hasCustomVerschlussart || hasCustomPrice || hasCustomImage ||
+    (b.custom_models_name && String(b.custom_models_name).trim()) ||
     (b.custom_models_gender && String(b.custom_models_gender).trim()) ||
     (b.custom_models_description && String(b.custom_models_description).trim());
-  const requiredCustomModel = hasCustomName && hasCustomPrice;
+  const requiredCustomModel = hasCustomVerschlussart && hasCustomPrice && hasCustomImage;
 
   const courierFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
   const hasAnyCourier = courierFields.some((f) => b[f] != null && b[f] !== "");
@@ -204,7 +204,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "custom_models_name and custom_models_price are required when using custom models" });
+    return res.status(400).json({ success: false, message: "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models" });
   }
   if (hasAnyCourier && !hasAllCourier) {
     cleanupFiles();
@@ -213,6 +213,12 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   const isCustomModels = !!requiredCustomModel;
   const isCourier = !!hasAllCourier;
+
+  const userExists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!userExists) {
+    cleanupFiles();
+    return res.status(401).json({ success: false, message: "User not found. Please log in again." });
+  }
 
   try {
     /*
@@ -298,14 +304,6 @@ export const sendToAdminOrder_2 = async (req, res) => {
     const parsedVersenden = parseJsonField(b.versenden);
     const hasVersenden = parsedVersenden != null && parsedVersenden !== "";
 
-    if (!hasVersenden && !isCourier) {
-      cleanupFiles();
-      return res.status(400).json({
-        success: false,
-        message: "versenden is required!",
-      });
-    }
-
     const parsedTotalPrice = parsePrice(b.totalPrice);
     if (!parsedTotalPrice || parsedTotalPrice <= 0) {
       cleanupFiles();
@@ -342,9 +340,9 @@ export const sendToAdminOrder_2 = async (req, res) => {
      * ============================================
      */
 
-    const parsedJson1 = parseJsonField(b.Massschafterstellung_json1);
-    const parsedJson2 = parseJsonField(b.Massschafterstellung_json2);
-    const hasBothJsonFields = b.Massschafterstellung_json1 && b.Massschafterstellung_json2;
+    const parsedJson1 = parseJsonField(b.Massschafterstellung_json1) ?? null;
+    const parsedJson2 = parseJsonField(b.Massschafterstellung_json2) ?? null;
+    const hasBothJsonFields = parsedJson1 && parsedJson2;
     const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
 
     const shaftData = {
@@ -499,6 +497,13 @@ export const sendToAdminOrder_2 = async (req, res) => {
     console.error("Create Custom Shaft Error:", err);
     cleanupFiles();
 
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        success: false,
+        message: `Unexpected file field: ${err.field || "unknown"}`,
+        allowedFields: ["image3d_1", "image3d_2", "invoice", "paintImage", "invoice2", "zipper_image", "custom_models_image", "staticImage"],
+      });
+    }
     if (err.code === "P2003") {
       return res.status(400).json({
         success: false,

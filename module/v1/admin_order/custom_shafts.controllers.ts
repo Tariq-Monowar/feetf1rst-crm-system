@@ -412,19 +412,19 @@ export const createTustomShafts = async (req, res) => {
 
   const otherName = b.other_customer_name ? String(b.other_customer_name).trim() || null : null;
 
-  const hasCustomName = b.custom_models_name && String(b.custom_models_name).trim();
+  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
   const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
   const hasCustomImage = getFile("custom_models_image");
 
-  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomImage ||
-    (b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim()) ||
+  const anyCustomModel = hasCustomVerschlussart || hasCustomPrice || hasCustomImage ||
+    (b.custom_models_name && String(b.custom_models_name).trim()) ||
     (b.custom_models_gender && String(b.custom_models_gender).trim()) ||
     (b.custom_models_description && String(b.custom_models_description).trim());
-  const requiredCustomModel = hasCustomName && hasCustomPrice;
+  const requiredCustomModel = hasCustomVerschlussart && hasCustomPrice && hasCustomImage;
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "custom_models_name and custom_models_price are required when using custom models" });
+    return res.status(400).json({ success: false, message: "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models" });
   }
 
   const hasAddr = b.courier_address;
