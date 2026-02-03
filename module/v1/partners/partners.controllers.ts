@@ -12,6 +12,12 @@ import validator from "validator";
 
 const prisma = new PrismaClient();
 
+
+// • Company / Business Name
+// • Main location / Head office address
+// • VAT ID / Tax number (optional depending on country, but recommended)
+// • Email (login +
+
 export const createPartnership = async (req: Request, res: Response) => {
   try {
     const {
@@ -97,8 +103,8 @@ export const createPartnership = async (req: Request, res: Response) => {
       },
     });
 
-    // Send welcome email with credentials
-    sendPartnershipWelcomeEmail(email, password, name, phone);
+    // Send welcome email (non-blocking; partnership succeeds even if email fails)
+    sendPartnershipWelcomeEmail(email, password, name, phone).catch(() => {});
 
     res.status(201).json({
       success: true,
