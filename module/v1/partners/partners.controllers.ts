@@ -103,8 +103,10 @@ export const createPartnership = async (req: Request, res: Response) => {
       },
     });
 
-    // Send welcome email with credentials
-    sendPartnershipWelcomeEmail(email, password, name, phone);
+    // Send welcome email with credentials (non-blocking, log on failure)
+    sendPartnershipWelcomeEmail(email, password, name, phone).catch((err) =>
+      console.error("[Email] Partnership welcome email failed:", err?.message)
+    );
 
     res.status(201).json({
       success: true,
@@ -662,7 +664,7 @@ export const forgotPasswordSendOtp = async (
       create: { email, otp, expired_at: expiry },
     });
 
-    sendForgotPasswordOTP(email, otp);
+    await sendForgotPasswordOTP(email, otp);
 
     res.status(200).json({ success: true, message: "OTP sent successfully" });
   } catch (error) {
