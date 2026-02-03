@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
-import { generateNextOrderNumber } from "../../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { generateNextOrderNumber, generateNextCustomShaftOrderNumber } from "../../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 // Removed getImageUrl - images are now S3 URLs
 const prisma = new PrismaClient();
@@ -78,6 +78,8 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
       }
     }
 
+    // Next order number for this partner (10000, 10001, ...)
+    const shaftOrderNumber = await generateNextCustomShaftOrderNumber(userId);
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
       data: {
@@ -92,9 +94,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         image3d_1,
         image3d_2,
         invoice,
-        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
-          10000 + Math.random() * 90000,
-        )}`,
+        orderNumber: shaftOrderNumber,
         catagoary: "Halbprobenerstellung",
       },
       select: {
@@ -313,6 +313,8 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
+    const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
+
     let courierContactData = null;
     if (isCourier) {
       const addr = parseJsonField(b.courier_address);
@@ -360,7 +362,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       Massschafterstellung_json2: parsedJson2,
       versenden: hasVersenden ? parsedVersenden : null,
       totalPrice: parsedTotalPrice,
-      orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+      orderNumber: shaftOrderNumber,
       status: "Neu",
       catagoary: category,
       isCustomeModels: Boolean(isCustomModels),
@@ -590,6 +592,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
       }
     }
 
+    const shaftOrderNumber = await generateNextCustomShaftOrderNumber(userId);
     // Create custom shaft order
     const data = await prisma.custom_shafts.create({
       data: {
@@ -603,9 +606,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
         bodenkonstruktion_json: parsedJson,
         invoice,
         staticImage,
-        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
-          10000 + Math.random() * 90000,
-        )}`,
+        orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
       },
       select: {
@@ -627,7 +628,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
-    // Generate orderNumber for this partner
+    // Generate orderNumber for this partner (transition)
     const orderNumber = await generateNextOrderNumber(userId);
 
     // Create transition record - use parsedTotalPrice directly to ensure it's not null

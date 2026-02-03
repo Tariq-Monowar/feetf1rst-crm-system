@@ -7,7 +7,7 @@ import {
   deleteFileFromS3,
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
-import { generateNextOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { generateNextOrderNumber, generateNextCustomShaftOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 const prisma = new PrismaClient();
 
@@ -515,6 +515,7 @@ export const createTustomShafts = async (req, res) => {
   const json2 = toJson(b.Massschafterstellung_json2);
   const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
+  const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
   const shaftData = {
     user: { connect: { id } },
     image3d_1: getFile("image3d_1"),
@@ -530,7 +531,7 @@ export const createTustomShafts = async (req, res) => {
     Massschafterstellung_json2: json2,
     versenden: hasVersenden ? versenden : null,
     totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
-    orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+    orderNumber: shaftOrderNumber,
     status: "Neu",
     catagoary: category,
     isCustomeModels: Boolean(isCustomModels),
@@ -745,6 +746,7 @@ export const createCustomBodenkonstruktionOrder = async (
     const invoice = files?.invoice?.[0]?.location || null;
     const staticImage = files?.staticImage?.[0]?.location || null;
 
+    const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
     // Create custom shaft order without customer or order connections
     const data = await prisma.custom_shafts.create({
       data: {
@@ -758,9 +760,7 @@ export const createCustomBodenkonstruktionOrder = async (
         invoice,
         staticImage: staticImage || null,
         isCustomBodenkonstruktion: true,
-        orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(
-          10000 + Math.random() * 90000,
-        )}`,
+        orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
       },
       select: {

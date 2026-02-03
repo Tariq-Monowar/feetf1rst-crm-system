@@ -50,6 +50,24 @@ export const generateNextOrderNumber = async (partnerId: string): Promise<string
   const maxNumber = parseInt(result[0].orderNumber, 10);
   return String(maxNumber + 1);
 };
+
+/** Next order number for custom_shafts per partner, starting from 10000. */
+export const generateNextCustomShaftOrderNumber = async (partnerId: string): Promise<string> => {
+  const result = await prisma.$queryRaw<Array<{ orderNumber: string }>>`
+    SELECT "orderNumber"
+    FROM "custom_shafts"
+    WHERE "partnerId" = ${partnerId}::text
+      AND "orderNumber" IS NOT NULL
+      AND "orderNumber" ~ '^[0-9]+$'
+    ORDER BY CAST("orderNumber" AS INTEGER) DESC
+    LIMIT 1
+  `;
+  if (!result || result.length === 0 || !result[0]?.orderNumber) {
+    return "10000";
+  }
+  const maxNumber = parseInt(result[0].orderNumber, 10);
+  return String(maxNumber + 1);
+};
 //-------------------------------------
 
 
