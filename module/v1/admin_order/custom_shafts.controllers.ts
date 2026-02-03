@@ -442,8 +442,12 @@ export const createTustomShafts = async (req, res) => {
   } = req.body;
 
   try {
+    const otherCustomerName = other_customer_name != null && other_customer_name !== ""
+      ? String(other_customer_name).trim()
+      : null;
+
     // i need either this customerId or other_customer_name
-    if (!customerId && !other_customer_name) {
+    if (!customerId && !otherCustomerName) {
       cleanupFiles();
       return res.status(400).json({
         success: false,
@@ -606,7 +610,7 @@ export const createTustomShafts = async (req, res) => {
       invoice: files.invoice?.[0]?.location || null,
       zipper_image: files.zipper_image?.[0]?.location || null,
       staticImage: files.staticImage?.[0]?.location || null,
-      other_customer_name: other_customer_name || null,
+      other_customer_name: otherCustomerName,
       other_customer_number: customer?.customerNumber
         ? String(customer.customerNumber)
         : null,
@@ -716,6 +720,9 @@ export const createTustomShafts = async (req, res) => {
     }
 
     // Create admin_order_transitions record
+    const transitionNote = otherCustomerName && !customerId
+      ? `${category} - ${otherCustomerName}`
+      : category;
     const transitionData: any = {
       orderNumber: customShaft.orderNumber,
       partnerId: id,
@@ -723,7 +730,7 @@ export const createTustomShafts = async (req, res) => {
       custom_shafts_id: customShaft.id,
       custom_shafts_catagoary: category,
       price: totalPrice ? parseFloat(totalPrice) : null,
-      note: category,
+      note: transitionNote,
     };
 
     // Add customerId only if it exists
@@ -820,11 +827,11 @@ export const createCustomBodenkonstruktionOrder = async (
   };
 
   try {
-    const { customerName, totalPrice, bodenkonstruktion_json, deliveryDate } =
+    const { other_customer_name, totalPrice, bodenkonstruktion_json, deliveryDate } =
       req.body;
 
     // Validate required fields
-    if (!customerName) {
+    if (!other_customer_name) {
       cleanupFiles();
       return res.status(400).json({
         success: false,
@@ -900,7 +907,7 @@ export const createCustomBodenkonstruktionOrder = async (
         user: {
           connect: { id: id },
         },
-        customerName: customerName,
+        other_customer_name: other_customer_name,
         totalPrice: parsedTotalPrice,
         bodenkonstruktion_json: parsedJson,
         deliveryDate: parsedDeliveryDate,
@@ -914,7 +921,7 @@ export const createCustomBodenkonstruktionOrder = async (
       },
       select: {
         id: true,
-        customerName: true,
+        other_customer_name: true,
         totalPrice: true,
         invoice: true,
         staticImage: true,
