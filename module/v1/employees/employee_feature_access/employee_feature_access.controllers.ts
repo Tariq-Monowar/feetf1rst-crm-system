@@ -40,16 +40,84 @@ const validateEmployee = async (employeeId: string, partnerId: string) => {
   return employee;
 };
 
+const defaultPartnerFeatureAccessData = {
+  dashboard: true,
+  teamchat: true,
+  kundensuche: true,
+  neukundenerstellung: true,
+  einlagenauftrage: true,
+  massschuhauftrage: true,
+  massschafte: true,
+  produktverwaltung: true,
+  sammelbestellungen: true,
+  nachrichten: true,
+  terminkalender: true,
+  monatsstatistik: true,
+  mitarbeitercontrolling: true,
+  einlagencontrolling: true,
+  fusubungen: true,
+  musterzettel: true,
+  einstellungen: true,
+  news_and_aktuelles: true,
+  produktkatalog: true,
+  balance: true,
+  automatisierte_nachrichten: true,
+  kasse_and_abholungen: true,
+  finanzen_and_kasse: true,
+  einnahmen_and_rechnungen: true,
+};
+
+const FEATURE_KEYS = Object.keys(
+  defaultEmployeeFeatureAccessData,
+) as (keyof typeof defaultEmployeeFeatureAccessData)[];
+
 const getPartnerFeatureAccess = async (partnerId: string) => {
   const featureAccess = await prisma.featureAccess.findUnique({
     where: { partnerId },
   });
+  return featureAccess;
+};
+
+/** Get or create partner's FeatureAccess (same as v2) so partner can distribute features. */
+const getOrCreatePartnerFeatureAccess = async (partnerId: string) => {
+  let featureAccess = await prisma.featureAccess.findUnique({
+    where: { partnerId },
+  });
 
   if (!featureAccess) {
-    return null;
+    featureAccess = await prisma.featureAccess.create({
+      data: {
+        partnerId,
+        ...defaultPartnerFeatureAccessData,
+      },
+    });
   }
 
   return featureAccess;
+};
+
+/** Extract only feature boolean fields from a record (e.g. FeatureAccess or employee_feature_access). */
+const getFeatureSlice = (record: Record<string, unknown>): Record<string, boolean> => {
+  const slice: Record<string, boolean> = {};
+  for (const key of FEATURE_KEYS) {
+    slice[key] = Boolean(record[key]);
+  }
+  return slice;
+};
+
+/**
+ * Effective access = partner access ∩ employee access.
+ * If admin turned off a feature for partner, employee loses it regardless of employee_feature_access.
+ */
+const getEffectiveFeatureAccess = (
+  partnerSlice: Record<string, boolean>,
+  employeeSlice: Record<string, boolean>,
+) => {
+  const effective: Record<string, boolean> = {};
+  for (const key of FEATURE_KEYS) {
+    effective[key] = (partnerSlice[key] ?? false) && (employeeSlice[key] ?? false);
+  }
+  return effective;
 };
 
 const getOrCreateEmployeeFeatureAccess = async (
@@ -64,15 +132,12 @@ const getOrCreateEmployeeFeatureAccess = async (
   });
 
   if (!employeeFeatureAccess) {
-    const partnerFeatureAccess = await getPartnerFeatureAccess(partnerId);
+    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
 
-    const initialData: any = { ...defaultEmployeeFeatureAccessData };
-
-    if (partnerFeatureAccess) {
-      Object.keys(defaultEmployeeFeatureAccessData).forEach((key) => {
-        initialData[key] = partnerFeatureAccess[key] ?? false;
-      });
-    }
+    const initialData: Record<string, boolean> = {};
+    FEATURE_KEYS.forEach((key) => {
+      initialData[key] = partnerFeatureAccess[key] ?? false;
+    });
 
     return await prisma.employee_feature_access.create({
       data: {
@@ -281,14 +346,8 @@ export const getPartnerAvailableFeatures = async (
   try {
     const partnerId = req.user.id;
 
-    const partnerFeatureAccess = await getPartnerFeatureAccess(partnerId);
-
-    if (!partnerFeatureAccess) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner feature access not found",
-      });
-    }
+    // Get or create so partner can see what they can distribute (admin may later reduce)
+    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
 
     const formattedData = convertToJSONFormat(partnerFeatureAccess);
 
@@ -299,6 +358,53 @@ export const getPartnerAvailableFeatures = async (
     });
   } catch (error: any) {
     console.error("Get Partner Available Features error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get current employee's own feature access (effective = partner ∩ employee).
+ * Use with EMPLOYEE token; same response shape as partner-feature / getEmployeeFeatureAccess.
+ */
+export const getMyFeatureAccess = async (req: Request, res: Response) => {
+  try {
+    const employeeId = req.user.id;
+
+    const employee = await prisma.employees.findUnique({
+      where: { id: employeeId },
+    });
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee not found",
+      });
+    }
+
+    const partnerId = employee.partnerId;
+    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
+    const employeeFeatureAccess = await getOrCreateEmployeeFeatureAccess(
+      employeeId,
+      partnerId,
+    );
+
+    const effectiveAccess = getEffectiveFeatureAccess(
+      getFeatureSlice(partnerFeatureAccess as Record<string, unknown>),
+      getFeatureSlice(employeeFeatureAccess as Record<string, unknown>),
+    );
+
+    const formattedData = convertToJSONFormat(effectiveAccess);
+
+    res.status(200).json({
+      success: true,
+      message: "Feature access retrieved successfully",
+      data: formattedData,
+    });
+  } catch (error: any) {
+    console.error("Get My Feature Access error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -320,12 +426,19 @@ export const getEmployeeFeatureAccess = async (req: Request, res: Response) => {
       });
     }
 
+    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
     const employeeFeatureAccess = await getOrCreateEmployeeFeatureAccess(
       employeeId,
       partnerId,
     );
 
-    const formattedData = convertToJSONFormat(employeeFeatureAccess);
+    // Effective access = partner ∩ employee (if admin reduced partner access, employee loses it)
+    const effectiveAccess = getEffectiveFeatureAccess(
+      getFeatureSlice(partnerFeatureAccess as Record<string, unknown>),
+      getFeatureSlice(employeeFeatureAccess as Record<string, unknown>),
+    );
+
+    const formattedData = convertToJSONFormat(effectiveAccess);
 
     res.status(200).json({
       success: true,
@@ -359,19 +472,14 @@ export const manageEmployeeFeatureAccess = async (
       });
     }
 
-    const partnerFeatureAccess = await getPartnerFeatureAccess(partnerId);
-    if (!partnerFeatureAccess) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner feature access not found",
-      });
-    }
+    // Partner can only assign features they have (admin may have reduced partner access)
+    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
 
-    const filteredUpdates: any = {};
-    Object.keys(updates).forEach((key) => {
-      if (defaultEmployeeFeatureAccessData.hasOwnProperty(key)) {
+    const filteredUpdates: Record<string, boolean> = {};
+    FEATURE_KEYS.forEach((key) => {
+      if (updates[key] !== undefined) {
         const partnerHasAccess = partnerFeatureAccess[key] ?? false;
-        filteredUpdates[key] = partnerHasAccess ? updates[key] : false;
+        filteredUpdates[key] = partnerHasAccess ? Boolean(updates[key]) : false;
       }
     });
 
@@ -399,7 +507,12 @@ export const manageEmployeeFeatureAccess = async (
       });
     }
 
-    const formattedData = convertToJSONFormat(employeeFeatureAccess);
+    // Return effective access (partner ∩ employee) so response reflects what employee actually has
+    const effectiveAccess = getEffectiveFeatureAccess(
+      getFeatureSlice(partnerFeatureAccess as Record<string, unknown>),
+      getFeatureSlice(employeeFeatureAccess as Record<string, unknown>),
+    );
+    const formattedData = convertToJSONFormat(effectiveAccess);
 
     res.status(200).json({
       success: true,

@@ -30,6 +30,10 @@ const defaultFeatureAccessData = {
   einnahmen_and_rechnungen: true,
 };
 
+const FEATURE_KEYS = Object.keys(
+  defaultFeatureAccessData,
+) as (keyof typeof defaultFeatureAccessData)[];
+
 const validatePartner = async (partnerId: string) => {
   const partner = await prisma.user.findUnique({
     where: { id: partnerId, role: "PARTNER" },
@@ -88,6 +92,20 @@ export const manageFeatureAccess = async (req: Request, res: Response) => {
         ...updates,
       },
     });
+
+    // Cascade: if admin reduced any feature for partner, revoke it for all employees of this partner
+    const cascadeData: Record<string, boolean> = {};
+    for (const key of FEATURE_KEYS) {
+      if (featureAccess[key] === false) {
+        cascadeData[key] = false;
+      }
+    }
+    if (Object.keys(cascadeData).length > 0) {
+      await prisma.employee_feature_access.updateMany({
+        where: { partnerId },
+        data: cascadeData,
+      });
+    }
 
     res.status(200).json({
       success: true,
