@@ -380,7 +380,7 @@ export const deleteMaßschaftKollektion = async (req, res) => {
 export const createTustomShafts = async (req, res) => {
   const files = req.files || {};
   const { id } = req.user;
-  const body = req.body;
+  const b = req.body;
 
   function cleanupFiles() {
     Object.keys(files).forEach((key) => {
@@ -390,18 +390,18 @@ export const createTustomShafts = async (req, res) => {
     });
   }
 
-  function fail(code, message) {
-    cleanupFiles();
-    return res.status(code).json({ success: false, message });
+  function getFile(name) {
+    const arr = files[name];
+    return (arr && arr[0] && arr[0].location) || null;
   }
 
-  function parsePrice(val) {
+  function toNum(val) {
     if (val == null || val === "") return null;
     const n = parseFloat(String(val));
     return isNaN(n) ? null : n;
   }
 
-  function parseJson(val) {
+  function toJson(val) {
     if (typeof val !== "string") return val;
     try {
       return JSON.parse(val);
@@ -410,97 +410,103 @@ export const createTustomShafts = async (req, res) => {
     }
   }
 
-  function getFile(field) {
-    return (files[field] && files[field][0] && files[field][0].location) || null;
+  const otherName = b.other_customer_name ? String(b.other_customer_name).trim() || null : null;
+
+  const hasCustomName = b.custom_models_name && String(b.custom_models_name).trim();
+  const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
+  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
+  const hasCustomGender = b.custom_models_gender && String(b.custom_models_gender).trim();
+  const hasCustomDesc = b.custom_models_description && String(b.custom_models_description).trim();
+  const hasCustomImage = getFile("custom_models_image");
+
+  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomVerschlussart || hasCustomGender || hasCustomDesc || hasCustomImage;
+  const allCustomModel = hasCustomName && hasCustomPrice && hasCustomVerschlussart && hasCustomGender && hasCustomDesc;
+
+  if (anyCustomModel && !allCustomModel) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "If providing custom models, all fields are required" });
   }
 
-  const otherName = (body.other_customer_name != null && String(body.other_customer_name).trim() !== "")
-    ? String(body.other_customer_name).trim()
-    : null;
+  const hasAddr = b.courier_address;
+  const hasCompany = b.courier_companyName;
+  const hasPhone = b.courier_phone;
+  const hasEmail = b.courier_email;
+  const hasPrice = b.courier_price != null && b.courier_price !== "";
 
-  const customModelsFields = [
-    "custom_models_name",
-    "custom_models_price",
-    "custom_models_verschlussart",
-    "custom_models_gender",
-    "custom_models_description",
-  ];
-  const hasAnyCustomModelsField =
-    customModelsFields.some((f) => {
-      const v = body[f];
-      return v != null && String(v).trim() !== "";
-    }) || getFile("custom_models_image");
-  const hasAllCustomModelsFields = customModelsFields.every((f) => {
-    const v = body[f];
-    return v != null && String(v).trim() !== "";
-  });
+  const anyCourier = hasAddr || hasCompany || hasPhone || hasEmail || hasPrice;
+  const allCourier = hasAddr && hasCompany && hasPhone && hasEmail && hasPrice;
 
-  const courierFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
-  const hasAnyCourierField = courierFields.some((f) => body[f] != null && body[f] !== "");
-  const hasAllCourierFields = courierFields.every((f) => body[f] != null && body[f] !== "");
-
-  if (hasAnyCustomModelsField && !hasAllCustomModelsFields) {
-    return fail(400, "If providing custom models, all fields are required");
-  }
-  if (hasAnyCourierField && !hasAllCourierFields) {
-    return fail(400, "If providing courier contact, all fields are required!");
+  if (anyCourier && !allCourier) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "If providing courier contact, all fields are required" });
   }
 
-  const hasCustomModelsData = hasAllCustomModelsFields;
-  const hasCourierData = hasAllCourierFields;
+  const isCustomModels = !!allCustomModel;
+  const isCourier = !!allCourier;
 
-  const versenden = parseJson(body.versenden);
-  const hasVersenden = versenden != null && versenden !== "";
+  const versenden = toJson(b.versenden);
+  const hasVersenden = versenden && versenden !== "";
 
-  if (!body.customerId && !otherName) {
-    return fail(400, "Either customerId or other_customer_name is required");
+  if (!b.customerId && !otherName) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "Either customerId or other_customer_name is required" });
   }
 
   let customer = null;
-  if (body.customerId) {
+  if (b.customerId) {
     customer = await prisma.customers.findUnique({
-      where: { id: body.customerId },
+      where: { id: b.customerId },
       select: { id: true, customerNumber: true },
     });
-    if (!customer) return fail(404, "Customer not found");
+    if (!customer) {
+      cleanupFiles();
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
   }
 
-  if (!hasCustomModelsData) {
-    if (!body.mabschaftKollektionId) {
-      return fail(400, "maßschaftKollektionId is required when not using custom models");
+  if (!isCustomModels) {
+    if (!b.mabschaftKollektionId) {
+      cleanupFiles();
+      return res.status(400).json({ success: false, message: "maßschaftKollektionId is required when not using custom models" });
     }
     const kollektion = await prisma.maßschaft_kollektion.findUnique({
-      where: { id: body.mabschaftKollektionId },
+      where: { id: b.mabschaftKollektionId },
       select: { id: true },
     });
-    if (!kollektion) return fail(404, "Maßschaft Kollektion not found");
+    if (!kollektion) {
+      cleanupFiles();
+      return res.status(404).json({ success: false, message: "Maßschaft Kollektion not found" });
+    }
   }
 
-  if (!hasVersenden && !hasCourierData) {
-    return fail(400, "Either versenden or courier contact data is required");
+  if (!hasVersenden && !isCourier) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "Either versenden or courier contact data is required" });
   }
 
   let courierData = null;
-  if (hasCourierData) {
-    const addr = parseJson(body.courier_address);
+  if (isCourier) {
+    const addr = toJson(b.courier_address);
     if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
-      return fail(400, "courier_address must be a JSON object");
+      cleanupFiles();
+      return res.status(400).json({ success: false, message: "courier_address must be a JSON object" });
     }
-    const price = parsePrice(body.courier_price);
+    const price = toNum(b.courier_price);
     if (!price || price <= 0) {
-      return fail(400, "courier_price must be a valid number greater than 0");
+      cleanupFiles();
+      return res.status(400).json({ success: false, message: "courier_price must be a valid number greater than 0" });
     }
     courierData = {
       address: addr,
-      companyName: body.courier_companyName,
-      phone: body.courier_phone,
-      email: body.courier_email,
+      companyName: b.courier_companyName,
+      phone: b.courier_phone,
+      email: b.courier_email,
       price,
     };
   }
 
-  const json1 = parseJson(body.Massschafterstellung_json1);
-  const json2 = parseJson(body.Massschafterstellung_json2);
+  const json1 = toJson(b.Massschafterstellung_json1);
+  const json2 = toJson(b.Massschafterstellung_json2);
   const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
   const shaftData = {
@@ -517,16 +523,17 @@ export const createTustomShafts = async (req, res) => {
     Massschafterstellung_json1: json1,
     Massschafterstellung_json2: json2,
     versenden: hasVersenden ? versenden : null,
-    totalPrice: body.totalPrice ? parseFloat(body.totalPrice) : null,
+    totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
     orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
     status: "Neu",
     catagoary: category,
-    isCustomeModels: hasCustomModelsData,
-    ...(body.customerId && { customer: { connect: { id: body.customerId } } }),
-    ...(!hasCustomModelsData && body.mabschaftKollektionId && {
-      maßschaft_kollektion: { connect: { id: body.mabschaftKollektionId } },
-    }),
+    isCustomeModels: Boolean(isCustomModels),
   };
+
+  if (b.customerId) (shaftData as any).customer = { connect: { id: b.customerId } };
+  if (!isCustomModels && b.mabschaftKollektionId) {
+    (shaftData as any).maßschaft_kollektion = { connect: { id: b.mabschaftKollektionId } };
+  }
 
   const shaftSelect = {
     id: true,
@@ -562,18 +569,18 @@ export const createTustomShafts = async (req, res) => {
     });
 
     let customModel = null;
-    if (hasCustomModelsData) {
+    if (isCustomModels) {
       const modelData = {
         custom_shafts: { connect: { id: customShaft.id } },
         partner: { connect: { id } },
-        custom_models_name: body.custom_models_name || null,
+        custom_models_name: b.custom_models_name || null,
         custom_models_image: getFile("custom_models_image"),
-        custom_models_price: parsePrice(body.custom_models_price),
-        custom_models_verschlussart: body.custom_models_verschlussart || null,
-        custom_models_gender: body.custom_models_gender || null,
-        custom_models_description: body.custom_models_description || null,
-        ...(body.customerId && { customer: { connect: { id: body.customerId } } }),
+        custom_models_price: toNum(b.custom_models_price),
+        custom_models_verschlussart: b.custom_models_verschlussart || null,
+        custom_models_gender: b.custom_models_gender || null,
+        custom_models_description: b.custom_models_description || null,
       };
+      if (b.customerId) (modelData as any).customer = { connect: { id: b.customerId } };
       customModel = await prisma.custom_models.create({
         data: modelData,
         select: {
@@ -588,7 +595,7 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    const transitionNote = otherName && !body.customerId ? `${category} - ${otherName}` : category;
+    const note = otherName && !b.customerId ? `${category} - ${otherName}` : category;
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: customShaft.orderNumber,
@@ -596,13 +603,13 @@ export const createTustomShafts = async (req, res) => {
         orderFor: "shoes",
         custom_shafts_id: customShaft.id,
         custom_shafts_catagoary: category,
-        price: body.totalPrice ? parseFloat(body.totalPrice) : null,
-        note: transitionNote,
-        ...(body.customerId && { customerId: body.customerId }),
-      },
+        price: b.totalPrice ? parseFloat(b.totalPrice) : null,
+        note,
+        ...(b.customerId && { customerId: b.customerId }),
+      } as any,
     });
 
-    if (hasCourierData && courierData) {
+    if (isCourier && courierData) {
       await prisma.courierContact.create({
         data: {
           partnerId: id,
@@ -611,7 +618,7 @@ export const createTustomShafts = async (req, res) => {
           phone: courierData.phone,
           email: courierData.email,
           price: courierData.price,
-          customerId: body.customerId || null,
+          customerId: b.customerId || null,
         },
       });
     }
@@ -619,16 +626,12 @@ export const createTustomShafts = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
-      data: {
-        ...customShaft,
-        custom_models: customModel,
-      },
+      data: { ...customShaft, custom_models: customModel },
       Courier_contact: courierData,
     });
   } catch (err) {
     console.error("Create Custom Shaft Error:", err);
     cleanupFiles();
-
     if (err.code === "LIMIT_UNEXPECTED_FILE") {
       return res.status(400).json({
         success: false,
@@ -637,16 +640,9 @@ export const createTustomShafts = async (req, res) => {
       });
     }
     if (err.code === "P2003") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid customer ID or Maßschaft Kollektion ID provided",
-      });
+      return res.status(400).json({ success: false, message: "Invalid customer ID or Maßschaft Kollektion ID provided" });
     }
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: err.message,
-    });
+    res.status(500).json({ success: false, message: "Something went wrong", error: err.message });
   }
 };
 

@@ -154,77 +154,65 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
 };
 
 export const sendToAdminOrder_2 = async (req, res) => {
-  const files = req.files as any;
+  const files = req.files || {};
   const { id } = req.user;
   const { orderId } = req.params;
-  const { custom_models } = req.query;
-  const isCourierContact = req.query.isCourierContact;
-  /*
-   * Helper function to clean up uploaded files from S3
-   * Called when validation fails or errors occur to prevent orphaned files
-   */
+  const b = req.body;
+
   const cleanupFiles = () => {
     if (!files) return;
     Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        if (file.location) {
-          deleteFileFromS3(file.location);
-        }
+      (files[key] || []).forEach((file) => {
+        if (file.location) deleteFileFromS3(file.location);
       });
     });
   };
 
-  /*
-   * Helper function to parse boolean values from various formats
-   * Handles: boolean, string "true"/"1", and other truthy/falsy values
-   */
-  const parseBoolean = (value: any): boolean => {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      return value.toLowerCase() === "true" || value === "1";
+  const getFile = (name) => {
+    const arr = files[name];
+    return (arr && arr[0] && arr[0].location) || null;
+  };
+
+  const parsePrice = (val) => {
+    if (val == null || val === "") return null;
+    const n = parseFloat(String(val));
+    return isNaN(n) ? null : n;
+  };
+
+  const parseJsonField = (val) => {
+    if (typeof val !== "string") return val;
+    try {
+      return JSON.parse(val);
+    } catch {
+      return val;
     }
-    return Boolean(value);
   };
 
-  /*
-   * Helper function to parse price values safely
-   * Returns null for invalid/empty values, otherwise returns parsed number
-   */
-  const parsePrice = (value: any): number | null => {
-    if (value === undefined || value === null || value === "") return null;
-    const parsed = parseFloat(value.toString());
-    return isNaN(parsed) ? null : parsed;
-  };
+  const hasCustomName = b.custom_models_name && String(b.custom_models_name).trim();
+  const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
+  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
+  const hasCustomGender = b.custom_models_gender && String(b.custom_models_gender).trim();
+  const hasCustomDesc = b.custom_models_description && String(b.custom_models_description).trim();
+  const hasCustomImage = getFile("custom_models_image");
 
-  /*
-   * Helper function to parse JSON strings safely
-   * Returns parsed object if valid JSON string, otherwise returns original value
-   */
-  const parseJsonField = (value: any): any => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch (e) {
-        return value;
-      }
-    }
-    return value;
-  };
+  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomVerschlussart || hasCustomGender || hasCustomDesc || hasCustomImage;
+  const allCustomModel = hasCustomName && hasCustomPrice && hasCustomVerschlussart && hasCustomGender && hasCustomDesc;
 
-  const isCustomModels = parseBoolean(custom_models);
+  const courierFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
+  const hasAnyCourier = courierFields.some((f) => b[f] != null && b[f] !== "");
+  const hasAllCourier = courierFields.every((f) => b[f] != null && b[f] !== "");
 
-  const {
-    mabschaftKollektionId,
-    totalPrice,
-    custom_models_name,
-    custom_models_price,
-    custom_models_verschlussart,
-    custom_models_gender,
-    custom_models_description,
-    Massschafterstellung_json1,
-    Massschafterstellung_json2,
-    versenden,
-  } = req.body;
+  if (anyCustomModel && !allCustomModel) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "If providing custom models, all fields are required" });
+  }
+  if (hasAnyCourier && !hasAllCourier) {
+    cleanupFiles();
+    return res.status(400).json({ success: false, message: "If providing courier contact, all fields are required" });
+  }
+
+  const isCustomModels = !!allCustomModel;
+  const isCourier = !!hasAllCourier;
 
   try {
     /*
@@ -284,7 +272,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    if (!isCustomModels && !mabschaftKollektionId) {
+    if (!isCustomModels && !b.mabschaftKollektionId) {
       cleanupFiles();
       return res.status(400).json({
         success: false,
@@ -294,7 +282,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
     if (!isCustomModels) {
       const kollektion = await prisma.maßschaft_kollektion.findUnique({
-        where: { id: mabschaftKollektionId },
+        where: { id: b.mabschaftKollektionId },
         select: { id: true },
       });
 
@@ -307,26 +295,18 @@ export const sendToAdminOrder_2 = async (req, res) => {
       }
     }
 
-    // Require either Versenden or CourierContact when creating order
-    const parsedVersenden = parseJsonField(versenden);
+    const parsedVersenden = parseJsonField(b.versenden);
     const hasVersenden = parsedVersenden != null && parsedVersenden !== "";
-    const hasCourierContact = isCourierContact === "yes";
 
-    if (!hasVersenden && !hasCourierContact) {
+    if (!hasVersenden && !isCourier) {
       cleanupFiles();
       return res.status(400).json({
         success: false,
-        message:
-          "versenden is required!",
+        message: "versenden is required!",
       });
     }
 
-    let parsedTotalPrice: number | null = null;
-    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
-      const parsed = parseFloat(totalPrice.toString());
-      parsedTotalPrice = isNaN(parsed) ? null : parsed;
-    }
-
+    const parsedTotalPrice = parsePrice(b.totalPrice);
     if (!parsedTotalPrice || parsedTotalPrice <= 0) {
       cleanupFiles();
       return res.status(400).json({
@@ -335,50 +315,24 @@ export const sendToAdminOrder_2 = async (req, res) => {
       });
     }
 
-    /*
-     * Validate courier contact data if isCourierContact is "yes"
-     * Validates all required fields, address format, and price
-     * Stores validated data for later use after order creation
-     */
-    let courierContactData: any = null;
-    if (isCourierContact == "yes") {
-      const { courier_address, courier_companyName, courier_phone, courier_email, courier_price } = req.body;
-
-      const requiredFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
-      for (const field of requiredFields) {
-        if (!req.body[field]) {
-          cleanupFiles();
-          return res.status(400).json({
-            success: false,
-            message: `${field} is required when isCourierContact is yes`,
-          });
-        }
-      }
-      const parsedAddress = parseJsonField(courier_address);
-
-      if (typeof parsedAddress !== "object" || parsedAddress === null || Array.isArray(parsedAddress)) {
+    let courierContactData = null;
+    if (isCourier) {
+      const addr = parseJsonField(b.courier_address);
+      if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
         cleanupFiles();
-        return res.status(400).json({
-          success: false,
-          message: "courier_address must be a JSON object",
-        });
+        return res.status(400).json({ success: false, message: "courier_address must be a JSON object" });
       }
-
-      const parsedCourierPrice = parsePrice(courier_price);
-      if (!parsedCourierPrice || parsedCourierPrice <= 0) {
+      const price = parsePrice(b.courier_price);
+      if (!price || price <= 0) {
         cleanupFiles();
-        return res.status(400).json({
-          success: false,
-          message: "courier_price must be a valid number greater than 0",
-        });
+        return res.status(400).json({ success: false, message: "courier_price must be a valid number greater than 0" });
       }
-
       courierContactData = {
-        address: parsedAddress,
-        companyName: courier_companyName,
-        phone: courier_phone,
-        email: courier_email,
-        price: parsedCourierPrice,
+        address: addr,
+        companyName: b.courier_companyName,
+        phone: b.courier_phone,
+        email: b.courier_email,
+        price,
       };
     }
 
@@ -388,38 +342,34 @@ export const sendToAdminOrder_2 = async (req, res) => {
      * ============================================
      */
 
-    const parsedJson1 = parseJsonField(Massschafterstellung_json1);
-    const parsedJson2 = parseJsonField(Massschafterstellung_json2);
-    const hasBothJsonFields = Massschafterstellung_json1 && Massschafterstellung_json2;
+    const parsedJson1 = parseJsonField(b.Massschafterstellung_json1);
+    const parsedJson2 = parseJsonField(b.Massschafterstellung_json2);
+    const hasBothJsonFields = b.Massschafterstellung_json1 && b.Massschafterstellung_json2;
     const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
 
-    const shaftData: any = {
+    const shaftData = {
       massschuhe_order: { connect: { id: orderId } },
-      user: { connect: { id: id } },
-      image3d_1: files.image3d_1?.[0]?.location || null,
-      image3d_2: files.image3d_2?.[0]?.location || null,
-      paintImage: files.paintImage?.[0]?.location || null,
-      invoice2: files.invoice2?.[0]?.location || null,
-      invoice: files.invoice?.[0]?.location || null,
-      zipper_image: files.zipper_image?.[0]?.location || null,
-      staticImage: files.staticImage?.[0]?.location || null,
+      user: { connect: { id } },
+      image3d_1: getFile("image3d_1"),
+      image3d_2: getFile("image3d_2"),
+      paintImage: getFile("paintImage"),
+      invoice2: getFile("invoice2"),
+      invoice: getFile("invoice"),
+      zipper_image: getFile("zipper_image"),
+      staticImage: getFile("staticImage"),
       other_customer_number: customer?.customerNumber ? String(customer.customerNumber) : null,
       Massschafterstellung_json1: parsedJson1,
       Massschafterstellung_json2: parsedJson2,
       versenden: hasVersenden ? parsedVersenden : null,
       totalPrice: parsedTotalPrice,
       orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
-      status: "Neu" as any,
+      status: "Neu",
       catagoary: category,
-      isCustomeModels: isCustomModels,
+      isCustomeModels: Boolean(isCustomModels),
     };
-
-    if (order.customerId) {
-      shaftData.customer = { connect: { id: order.customerId } };
-    }
-
-    if (!isCustomModels && mabschaftKollektionId) {
-      shaftData.maßschaft_kollektion = { connect: { id: mabschaftKollektionId } };
+    if (order.customerId) (shaftData as any).customer = { connect: { id: order.customerId } };
+    if (!isCustomModels && b.mabschaftKollektionId) {
+      (shaftData as any).maßschaft_kollektion = { connect: { id: b.mabschaftKollektionId } };
     }
 
     /*
@@ -429,7 +379,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
      */
 
     const customShaft = await prisma.custom_shafts.create({
-      data: shaftData,
+      data: shaftData as any,
       select: {
         id: true,
         orderNumber: true,
@@ -469,15 +419,15 @@ export const sendToAdminOrder_2 = async (req, res) => {
       customModel = await (prisma as any).custom_models.create({
         data: {
           custom_shafts: { connect: { id: customShaft.id } },
-          partner: { connect: { id: id } },
+          partner: { connect: { id } },
           customer: order.customerId ? { connect: { id: order.customerId } } : undefined,
           massschuheOrder: { connect: { id: orderId } },
-          custom_models_name: custom_models_name || null,
-          custom_models_image: files.custom_models_image?.[0]?.location || null,
-          custom_models_price: parsePrice(custom_models_price),
-          custom_models_verschlussart: custom_models_verschlussart || null,
-          custom_models_gender: custom_models_gender || null,
-          custom_models_description: custom_models_description || null,
+          custom_models_name: b.custom_models_name || null,
+          custom_models_image: getFile("custom_models_image"),
+          custom_models_price: parsePrice(b.custom_models_price),
+          custom_models_verschlussart: b.custom_models_verschlussart || null,
+          custom_models_gender: b.custom_models_gender || null,
+          custom_models_description: b.custom_models_description || null,
         },
         select: {
           id: true,
@@ -512,7 +462,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
-    if (isCourierContact == "yes" && courierContactData) {
+    if (isCourier && courierContactData) {
       await prisma.courierContact.create({
         data: {
           partnerId: id,
