@@ -9,49 +9,24 @@ import {
   newSuggestionEmail,
   newImprovementEmail,
   sendPdfToEmailTamplate,
-  excerciseEmail,
   invoiceEmailTemplate,
+  partnershipWelcomeEmail,
 } from "../constants/email_message";
-import { partnershipWelcomeEmail } from "../constants/email_message";
 
 dotenv.config();
 
-// Timeouts for SMTP (helpful on VPS where connection can be slow or port 587 blocked)
-const SMTP_CONNECTION_TIMEOUT_MS = Number(process.env.SMTP_CONNECTION_TIMEOUT_MS) || 30000;
-const SMTP_GREETING_TIMEOUT_MS = Number(process.env.SMTP_GREETING_TIMEOUT_MS) || 30000;
-
-/**
- * Shared mail transporter with configurable timeouts and optional custom SMTP.
- * On VPS: if port 587 is blocked, set SMTP_PORT=465 and SMTP_SECURE=true, or use a relay (e.g. SendGrid) via SMTP_HOST.
- */
-function getMailTransporter() {
-  const user = process.env.NODE_MAILER_USER || "";
-  const pass = process.env.NODE_MAILER_PASSWORD || "";
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
-  const secure = process.env.SMTP_SECURE === "true";
-
-  const base = {
-    auth: { user, pass },
-    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
-  };
-
-  if (host) {
-    return nodemailer.createTransport({
-      host,
-      port: port ?? (secure ? 465 : 587),
-      secure,
-      ...base,
-    });
-  }
-
-  return nodemailer.createTransport({
+const getMailTransporter = () =>
+  nodemailer.createTransport({
     service: "gmail",
     port: 587,
-    ...base,
+    auth: {
+      user: process.env.NODE_MAILER_USER || "",
+      pass: process.env.NODE_MAILER_PASSWORD || "",
+    },
   });
-}
+
+const getMailFrom = () =>
+  `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`;
 
 export const generateOTP = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -63,15 +38,12 @@ export const sendEmail = async (
   htmlContent: string
 ): Promise<void> => {
   const mailTransporter = getMailTransporter();
-
-  const mailOptions = {
-    from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
+  await mailTransporter.sendMail({
+    from: getMailFrom(),
     to,
     subject,
     html: htmlContent,
-  };
-
-  await mailTransporter.sendMail(mailOptions);
+  });
 };
 
 export const sendForgotPasswordOTP = async (
@@ -86,24 +58,24 @@ export const sendTwoFactorOtp = async (
   email: string,
   otp: string
 ): Promise<void> => {
-  const htmlContent = emailForgotPasswordOTP(email, otp); // Reuse same template
+  const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "Two-Factor Authentication OTP", htmlContent);
 };
 
-// Helper function to download image from URL
 const downloadImage = (url: string): Promise<Buffer> => {
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download image: ${response.statusCode}`));
-        return;
-      }
-
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve(Buffer.concat(chunks)));
-      response.on("error", reject);
-    }).on("error", reject);
+    https
+      .get(url, (response) => {
+        if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download image: ${response.statusCode}`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => resolve(Buffer.concat(chunks)));
+        response.on("error", reject);
+      })
+      .on("error", reject);
   });
 };
 
@@ -115,38 +87,36 @@ export const sendPartnershipWelcomeEmail = async (
 ): Promise<void> => {
   try {
     const htmlContent = partnershipWelcomeEmail(email, password, name, phone);
-    
-    // Download the logo image
     const logoUrl = "https://i.ibb.co/Dftw5sbd/feet-first-white-logo-2-1.png";
     let logoBuffer: Buffer | null = null;
-    
+
     try {
       logoBuffer = await downloadImage(logoUrl);
     } catch (error) {
-      console.warn("Failed to download logo image, sending email without embedded image:", error);
+      console.warn(
+        "Failed to download logo image, sending email without embedded image:",
+        error
+      );
     }
 
-    const mailTransporter = getMailTransporter();
-
-    const mailOptions: any = {
-      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
+    const mailOptions: nodemailer.SendMailOptions = {
+      from: getMailFrom(),
       to: email,
       subject: "Willkommen bei FeetF1rst - Ihr Software Zugang ist jetzt aktiv",
       html: htmlContent,
     };
 
-    // Add logo as CID attachment if downloaded successfully
     if (logoBuffer) {
       mailOptions.attachments = [
         {
           filename: "feetf1rst-logo.png",
           content: logoBuffer,
-          cid: "feetf1rst-logo", // Content-ID used in the HTML template
+          cid: "feetf1rst-logo",
         },
       ];
     }
 
-    await mailTransporter.sendMail(mailOptions);
+    await getMailTransporter().sendMail(mailOptions);
   } catch (error) {
     console.error("Error in sendPartnershipWelcomeEmail:", error);
     throw new Error("Failed to send partnership welcome email.");
@@ -161,11 +131,7 @@ export const sendNewSuggestionEmail = async (
   suggestion: string
 ): Promise<void> => {
   const htmlContent = newSuggestionEmail(name, email, phone, firma, suggestion);
-  await sendEmail(
-    "info@feetf1rst.com",
-    "New Suggestion Received",
-    htmlContent
-  );
+  await sendEmail("info@feetf1rst.com", "New Suggestion Received", htmlContent);
 };
 
 export const sendImprovementEmail = async (
@@ -187,67 +153,49 @@ export const sendAdminLoginNotification = async (
   adminName: string,
   ipAddress: string
 ): Promise<void> => {
-  console.log("=======  ", adminEmail)  
-  
-  const now = new Date();
-
   const htmlContent = adminLoginNotificationEmail(
     adminEmail,
     adminName,
-    now,
+    new Date(),
     ipAddress
   );
-
-  await sendEmail(
-    adminEmail,
-    "New admin panel login detected",
-    htmlContent
-  );
+  await sendEmail(adminEmail, "New admin panel login detected", htmlContent);
 };
 
+const getPdfBuffer = async (pdf: {
+  location?: string;
+  path?: string;
+}): Promise<Buffer> => {
+  if (pdf.location) {
+    return downloadFileFromS3(pdf.location);
+  }
+  if (pdf.path) {
+    return fs.readFileSync(pdf.path);
+  }
+  throw new Error("PDF file path or S3 location is required");
+};
 
 export const sendPdfToEmail = async (email: string, pdf: any): Promise<void> => {
   try {
-    let pdfBuffer: Buffer;
-    
-    // Handle S3 file (multer-s3) or local file (legacy)
-    if (pdf.location) {
-      // File is in S3, download it
-      pdfBuffer = await downloadFileFromS3(pdf.location);
-    } else if (pdf.path) {
-      // Legacy local file
-      const { size } = fs.statSync(pdf.path);
-      // if (size > 20 * 1024 * 1024) {
-      //   throw new Error('PDF is too large to email (>20MB).');
-      // }
-      pdfBuffer = fs.readFileSync(pdf.path);
-    } else {
-      throw new Error('PDF file path or S3 location is required');
-    }
-
+    const pdfBuffer = await getPdfBuffer(pdf);
     const htmlContent = sendPdfToEmailTamplate(pdf);
 
-    const mailTransporter = getMailTransporter();
-
-    const mailOptions = {
-      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
+    await getMailTransporter().sendMail({
+      from: getMailFrom(),
       to: email,
-      subject: 'Your Foot Exercise Program - Feetf1rst ',
+      subject: "Your Foot Exercise Program - Feetf1rst",
       html: htmlContent,
       attachments: [
         {
-          filename: pdf.originalname || 'foot-exercise-program.pdf',
+          filename: pdf.originalname || "foot-exercise-program.pdf",
           content: pdfBuffer,
-          contentType: 'application/pdf',
+          contentType: "application/pdf",
         },
       ],
-    };
-
-    await mailTransporter.sendMail(mailOptions);
-    console.log('Exercise PDF email sent successfully.');
+    });
   } catch (error) {
-    console.error('Error in sendPdfToEmail:', error);
-    throw new Error('Failed to send PDF email.');
+    console.error("Error in sendPdfToEmail:", error);
+    throw new Error("Failed to send PDF email.");
   }
 };
 
@@ -257,51 +205,32 @@ export const sendInvoiceEmail = async (
   options?: { customerName?: string; total?: number }
 ): Promise<void> => {
   try {
-    let pdfBuffer: Buffer;
-    
-    // Handle S3 file (multer-s3) or local file (legacy)
-    if (pdf.location) {
-      // File is in S3, download it
-      pdfBuffer = await downloadFileFromS3(pdf.location);
-      // Check size (approximate, since we already have the buffer)
-      if (pdfBuffer.length > 20 * 1024 * 1024) {
-        throw new Error('Invoice PDF is too large to email (>20MB).');
-      }
-    } else if (pdf.path) {
-      // Legacy local file
-      const { size } = fs.statSync(pdf.path);
-      if (size > 20 * 1024 * 1024) {
-        throw new Error('Invoice PDF is too large to email (>20MB).');
-      }
-      pdfBuffer = fs.readFileSync(pdf.path);
-    } else {
-      throw new Error('PDF file path or S3 location is required');
+    const pdfBuffer = await getPdfBuffer(pdf);
+    const maxSize = 20 * 1024 * 1024;
+    if (pdfBuffer.length > maxSize) {
+      throw new Error("Invoice PDF is too large to email (>20MB).");
     }
 
     const htmlContent = invoiceEmailTemplate(
-      options?.customerName || 'Customer',
+      options?.customerName || "Customer",
       options?.total
     );
 
-    const mailTransporter = getMailTransporter();
-
-    const mailOptions = {
-      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
+    await getMailTransporter().sendMail({
+      from: getMailFrom(),
       to: toEmail,
-      subject: 'Your Feetf1rst Invoice',
+      subject: "Your Feetf1rst Invoice",
       html: htmlContent,
       attachments: [
         {
-          filename: pdf.originalname || 'invoice.pdf',
+          filename: pdf.originalname || "invoice.pdf",
           content: pdfBuffer,
-          contentType: 'application/pdf',
+          contentType: "application/pdf",
         },
       ],
-    };
-
-    await mailTransporter.sendMail(mailOptions);
+    });
   } catch (error) {
-    console.error('Error in sendInvoiceEmail:', error);
-    throw new Error('Failed to send invoice email.');
+    console.error("Error in sendInvoiceEmail:", error);
+    throw new Error("Failed to send invoice email.");
   }
 };
