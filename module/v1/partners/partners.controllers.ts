@@ -103,8 +103,8 @@ export const createPartnership = async (req: Request, res: Response) => {
       },
     });
 
-    // Send welcome email (non-blocking; partnership succeeds even if email fails)
-    sendPartnershipWelcomeEmail(email, password, name, phone).catch(() => {});
+    // Send welcome email with credentials
+    sendPartnershipWelcomeEmail(email, password, name, phone);
 
     res.status(201).json({
       success: true,

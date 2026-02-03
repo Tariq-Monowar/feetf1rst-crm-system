@@ -16,18 +16,42 @@ import { partnershipWelcomeEmail } from "../constants/email_message";
 
 dotenv.config();
 
-// Support both NODE_MAILER_* and node_mailer_* from .env
-const getEmailUser = () =>
-  process.env.NODE_MAILER_USER || process.env.node_mailer_user || "";
-const getEmailPass = () =>
-  process.env.NODE_MAILER_PASSWORD || process.env.node_mailer_password || "";
+// Timeouts for SMTP (helpful on VPS where connection can be slow or port 587 blocked)
+const SMTP_CONNECTION_TIMEOUT_MS = Number(process.env.SMTP_CONNECTION_TIMEOUT_MS) || 30000;
+const SMTP_GREETING_TIMEOUT_MS = Number(process.env.SMTP_GREETING_TIMEOUT_MS) || 30000;
 
-/** Returns true if SMTP credentials are set (email can be attempted). */
-export const isEmailConfigured = (): boolean => {
-  const user = getEmailUser();
-  const pass = getEmailPass();
-  return Boolean(user && pass);
-};
+/**
+ * Shared mail transporter with configurable timeouts and optional custom SMTP.
+ * On VPS: if port 587 is blocked, set SMTP_PORT=465 and SMTP_SECURE=true, or use a relay (e.g. SendGrid) via SMTP_HOST.
+ */
+function getMailTransporter() {
+  const user = process.env.NODE_MAILER_USER || "";
+  const pass = process.env.NODE_MAILER_PASSWORD || "";
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+  const secure = process.env.SMTP_SECURE === "true";
+
+  const base = {
+    auth: { user, pass },
+    connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
+    greetingTimeout: SMTP_GREETING_TIMEOUT_MS,
+  };
+
+  if (host) {
+    return nodemailer.createTransport({
+      host,
+      port: port ?? (secure ? 465 : 587),
+      secure,
+      ...base,
+    });
+  }
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    port: 587,
+    ...base,
+  });
+}
 
 export const generateOTP = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -38,21 +62,10 @@ export const sendEmail = async (
   subject: string,
   htmlContent: string
 ): Promise<void> => {
-  if (!isEmailConfigured()) {
-    console.warn("Email skipped: NODE_MAILER_USER / NODE_MAILER_PASSWORD not set.");
-    return;
-  }
-  const user = getEmailUser();
-  const mailTransporter = nodemailer.createTransport({
-    service: "gmail",
-    port: 587,
-    auth: { user, pass: getEmailPass() },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-  });
+  const mailTransporter = getMailTransporter();
 
   const mailOptions = {
-    from: `"Feetf1rst" <${user}>`,
+    from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
     to,
     subject,
     html: htmlContent,
@@ -100,32 +113,23 @@ export const sendPartnershipWelcomeEmail = async (
   name?: string,
   phone?: string
 ): Promise<void> => {
-  if (!isEmailConfigured()) {
-    console.warn("Partnership welcome email skipped: SMTP credentials not set.");
-    return;
-  }
   try {
     const htmlContent = partnershipWelcomeEmail(email, password, name, phone);
-
+    
+    // Download the logo image
     const logoUrl = "https://i.ibb.co/Dftw5sbd/feet-first-white-logo-2-1.png";
     let logoBuffer: Buffer | null = null;
+    
     try {
       logoBuffer = await downloadImage(logoUrl);
-    } catch (err) {
-      console.warn("Failed to download logo image, sending email without embedded image:", err);
+    } catch (error) {
+      console.warn("Failed to download logo image, sending email without embedded image:", error);
     }
 
-    const user = getEmailUser();
-    const mailTransporter = nodemailer.createTransport({
-      service: "gmail",
-      port: 587,
-      auth: { user, pass: getEmailPass() },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    });
+    const mailTransporter = getMailTransporter();
 
     const mailOptions: any = {
-      from: `"Feetf1rst" <${user}>`,
+      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
       to: email,
       subject: "Willkommen bei FeetF1rst - Ihr Software Zugang ist jetzt aktiv",
       html: htmlContent,
@@ -144,8 +148,8 @@ export const sendPartnershipWelcomeEmail = async (
 
     await mailTransporter.sendMail(mailOptions);
   } catch (error) {
-    console.error("Error in sendPartnershipWelcomeEmail (partnership still created):", error);
-    // Do not throw: allow partnership creation to succeed when email fails (e.g. timeout)
+    console.error("Error in sendPartnershipWelcomeEmail:", error);
+    throw new Error("Failed to send partnership welcome email.");
   }
 };
 
@@ -223,17 +227,10 @@ export const sendPdfToEmail = async (email: string, pdf: any): Promise<void> => 
 
     const htmlContent = sendPdfToEmailTamplate(pdf);
 
-    const user = getEmailUser();
-    const mailTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      port: 587,
-      auth: { user, pass: getEmailPass() },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    });
+    const mailTransporter = getMailTransporter();
 
     const mailOptions = {
-      from: `"Feetf1rst" <${user}>`,
+      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
       to: email,
       subject: 'Your Foot Exercise Program - Feetf1rst ',
       html: htmlContent,
@@ -286,17 +283,10 @@ export const sendInvoiceEmail = async (
       options?.total
     );
 
-    const user = getEmailUser();
-    const mailTransporter = nodemailer.createTransport({
-      service: 'gmail',
-      port: 587,
-      auth: { user, pass: getEmailPass() },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    });
+    const mailTransporter = getMailTransporter();
 
     const mailOptions = {
-      from: `"Feetf1rst" <${user}>`,
+      from: `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`,
       to: toEmail,
       subject: 'Your Feetf1rst Invoice',
       html: htmlContent,
