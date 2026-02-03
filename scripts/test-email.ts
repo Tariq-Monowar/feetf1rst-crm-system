@@ -21,11 +21,14 @@ async function main() {
     process.exit(1);
   }
 
+  const usePort465 = process.env.EMAIL_USE_PORT_465 === "true";
+  const port = usePort465 ? 465 : 587;
+  console.log("Using SMTP port:", port, usePort465 ? "(SSL)" : "(STARTTLS)");
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    port,
+    secure: usePort465,
+    requireTLS: !usePort465,
     auth: { user, pass },
     connectionTimeout: 15000,
     greetingTimeout: 10000,
@@ -36,7 +39,8 @@ async function main() {
     console.log("SMTP connection verified successfully.");
   } catch (err: any) {
     console.error("SMTP verification failed:", err?.message);
-    console.error("\nCommon VPS issues: firewall blocks port 587, Gmail blocks datacenter IP.");
+    console.error("\nTry: Add EMAIL_USE_PORT_465=true to .env (port 465 often allowed when 587 is blocked)");
+    console.error("Or: Ask hosting to allow outbound SMTP ports 587/465.");
     process.exit(1);
   }
 

@@ -26,11 +26,13 @@ const getMailTransporter = () => {
     );
   }
 
+  const usePort465 = process.env.EMAIL_USE_PORT_465 === "true";
+  const port = usePort465 ? 465 : 587;
   return nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,
-    secure: false, // 587 uses STARTTLS, not direct SSL
-    requireTLS: true,
+    port,
+    secure: usePort465, // 465 = implicit SSL, 587 = STARTTLS
+    requireTLS: !usePort465,
     auth: { user, pass },
     connectionTimeout: 15000,
     greetingTimeout: 10000,
