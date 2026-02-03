@@ -444,6 +444,12 @@ export const createTustomShafts = async (req, res) => {
   const isCustomModels = !!allCustomModel;
   const isCourier = !!allCourier;
 
+  const userExists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!userExists) {
+    cleanupFiles();
+    return res.status(401).json({ success: false, message: "User not found. Please log in again." });
+  }
+
   const versenden = toJson(b.versenden);
   const hasVersenden = versenden && versenden !== "";
 
@@ -510,7 +516,7 @@ export const createTustomShafts = async (req, res) => {
   const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
   const shaftData = {
-    user: { connect: { id } },
+    partnerId: id,
     image3d_1: getFile("image3d_1"),
     image3d_2: getFile("image3d_2"),
     paintImage: getFile("paintImage"),
