@@ -378,335 +378,204 @@ export const deleteMaßschaftKollektion = async (req, res) => {
 // }
 
 export const createTustomShafts = async (req, res) => {
-  const files = req.files as any;
+  const files = req.files || {};
   const { id } = req.user;
+  const body = req.body;
 
-  const cleanupFiles = () => {
-    if (!files) return;
+  function cleanupFiles() {
     Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        if (file.location) {
-          deleteFileFromS3(file.location);
-        }
+      (files[key] || []).forEach((file) => {
+        if (file.location) deleteFileFromS3(file.location);
       });
     });
-  };
+  }
 
-  const { custom_models, isCourierContact } = req.query;
+  function fail(code, message) {
+    cleanupFiles();
+    return res.status(code).json({ success: false, message });
+  }
 
-  const parseBoolean = (value: any): boolean => {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "string") {
-      return value.toLowerCase() === "true" || value === "1";
+  function parsePrice(val) {
+    if (val == null || val === "") return null;
+    const n = parseFloat(String(val));
+    return isNaN(n) ? null : n;
+  }
+
+  function parseJson(val) {
+    if (typeof val !== "string") return val;
+    try {
+      return JSON.parse(val);
+    } catch {
+      return val;
     }
-    return Boolean(value);
-  };
+  }
 
-  const parsePrice = (value: any): number | null => {
-    if (value === undefined || value === null || value === "") return null;
-    const parsed = parseFloat(value.toString());
-    return isNaN(parsed) ? null : parsed;
-  };
+  function getFile(field) {
+    return (files[field] && files[field][0] && files[field][0].location) || null;
+  }
 
-  const parseJsonField = (value: any): any => {
-    if (typeof value === "string") {
-      try {
-        return JSON.parse(value);
-      } catch (e) {
-        return value;
-      }
+  const otherName = (body.other_customer_name != null && String(body.other_customer_name).trim() !== "")
+    ? String(body.other_customer_name).trim()
+    : null;
+
+  const customModelsFields = [
+    "custom_models_name",
+    "custom_models_price",
+    "custom_models_verschlussart",
+    "custom_models_gender",
+    "custom_models_description",
+  ];
+  const hasAnyCustomModelsField =
+    customModelsFields.some((f) => {
+      const v = body[f];
+      return v != null && String(v).trim() !== "";
+    }) || getFile("custom_models_image");
+  const hasAllCustomModelsFields = customModelsFields.every((f) => {
+    const v = body[f];
+    return v != null && String(v).trim() !== "";
+  });
+
+  const courierFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
+  const hasAnyCourierField = courierFields.some((f) => body[f] != null && body[f] !== "");
+  const hasAllCourierFields = courierFields.every((f) => body[f] != null && body[f] !== "");
+
+  if (hasAnyCustomModelsField && !hasAllCustomModelsFields) {
+    return fail(400, "If providing custom models, all fields are required");
+  }
+  if (hasAnyCourierField && !hasAllCourierFields) {
+    return fail(400, "If providing courier contact, all fields are required!");
+  }
+
+  const hasCustomModelsData = hasAllCustomModelsFields;
+  const hasCourierData = hasAllCourierFields;
+
+  const versenden = parseJson(body.versenden);
+  const hasVersenden = versenden != null && versenden !== "";
+
+  if (!body.customerId && !otherName) {
+    return fail(400, "Either customerId or other_customer_name is required");
+  }
+
+  let customer = null;
+  if (body.customerId) {
+    customer = await prisma.customers.findUnique({
+      where: { id: body.customerId },
+      select: { id: true, customerNumber: true },
+    });
+    if (!customer) return fail(404, "Customer not found");
+  }
+
+  if (!hasCustomModelsData) {
+    if (!body.mabschaftKollektionId) {
+      return fail(400, "maßschaftKollektionId is required when not using custom models");
     }
-    return value;
+    const kollektion = await prisma.maßschaft_kollektion.findUnique({
+      where: { id: body.mabschaftKollektionId },
+      select: { id: true },
+    });
+    if (!kollektion) return fail(404, "Maßschaft Kollektion not found");
+  }
+
+  if (!hasVersenden && !hasCourierData) {
+    return fail(400, "Either versenden or courier contact data is required");
+  }
+
+  let courierData = null;
+  if (hasCourierData) {
+    const addr = parseJson(body.courier_address);
+    if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
+      return fail(400, "courier_address must be a JSON object");
+    }
+    const price = parsePrice(body.courier_price);
+    if (!price || price <= 0) {
+      return fail(400, "courier_price must be a valid number greater than 0");
+    }
+    courierData = {
+      address: addr,
+      companyName: body.courier_companyName,
+      phone: body.courier_phone,
+      email: body.courier_email,
+      price,
+    };
+  }
+
+  const json1 = parseJson(body.Massschafterstellung_json1);
+  const json2 = parseJson(body.Massschafterstellung_json2);
+  const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
+
+  const shaftData = {
+    user: { connect: { id } },
+    image3d_1: getFile("image3d_1"),
+    image3d_2: getFile("image3d_2"),
+    paintImage: getFile("paintImage"),
+    invoice2: getFile("invoice2"),
+    invoice: getFile("invoice"),
+    zipper_image: getFile("zipper_image"),
+    staticImage: getFile("staticImage"),
+    other_customer_name: otherName,
+    other_customer_number: customer ? String(customer.customerNumber) : null,
+    Massschafterstellung_json1: json1,
+    Massschafterstellung_json2: json2,
+    versenden: hasVersenden ? versenden : null,
+    totalPrice: body.totalPrice ? parseFloat(body.totalPrice) : null,
+    orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
+    status: "Neu",
+    catagoary: category,
+    isCustomeModels: hasCustomModelsData,
+    ...(body.customerId && { customer: { connect: { id: body.customerId } } }),
+    ...(!hasCustomModelsData && body.mabschaftKollektionId && {
+      maßschaft_kollektion: { connect: { id: body.mabschaftKollektionId } },
+    }),
   };
 
-  const isCustomModels = parseBoolean(custom_models);
-
-  // Extract fields from req.body
-  const {
-    customerId,
-    mabschaftKollektionId,
-    other_customer_name,
-    totalPrice,
-
-    custom_models_name,
-    custom_models_price,
-    custom_models_verschlussart,
-    custom_models_gender,
-    custom_models_description,
-
-    Massschafterstellung_json1,
-    Massschafterstellung_json2,
-
-    versenden,
-
-  } = req.body;
+  const shaftSelect = {
+    id: true,
+    orderNumber: true,
+    status: true,
+    customerId: true,
+    createdAt: true,
+    updatedAt: true,
+    partnerId: true,
+    image3d_1: true,
+    image3d_2: true,
+    paintImage: true,
+    invoice2: true,
+    invoice: true,
+    zipper_image: true,
+    staticImage: true,
+    other_customer_name: true,
+    other_customer_number: true,
+    Massschafterstellung_json1: true,
+    Massschafterstellung_json2: true,
+    versenden: true,
+    totalPrice: true,
+    isCustomeModels: true,
+    maßschaftKollektionId: true,
+    catagoary: true,
+    maßschaft_kollektion: { select: { id: true, name: true, price: true, image: true } },
+  };
 
   try {
-    const otherCustomerName = other_customer_name != null && other_customer_name !== ""
-      ? String(other_customer_name).trim()
-      : null;
-
-    // i need either this customerId or other_customer_name
-    if (!customerId && !otherCustomerName) {
-      cleanupFiles();
-      return res.status(400).json({
-        success: false,
-        message: "either customerId or other_customer_name is required",
-      });
-    }
-
-    let customer: { id: string; customerNumber: number } | null = null;
-    if (customerId) {
-      // Validate customer
-      customer = await prisma.customers.findUnique({
-        where: { id: customerId },
-        select: { id: true, customerNumber: true },
-      });
-
-      if (!customer) {
-        cleanupFiles();
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
-      }
-    }
-
-    // Validate mabschaftKollektionId if not custom models
-    if (!isCustomModels) {
-      if (!mabschaftKollektionId) {
-        cleanupFiles();
-        return res.status(400).json({
-          success: false,
-          message:
-            "maßschaftKollektionId must be provided when custom_models is false",
-        });
-      }
-
-      const kollektion = await prisma.maßschaft_kollektion.findUnique({
-        where: { id: mabschaftKollektionId },
-        select: { id: true },
-      });
-
-      if (!kollektion) {
-        cleanupFiles();
-        return res.status(404).json({
-          success: false,
-          message: "Maßschaft Kollektion not found",
-        });
-      }
-    }
-
-    // Require either Versenden or CourierContact when creating order
-    const parsedVersenden = parseJsonField(versenden);
-    const hasVersenden = parsedVersenden != null && parsedVersenden !== "";
-    const hasCourierContact = isCourierContact === "yes";
-
-    if (!hasVersenden && !hasCourierContact) {
-      cleanupFiles();
-      return res.status(400).json({
-        success: false,
-        message:
-          "hoy Versenden data den nahou courier contact data den!",
-      });
-    }
-
-    /*
-     * Validate courier contact data if isCourierContact is "yes"
-     * Validates all required fields, address format, and price
-     * Stores validated data for later use after order creation
-     */
-    let courierContactData: any = null;
-    if (isCourierContact == "yes") {
-      const {
-        courier_address,
-        courier_companyName,
-        courier_phone,
-        courier_email,
-        courier_price,
-      } = req.body;
-
-      const requiredFields = [
-        "courier_address",
-        "courier_companyName",
-        "courier_phone",
-        "courier_email",
-        "courier_price",
-      ];
-      for (const field of requiredFields) {
-        if (!req.body[field]) {
-          cleanupFiles();
-          return res.status(400).json({
-            success: false,
-            message: `${field} is required when isCourierContact is yes`,
-          });
-        }
-      }
-
-      const parsedAddress = parseJsonField(courier_address);
-
-      if (
-        typeof parsedAddress !== "object" ||
-        parsedAddress === null ||
-        Array.isArray(parsedAddress)
-      ) {
-        cleanupFiles();
-        return res.status(400).json({
-          success: false,
-          message: "courier_address must be a JSON object",
-        });
-      }
-
-      const parsedCourierPrice = parsePrice(courier_price);
-      if (!parsedCourierPrice || parsedCourierPrice <= 0) {
-        cleanupFiles();
-        return res.status(400).json({
-          success: false,
-          message: "courier_price must be a valid number greater than 0",
-        });
-      }
-
-      courierContactData = {
-        address: parsedAddress,
-        companyName: courier_companyName,
-        phone: courier_phone,
-        email: courier_email,
-        price: parsedCourierPrice,
-      };
-    }
-
-    // Parse JSON fields if they are strings
-    let parsedJson1 = Massschafterstellung_json1;
-    if (typeof Massschafterstellung_json1 === "string") {
-      try {
-        parsedJson1 = JSON.parse(Massschafterstellung_json1);
-      } catch (e) {
-        parsedJson1 = Massschafterstellung_json1;
-      }
-    }
-
-    let parsedJson2 = Massschafterstellung_json2;
-    if (typeof Massschafterstellung_json2 === "string") {
-      try {
-        parsedJson2 = JSON.parse(Massschafterstellung_json2);
-      } catch (e) {
-        parsedJson2 = Massschafterstellung_json2;
-      }
-    }
-
-    // Determine category: Komplettfertigung if both JSON fields are present, otherwise row
-    const hasBothJsonFields = parsedJson1 && parsedJson2;
-    const category = hasBothJsonFields ? "Komplettfertigung" : "Massschafterstellung";
-
-    // Prepare data object
-    const shaftData: any = {
-      user: {
-        connect: { id: id },
-      },
-      image3d_1: files.image3d_1?.[0]?.location || null,
-      image3d_2: files.image3d_2?.[0]?.location || null,
-      paintImage: files.paintImage?.[0]?.location || null,
-      invoice2: files.invoice2?.[0]?.location || null,
-      invoice: files.invoice?.[0]?.location || null,
-      zipper_image: files.zipper_image?.[0]?.location || null,
-      staticImage: files.staticImage?.[0]?.location || null,
-      other_customer_name: otherCustomerName,
-      other_customer_number: customer?.customerNumber
-        ? String(customer.customerNumber)
-        : null,
-      Massschafterstellung_json1: parsedJson1,
-      Massschafterstellung_json2: parsedJson2,
-      versenden: hasVersenden ? parsedVersenden : null,
-      totalPrice: totalPrice ? parseFloat(totalPrice) : null,
-      // generate order number i need to calculate previous order number and add 1
-      // orderNumber: await generateNextOrderNumber(id),
-      orderNumber: `MS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`,
-      status: "Neu" as any,
-      catagoary: category,
-      isCustomeModels: isCustomModels,
-    };
-
-    // Connect customer only if customerId is provided
-    if (customerId) {
-      shaftData.customer = {
-        connect: { id: customerId },
-      };
-    }
-
-    // Add maßschaft_kollektion relation if not custom models
-    if (!isCustomModels && mabschaftKollektionId) {
-      shaftData.maßschaft_kollektion = {
-        connect: { id: mabschaftKollektionId },
-      };
-    }
-
-    // Create the custom shaft
-    const selectFields: any = {
-      id: true,
-      orderNumber: true,
-      status: true,
-      customerId: true,
-      createdAt: true,
-      updatedAt: true,
-      partnerId: true,
-      image3d_1: true,
-      image3d_2: true,
-      paintImage: true,
-      invoice2: true,
-      invoice: true,
-      zipper_image: true,
-      staticImage: true,
-      other_customer_name: true,
-      other_customer_number: true,
-      Massschafterstellung_json1: true,
-      Massschafterstellung_json2: true,
-      versenden: true,
-      totalPrice: true,
-      isCustomeModels: true,
-      maßschaftKollektionId: true,
-      catagoary: true,
-      maßschaft_kollektion: {
-        select: {
-          id: true,
-          name: true,
-          price: true,
-          image: true,
-        },
-      },
-    };
-
     const customShaft = await prisma.custom_shafts.create({
-      data: shaftData,
-      select: selectFields,
+      data: shaftData as any,
+      select: shaftSelect,
     });
 
-    // Create custom_models record if isCustomModels is true
     let customModel = null;
-    if (isCustomModels) {
-      const customModelData: any = {
-        custom_shafts: {
-          connect: { id: customShaft.id },
-        },
-        partner: {
-          connect: { id: id },
-        },
-        custom_models_name: custom_models_name || null,
-        custom_models_image: files.custom_models_image?.[0]?.location || null,
-        custom_models_price: parsePrice(custom_models_price),
-        custom_models_verschlussart: custom_models_verschlussart || null,
-        custom_models_gender: custom_models_gender || null,
-        custom_models_description: custom_models_description || null,
+    if (hasCustomModelsData) {
+      const modelData = {
+        custom_shafts: { connect: { id: customShaft.id } },
+        partner: { connect: { id } },
+        custom_models_name: body.custom_models_name || null,
+        custom_models_image: getFile("custom_models_image"),
+        custom_models_price: parsePrice(body.custom_models_price),
+        custom_models_verschlussart: body.custom_models_verschlussart || null,
+        custom_models_gender: body.custom_models_gender || null,
+        custom_models_description: body.custom_models_description || null,
+        ...(body.customerId && { customer: { connect: { id: body.customerId } } }),
       };
-
-      // Connect customer only if customerId is provided
-      if (customerId) {
-        customModelData.customer = {
-          connect: { id: customerId },
-        };
-      }
-
-      customModel = await (prisma as any).custom_models.create({
-        data: customModelData,
+      customModel = await prisma.custom_models.create({
+        data: modelData,
         select: {
           id: true,
           custom_models_name: true,
@@ -719,87 +588,60 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    // Create admin_order_transitions record
-    const transitionNote = otherCustomerName && !customerId
-      ? `${category} - ${otherCustomerName}`
-      : category;
-    const transitionData: any = {
-      orderNumber: customShaft.orderNumber,
-      partnerId: id,
-      orderFor: "shoes",
-      custom_shafts_id: customShaft.id,
-      custom_shafts_catagoary: category,
-      price: totalPrice ? parseFloat(totalPrice) : null,
-      note: transitionNote,
-    };
-
-    // Add customerId only if it exists
-    if (customerId) {
-      transitionData.customerId = customerId;
-    }
-
+    const transitionNote = otherName && !body.customerId ? `${category} - ${otherName}` : category;
     await prisma.admin_order_transitions.create({
-      data: transitionData,
+      data: {
+        orderNumber: customShaft.orderNumber,
+        partnerId: id,
+        orderFor: "shoes",
+        custom_shafts_id: customShaft.id,
+        custom_shafts_catagoary: category,
+        price: body.totalPrice ? parseFloat(body.totalPrice) : null,
+        note: transitionNote,
+        ...(body.customerId && { customerId: body.customerId }),
+      },
     });
 
-    // Create courier contact if isCourierContact is "yes" (after order is created)
-    if (isCourierContact == "yes" && courierContactData) {
+    if (hasCourierData && courierData) {
       await prisma.courierContact.create({
         data: {
           partnerId: id,
-          address: courierContactData.address,
-          companyName: courierContactData.companyName,
-          phone: courierContactData.phone,
-          email: courierContactData.email,
-          price: courierContactData.price,
-          customerId: customerId || null,
+          address: courierData.address,
+          companyName: courierData.companyName,
+          phone: courierData.phone,
+          email: courierData.email,
+          price: courierData.price,
+          customerId: body.customerId || null,
         },
       });
     }
 
-    // Format response
-    const responseData: any = {
-      ...customShaft,
-      maßschaft_kollektion: (customShaft as any).maßschaft_kollektion || null,
-      custom_models: customModel || null,
-    };
-
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
-      data: responseData,
-      Courier_contact: courierContactData,
+      data: {
+        ...customShaft,
+        custom_models: customModel,
+      },
+      Courier_contact: courierData,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Create Custom Shaft Error:", err);
     cleanupFiles();
 
-    // Handle multer errors (unexpected file fields)
     if (err.code === "LIMIT_UNEXPECTED_FILE") {
-      const field = err.field || "unknown";
       return res.status(400).json({
         success: false,
-        message: `Unexpected file field: ${field}`,
-        allowedFields: [
-          "image3d_1",
-          "image3d_2",
-          "invoice",
-          "paintImage",
-          "invoice2",
-          "zipper_image",
-          "custom_models_image",
-        ],
+        message: `Unexpected file field: ${err.field || "unknown"}`,
+        allowedFields: ["image3d_1", "image3d_2", "invoice", "paintImage", "invoice2", "zipper_image", "custom_models_image", "staticImage"],
       });
     }
-
     if (err.code === "P2003") {
-      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid customer ID or Maßschaft Kollektion ID provided",
       });
     }
-
     res.status(500).json({
       success: false,
       message: "Something went wrong",
