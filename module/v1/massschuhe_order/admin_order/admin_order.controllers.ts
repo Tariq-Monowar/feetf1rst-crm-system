@@ -190,28 +190,28 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   const hasCustomName = b.custom_models_name && String(b.custom_models_name).trim();
   const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
-  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
-  const hasCustomGender = b.custom_models_gender && String(b.custom_models_gender).trim();
-  const hasCustomDesc = b.custom_models_description && String(b.custom_models_description).trim();
   const hasCustomImage = getFile("custom_models_image");
 
-  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomVerschlussart || hasCustomGender || hasCustomDesc || hasCustomImage;
-  const allCustomModel = hasCustomName && hasCustomPrice && hasCustomVerschlussart && hasCustomGender && hasCustomDesc;
+  const anyCustomModel = hasCustomName || hasCustomPrice || hasCustomImage ||
+    (b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim()) ||
+    (b.custom_models_gender && String(b.custom_models_gender).trim()) ||
+    (b.custom_models_description && String(b.custom_models_description).trim());
+  const requiredCustomModel = hasCustomName && hasCustomPrice;
 
   const courierFields = ["courier_address", "courier_companyName", "courier_phone", "courier_email", "courier_price"];
   const hasAnyCourier = courierFields.some((f) => b[f] != null && b[f] !== "");
   const hasAllCourier = courierFields.every((f) => b[f] != null && b[f] !== "");
 
-  if (anyCustomModel && !allCustomModel) {
+  if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "If providing custom models, all fields are required" });
+    return res.status(400).json({ success: false, message: "custom_models_name and custom_models_price are required when using custom models" });
   }
   if (hasAnyCourier && !hasAllCourier) {
     cleanupFiles();
     return res.status(400).json({ success: false, message: "If providing courier contact, all fields are required" });
   }
 
-  const isCustomModels = !!allCustomModel;
+  const isCustomModels = !!requiredCustomModel;
   const isCourier = !!hasAllCourier;
 
   try {
