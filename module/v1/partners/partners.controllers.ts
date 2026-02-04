@@ -33,7 +33,10 @@ const generateNextPartnerAccountNumber = async (): Promise<string> => {
 };
 
 /** barcodeLabel = "FF-{first 3 chars of busnessName uppercase}-{accountNumber}" e.g. FF-LAX-002 */
-const buildBarcodeLabel = (busnessName: string, accountNumber: string): string => {
+const buildBarcodeLabel = (
+  busnessName: string,
+  accountNumber: string
+): string => {
   const prefix = (busnessName || "")
     .trim()
     .slice(0, 3)
@@ -132,6 +135,7 @@ export const createPartnership = async (req: Request, res: Response) => {
       success: true,
       message: "Partnership created successfully",
       data: partnership,
+      link: `http://localhost:3003/set-password/${partnership.id}`,
     });
   } catch (error) {
     console.error("Partnership creation error:", error);
@@ -173,7 +177,8 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
     }
 
     // 1. Update user — only fields that were sent
-    const userData: { email?: string; busnessName?: string; image?: string } = {};
+    const userData: { email?: string; busnessName?: string; image?: string } =
+      {};
     if (email !== undefined) userData.email = email;
     if (busnessName !== undefined) userData.busnessName = busnessName;
     if (newImage) userData.image = newImage.location;
@@ -188,12 +193,14 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
     const primaryLocation = existingUser.storeLocations?.[0];
 
     // 2. Update or create primary store_location — only if location fields were sent
-    const locationFieldsSent = mainLocation !== undefined || locationDescription !== undefined;
+    const locationFieldsSent =
+      mainLocation !== undefined || locationDescription !== undefined;
     if (locationFieldsSent) {
       if (primaryLocation) {
         const locationData: { address?: string; description?: string } = {};
         if (mainLocation !== undefined) locationData.address = mainLocation;
-        if (locationDescription !== undefined) locationData.description = locationDescription;
+        if (locationDescription !== undefined)
+          locationData.description = locationDescription;
         await prisma.store_location.update({
           where: { id: primaryLocation.id },
           data: locationData,
