@@ -135,10 +135,14 @@ export const emailForgotPasswordOTP = (email: string, OTP: string): string => {
 
 export const partnershipWelcomeEmail = (
   email: string,
-  password: string,
-  name?: string,
-  phone?: string
+  setPasswordLink: string,
+  busnessName?: string | null,
+  vatNumber?: string | null,
+  mainLocation?: string | null
 ): string => {
+  const displayBusnessName = busnessName?.trim() || "—";
+  const displayVat = vatNumber?.trim() ? vatNumber.trim() : null;
+  const displayMainLocation = mainLocation?.trim() || "—";
   return `
       <!DOCTYPE html>
       <html>
@@ -248,78 +252,77 @@ export const partnershipWelcomeEmail = (
                       willkommen bei FeetF1rst. Mit dieser Nachricht erhalten Sie offiziell die Berechtigung, unsere Partner-Software zu nutzen. Ab jetzt steht Ihnen eine Plattform zur Verfügung, die Prozesse vereinfacht, Entscheidungen beschleunigt und digitale Versorgung auf ein neues Niveau hebt.
                     </p>
                     <p style="color: #2c3e50; font-size: 15px; line-height: 24px; margin: 0;">
-                      Ihr Einstieg </br> Ihr persönlicher Zugang wurde freigeschaltet:
+                      Ihr Einstieg – Ihre Zugangsdaten:
                     </p>
                   </td>
                 </tr>
               </table>
   
-
-              <!-- Credentials Box -->
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-  <tr>
-    <td style="padding: 0 40px 30px;">
-      <table role="presentation" cellspacing="0" cellpadding="0" border="1" width="100%" style="border: 1px solid #e0e0e0; border-collapse: collapse;">
-        <!-- E-Mail Row -->
-        <tr>
-          <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
-            <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">
-              E-Mail:
-            </p>
-          </td>
-          <td style="padding: 12px 20px; border: 1px solid #e0e0e0; white-space: nowrap;">
-            <p style="margin: 0; font-size: 14px; color: #2c3e50; font-family: monospace;">
-              ${email}
-            </p>
-          </td>
-        </tr>
-        
-        <!-- Temporäres Passwort -->
-        <tr>
-          <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
-            <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50; white-space: nowrap;">
-              Temporäres Passwort:
-            </p>
-          </td>
-          <td style="padding: 12px 20px; border: 1px solid #e0e0e0; white-space: nowrap;">
-            <p style="margin: 0; font-size: 14px; color: #2c3e50; font-family: monospace;">
-              ${password}
-            </p>
-          </td>
-        </tr>
-        
-        <!-- Login -->
-        <tr>
-          <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
-            <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">
-              Login:
-            </p>
-          </td>
-          <td style="padding: 12px 20px; border: 1px solid #e0e0e0; white-space: nowrap;">
-            <p style="margin: 0; font-size: 14px; color: #2c3e50; font-family: monospace;">
-              <a href="portal.feetf1rst.com" target="_blank" style="color: #1a73e8; text-decoration: none; white-space: nowrap;">
-                portal.feetf1rst.com
-              </a>
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-
-
-  
-              <!-- Security Notice -->
+              <!-- Partner details table -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                 <tr>
-                  <td style="padding: 0 40px 30px;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fff9e6; border-left: 4px solid #f1c40f; padding: 15px;">
+                  <td style="padding: 0 40px 24px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="1" width="100%" style="border: 1px solid #e0e0e0; border-collapse: collapse;">
                       <tr>
-                        <td style="padding: 10px 15px;">
-                          <p style="color: #7d6608; font-size: 14px; line-height: 21px; margin: 0; font-weight: 500;">
-                            <strong>Hinweis:</strong> Zu Ihrer Sicherheit sollten Sie Ihr Passwort nach der ersten Anmeldung ändern.
-                            </p>
+                        <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
+                          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">Geschäftsname:</p>
+                        </td>
+                        <td style="padding: 12px 20px; border: 1px solid #e0e0e0;">
+                          <p style="margin: 0; font-size: 14px; color: #2c3e50;">${displayBusnessName}</p>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
+                          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">E-Mail:</p>
+                        </td>
+                        <td style="padding: 12px 20px; border: 1px solid #e0e0e0;">
+                          <p style="margin: 0; font-size: 14px; color: #2c3e50;">${email}</p>
+                        </td>
+                      </tr>
+                      ${displayVat ? `
+                      <tr>
+                        <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
+                          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">USt-IdNr. / VAT:</p>
+                        </td>
+                        <td style="padding: 12px 20px; border: 1px solid #e0e0e0;">
+                          <p style="margin: 0; font-size: 14px; color: #2c3e50;">${displayVat}</p>
+                        </td>
+                      </tr>
+                      ` : ""}
+                      <tr>
+                        <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
+                          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">Hauptstandort:</p>
+                        </td>
+                        <td style="padding: 12px 20px; border: 1px solid #e0e0e0;">
+                          <p style="margin: 0; font-size: 14px; color: #2c3e50;">${displayMainLocation}</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+  
+              <!-- Set password CTA button -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="padding: 0 40px 32px; text-align: center;">
+                    <a href="${setPasswordLink}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: rgb(85, 150, 112); color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-family: 'Segoe UI', 'Roboto', 'Open Sans', 'Helvetica Neue', Arial, sans-serif; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                      Passwort setzen & Zugang aktivieren
+                    </a>
+                  </td>
+                </tr>
+              </table>
+  
+              <!-- Notice -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="padding: 0 40px 24px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f0f8f4; border-left: 4px solid rgb(85, 150, 112);">
+                      <tr>
+                        <td style="padding: 12px 15px;">
+                          <p style="color: #2c3e50; font-size: 14px; line-height: 21px; margin: 0; font-weight: 500;">
+                            <strong>Hinweis:</strong> Klicken Sie auf den Button oben, um Ihr Passwort zu setzen. Der Link ist einmalig gültig.
+                          </p>
                         </td>
                       </tr>
                     </table>
@@ -332,11 +335,9 @@ export const partnershipWelcomeEmail = (
                 <tr>
                   <td style="padding: 0 40px 30px;">
                     <h3 style="color: #2c3e50; font-size: 16px; font-weight: 600; margin: 0 0 15px; text-transform: uppercase;">Ihr nächster Schritt</h3>
-                     <p style="color: #2c3e50; font-size: 15px; line-height: 24px; margin: 0;">
-                             Melden Sie sich an, richten Sie Ihr Profil ein und entdecken Sie die Funktionen in Ihrem eigenen Tempo.
-Wenn Sie möchten, begleiten wir Sie persönlich bei den ersten Schritten. 
-
-                          </p>
+                    <p style="color: #2c3e50; font-size: 15px; line-height: 24px; margin: 0;">
+                      Setzen Sie Ihr Passwort über den Button oben, melden Sie sich anschließend an und richten Sie Ihr Profil ein. Bei Fragen begleiten wir Sie gerne persönlich.
+                    </p>
                   </td>
                 </tr>
               </table>

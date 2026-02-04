@@ -8,8 +8,11 @@ import {
   sendPartnershipWelcomeEmail,
 } from "../../../utils/emailService.utils";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
+import redis from "../../../config/redis.config";
 
 const prisma = new PrismaClient();
+const SET_PASSWORD_KEY_PREFIX = "set-password:";
+const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60;
 
 //-----------------------------------------------
 // export const createUser = async (req: Request, res: Response) => {
@@ -502,32 +505,22 @@ export const changePassword = async (req: Request, res: Response) => {
 
 export const createPartnership = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email } = req.body;
 
-    const missingField = ["email", "password"].find(
-      (field) => !req.body[field]
-    );
-
-    if (missingField) {
-      res.status(400).json({
-        message: `${missingField} is required!`,
-      });
+    if (!email) {
+      res.status(400).json({ message: "email is required!" });
       return;
     }
 
-    // Check if email exists in user table
     const existingPartnership = await prisma.user.findUnique({
       where: { email },
     });
 
     if (existingPartnership) {
-      res.status(400).json({
-        message: "Email already exists",
-      });
+      res.status(400).json({ message: "Email already exists" });
       return;
     }
 
-    // Check if email exists in employees table
     const existingEmployee = await prisma.employees.findFirst({
       where: { email },
     });
@@ -538,23 +531,33 @@ export const createPartnership = async (req: Request, res: Response) => {
       });
       return;
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     const partnership = await prisma.user.create({
       data: {
         email,
-        password: hashedPassword,
         role: "PARTNER",
       },
     });
 
-    // Send welcome email with credentials
-    sendPartnershipWelcomeEmail(email, password, undefined, undefined);
+    await redis.set(
+      `${SET_PASSWORD_KEY_PREFIX}${partnership.id}`,
+      "1",
+      "EX",
+      SET_PASSWORD_TTL_SEC
+    );
+
+    const link =
+      process.env.NODE_ENV === "development"
+        ? `${process.env.APP_URL_DEVELOPMENT}/set-password/${partnership.id}`
+        : `${process.env.APP_URL_PRODUCTION}/set-password/${partnership.id}`;
+
+    sendPartnershipWelcomeEmail(email, link, undefined, undefined, undefined);
 
     res.status(201).json({
       success: true,
       message: "Partnership created successfully",
       partnership,
+      link,
     });
   } catch (error) {
     console.error("Partnership creation error:", error);

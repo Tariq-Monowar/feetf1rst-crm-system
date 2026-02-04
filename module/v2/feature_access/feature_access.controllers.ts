@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { featureAccessData } from "./feature_access.data";
 
 const prisma = new PrismaClient();
 
@@ -31,7 +32,7 @@ const defaultFeatureAccessData = {
 };
 
 const FEATURE_KEYS = Object.keys(
-  defaultFeatureAccessData,
+  defaultFeatureAccessData
 ) as (keyof typeof defaultFeatureAccessData)[];
 
 const validatePartner = async (partnerId: string) => {
@@ -54,11 +55,12 @@ export const getFeatureAccess = async (req: Request, res: Response) => {
     }
 
     const featureAccess = await getOrCreateFeatureAccess(partnerId);
+    const allAvailableFeatures = convertToJSONFormat(featureAccess);
 
     res.status(200).json({
       success: true,
       message: "Feature access retrieved successfully",
-      data: featureAccess,
+      data: allAvailableFeatures,
     });
   } catch (error: any) {
     console.error("Get Feature Access error:", error);
@@ -147,7 +149,8 @@ const getOrCreateFeatureAccess = async (partnerId: string) => {
   ];
 
   const missingFields = newFields.filter(
-    (field) => featureAccess[field] === null || featureAccess[field] === undefined
+    (field) =>
+      featureAccess[field] === null || featureAccess[field] === undefined
   );
 
   if (missingFields.length > 0) {
@@ -194,7 +197,6 @@ export const partnerFeatureAccess = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 function convertToJSONFormat(featureAccess: any) {
   const fieldMapping = [
@@ -383,3 +385,21 @@ function getSettingsNestedItems(parentAction: boolean) {
     action: parentAction,
   }));
 }
+
+// /** Returns only the list of feature field names that exist in the system (no DB). */
+// export const getAllAbleFeatures = async (req: Request, res: Response) => {
+//   try {
+//     res.status(200).json({
+//       success: true,
+//       message: "Features retrieved successfully",
+//       data: featureAccessData,
+//     });
+//   } catch (error: any) {
+//     console.error("Get All Able Features error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Something went wrong",
+//       error: error.message,
+//     });
+//   }
+// };

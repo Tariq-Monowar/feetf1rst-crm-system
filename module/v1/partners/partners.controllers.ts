@@ -138,13 +138,23 @@ export const createPartnership = async (req: Request, res: Response) => {
       SET_PASSWORD_TTL_SEC
     );
 
-    sendPartnershipWelcomeEmail(email, "", undefined, undefined);
+    const link = process.env.NODE_ENV === "development"
+      ? `${process.env.APP_URL_DEVELOPMENT}/set-password/${partnership.id}`
+      : `${process.env.APP_URL_PRODUCTION}/set-password/${partnership.id}`;
+
+    sendPartnershipWelcomeEmail(
+      email,
+      link,
+      partnership.busnessName ?? undefined,
+      partnership.accountInfos?.[0]?.vat_number ?? null,
+      partnership.storeLocations?.[0]?.address ?? undefined
+    );
 
     res.status(201).json({
       success: true,
       message: "Partnership created successfully",
       data: partnership,
-      link: `http://localhost:3003/set-password/${partnership.id}`,
+      link,
     });
   } catch (error) {
     console.error("Partnership creation error:", error);
@@ -491,14 +501,12 @@ export const setPasswordLink = async (req: Request, res: Response) => {
       process.env.JWT_SECRET as string
     );
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Password set successfully",
-        data: updatedPartner,
-        token,
-      });
+    res.status(200).json({
+      success: true,
+      message: "Password set successfully",
+      data: updatedPartner,
+      token,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -507,7 +515,6 @@ export const setPasswordLink = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const updatePartnerByAdmin = async (
   req: Request,

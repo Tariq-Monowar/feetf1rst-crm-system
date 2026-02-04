@@ -3,7 +3,8 @@ import { verifyUser } from "../../../middleware/verifyUsers";
 import { 
   getFeatureAccess, 
   manageFeatureAccess,
-  partnerFeatureAccess
+  partnerFeatureAccess,
+  // getAllAbleFeatures
 } from "./feature_access.controllers";
 
 const router = express.Router();
@@ -20,4 +21,6 @@ router.get(
   verifyUser("PARTNER"),
   partnerFeatureAccess
 );
+
+// router.get("/get-all-able-features", getAllAbleFeatures);
 export default router;

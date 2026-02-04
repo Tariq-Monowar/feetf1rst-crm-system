@@ -82,12 +82,19 @@ const downloadImage = (url: string): Promise<Buffer> => {
 
 export const sendPartnershipWelcomeEmail = async (
   email: string,
-  password: string,
-  name?: string,
-  phone?: string
+  setPasswordLink: string,
+  busnessName?: string | null,
+  vatNumber?: string | null,
+  mainLocation?: string | null
 ): Promise<void> => {
   try {
-    const htmlContent = partnershipWelcomeEmail(email, password, name, phone);
+    const htmlContent = partnershipWelcomeEmail(
+      email,
+      setPasswordLink,
+      busnessName,
+      vatNumber,
+      mainLocation
+    );
     const logoUrl = "https://i.ibb.co/Dftw5sbd/feet-first-white-logo-2-1.png";
     let logoBuffer: Buffer | null = null;
 
