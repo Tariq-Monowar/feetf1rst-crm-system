@@ -653,12 +653,10 @@ export const getAllPartners = async (req: Request, res: Response) => {
   }
 };
 
-export const checkAuthStatus = async (req, res) => {
+export const checkAuthStatus = async (req: Request, res: Response) => {
   try {
-    // req.user is set by verifyUser middleware
     const userId = req.user?.id;
     const userRole = req.user?.role;
-    console.log(userId, userRole);
 
     if (!userId) {
       return res.status(401).json({
@@ -669,7 +667,6 @@ export const checkAuthStatus = async (req, res) => {
 
     let user;
     if (userRole === "EMPLOYEE") {
-      // Fetch employee with partner data
       user = await prisma.employees.findUnique({
         where: { id: userId },
         select: {
@@ -696,26 +693,31 @@ export const checkAuthStatus = async (req, res) => {
         },
       });
     } else {
-      // Fetch user (partner/admin)
+      // PARTNER and ADMIN: all User fields (except password) + all accountInfo fields
       user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
           id: true,
+          partnerId: true,
           name: true,
           email: true,
           image: true,
           role: true,
+          phone: true,
+          absenderEmail: true,
           busnessName: true,
           hauptstandort: true,
-          absenderEmail: true,
-          phone: true,
+          createdAt: true,
+          updatedAt: true,
           accountInfos: {
             select: {
-              bankInfo: true,
-              barcodeLabel: true,
-              two_factor_auth: true,
+              id: true,
               vat_country: true,
               vat_number: true,
+              barcodeLabel: true,
+              bankInfo: true,
+              two_factor_auth: true,
+              userId: true,
             },
           },
         },
@@ -729,9 +731,8 @@ export const checkAuthStatus = async (req, res) => {
       });
     }
 
-    // Format response based on user type
     if (userRole === "EMPLOYEE") {
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         user: {
           id: user.id,
@@ -745,20 +746,51 @@ export const checkAuthStatus = async (req, res) => {
           partner: user.user || null,
         },
       });
-    } else {
-      const accountInfo = (user as any).accountInfos?.[0] || null;
-      res.status(200).json({
-        success: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image || null,
-          role: user.role,
-          accountInfo: accountInfo,
-        },
-      });
     }
+
+    const u = user as {
+      id: string;
+      partnerId: string | null;
+      name: string | null;
+      email: string;
+      image: string | null;
+      role: string;
+      phone: string | null;
+      absenderEmail: string | null;
+      busnessName: string | null;
+      hauptstandort: string[];
+      createdAt: Date;
+      updatedAt: Date;
+      accountInfos: Array<{
+        id: string;
+        vat_country: string | null;
+        vat_number: string | null;
+        barcodeLabel: string | null;
+        bankInfo: unknown;
+        two_factor_auth: boolean;
+        userId: string;
+      }>;
+    };
+    const accountInfo = u.accountInfos?.[0] ?? null;
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: u.id,
+        partnerId: u.partnerId,
+        name: u.name,
+        email: u.email,
+        image: u.image ?? null,
+        role: u.role,
+        phone: u.phone,
+        absenderEmail: u.absenderEmail,
+        busnessName: u.busnessName,
+        hauptstandort: u.hauptstandort,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        accountInfo,
+      },
+    });
   } catch (error) {
     console.error("Auth check error:", error);
     return res.status(500).json({
