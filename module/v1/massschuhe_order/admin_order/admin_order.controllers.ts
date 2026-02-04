@@ -830,6 +830,103 @@ const VALID_CUSTOM_SHAFTS_CATAGOARIES = [
   "Komplettfertigung",
 ] as const;
 
+// Single select shape for getSingleAllAdminOrders – one query fetches all category fields
+const SINGLE_ADMIN_ORDER_SELECT = {
+  id: true,
+  orderNumber: true,
+  other_customer_number: true,
+  other_customer_name: true,
+  customerId: true,
+  invoice: true,
+  totalPrice: true,
+  image3d_1: true,
+  image3d_2: true,
+  status: true,
+  catagoary: true,
+  order_status: true,
+  createdAt: true,
+  updatedAt: true,
+  massschuhe_order_id: true,
+  isCustomeModels: true,
+  Halbprobenerstellung_json: true,
+  Massschafterstellung_json1: true,
+  Massschafterstellung_json2: true,
+  versenden: true,
+  ledertyp_image: true,
+  zipper_image: true,
+  paintImage: true,
+  invoice2: true,
+  maßschaftKollektionId: true,
+  bodenkonstruktion_json: true,
+  staticImage: true,
+  customerName: true,
+  deliveryDate: true,
+  isCustomBodenkonstruktion: true,
+  customer: {
+    select: {
+      id: true,
+      customerNumber: true,
+      vorname: true,
+      nachname: true,
+      email: true,
+      telefon: true,
+      geburtsdatum: true,
+    },
+  },
+  maßschaft_kollektion: {
+    select: {
+      id: true,
+      ide: true,
+      name: true,
+      price: true,
+      image: true,
+      catagoary: true,
+      gender: true,
+      description: true,
+      verschlussart: true,
+    },
+  },
+  customModels: {
+    select: {
+      id: true,
+      custom_models_name: true,
+      custom_models_image: true,
+      custom_models_price: true,
+      custom_models_verschlussart: true,
+      custom_models_gender: true,
+      custom_models_description: true,
+    },
+  },
+  user: {
+    select: {
+      id: true,
+      busnessName: true,
+      email: true,
+      image: true,
+    },
+  },
+  massschuhe_order: {
+    select: {
+      id: true,
+      isPanding: true,
+      arztliche_diagnose: true,
+      delivery_date: true,
+    },
+  },
+  courierContacts: {
+    select: {
+      id: true,
+      address: true,
+      companyName: true,
+      phone: true,
+      email: true,
+      price: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+} as const;
+
 export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -842,8 +939,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const whereCondition: { id: string; catagoary?: (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number] } = { id };
-
+    const where: { id: string; catagoary?: (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number] } = { id };
     if (catagoaryQuery) {
       if (!VALID_CUSTOM_SHAFTS_CATAGOARIES.includes(catagoaryQuery as any)) {
         return res.status(400).json({
@@ -852,227 +948,117 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
           validCatagoaries: [...VALID_CUSTOM_SHAFTS_CATAGOARIES],
         });
       }
-      whereCondition.catagoary = catagoaryQuery as (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number];
+      where.catagoary = catagoaryQuery as (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number];
     }
 
-    const categoryCheck = await prisma.custom_shafts.findUnique({
-      where: whereCondition,
-      select: { catagoary: true },
+    // Single DB query – no separate category check
+    const shaftData: any = await prisma.custom_shafts.findUnique({
+      where,
+      select: SINGLE_ADMIN_ORDER_SELECT,
     });
 
-    if (!categoryCheck) {
+    if (!shaftData) {
       return res.status(404).json({
         success: false,
         message: "Custom shaft not found",
       });
     }
 
-    const commonFields: Record<string, boolean> = {
-      id: true,
-      orderNumber: true,
-      other_customer_number: true,
-      other_customer_name: true,
-      customerId: true,
-      invoice: true,
-      totalPrice: true,
-      image3d_1: true,
-      image3d_2: true,
-      status: true,
-      catagoary: true,
-      order_status: true,
-      createdAt: true,
-      updatedAt: true,
-      partnerId: true,
-      massschuhe_order_id: true,
-      isCustomeModels: true,
-    };
+    const formatImg = (s: string | null | undefined) => (s && String(s).trim()) || null;
+    const cat = shaftData.catagoary;
+    const mo = shaftData.massschuhe_order;
+    const courierContact = shaftData.courierContacts?.[0] ?? null;
 
-    const cat = categoryCheck.catagoary;
-    const selectFields: Record<string, boolean> = { ...commonFields };
-
-    if (cat === "Halbprobenerstellung") {
-      selectFields.Halbprobenerstellung_json = true;
-    } else if (cat === "Massschafterstellung" || cat === "Komplettfertigung") {
-      selectFields.Massschafterstellung_json1 = true;
-      selectFields.Massschafterstellung_json2 = true;
-      selectFields.versenden = true;
-      selectFields.ledertyp_image = true;
-      selectFields.zipper_image = true;
-      selectFields.paintImage = true;
-      selectFields.invoice2 = true;
-      selectFields.maßschaftKollektionId = true;
-    } else if (cat === "Bodenkonstruktion") {
-      selectFields.bodenkonstruktion_json = true;
-      selectFields.staticImage = true;
-      selectFields.customerName = true;
-      selectFields.deliveryDate = true;
-      selectFields.isCustomBodenkonstruktion = true;
-    } else {
-      selectFields.Halbprobenerstellung_json = true;
-      selectFields.Massschafterstellung_json1 = true;
-      selectFields.Massschafterstellung_json2 = true;
-      selectFields.versenden = true;
-      selectFields.ledertyp_image = true;
-      selectFields.zipper_image = true;
-      selectFields.paintImage = true;
-      selectFields.invoice2 = true;
-      selectFields.maßschaftKollektionId = true;
-      selectFields.bodenkonstruktion_json = true;
-      selectFields.staticImage = true;
-      selectFields.customerName = true;
-      selectFields.deliveryDate = true;
-      selectFields.isCustomBodenkonstruktion = true;
-    }
-
-    // Fetch the custom shaft with category-specific fields
-    const customShaft = await prisma.custom_shafts.findUnique({
-      where: whereCondition,
-      select: {
-        ...selectFields,
-        customer: {
-          select: {
-            id: true,
-            customerNumber: true,
-            vorname: true,
-            nachname: true,
-            email: true,
-            telefon: true,
-            ort: true,
-            land: true,
-            straße: true,
-            geburtsdatum: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        maßschaft_kollektion: {
-          select: {
-            id: true,
-            ide: true,
-            name: true,
-            price: true,
-            image: true,
-            catagoary: true,
-            gender: true,
-            description: true,
-            verschlussart: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-        customModels: {
-          select: {
-            id: true,
-            custom_models_name: true,
-            custom_models_image: true,
-            custom_models_price: true,
-            custom_models_verschlussart: true,
-            custom_models_gender: true,
-            custom_models_description: true,
-          },
-        },
-        user: {
-          select: {
-            id: true,
-            busnessName: true,
-            email: true,
-            image: true,
-          },
-        },
-        massschuhe_order: {
-          select: {
-            id: true,
-            isPanding: true,
-          },
-        },
-        courierContacts: {
-          select: {
-            id: true,
-            address: true,
-            companyName: true,
-            phone: true,
-            email: true,
-            price: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
-      },
-    });
-
-    if (!customShaft) {
-      return res.status(404).json({
-        success: false,
-        message: "Custom shaft not found",
-      });
-    }
-
-    const formatImage = (s3Url: string | null | undefined) => (s3Url && String(s3Url).trim()) || null;
-
-    const shaftData: any = customShaft;
-    const formattedShaft: any = {
-      ...shaftData,
-      image3d_1: formatImage(shaftData.image3d_1),
-      image3d_2: formatImage(shaftData.image3d_2),
-      paintImage: formatImage(shaftData.paintImage),
-      invoice: formatImage(shaftData.invoice),
-      invoice2: formatImage(shaftData.invoice2),
-      staticImage: formatImage(shaftData.staticImage),
-      zipper_image: formatImage(shaftData.zipper_image),
-      ledertyp_image: formatImage(shaftData.ledertyp_image),
-      Halbprobenerstellung_json: shaftData.Halbprobenerstellung_json ?? null,
-      Massschafterstellung_json1: shaftData.Massschafterstellung_json1 ?? null,
-      Massschafterstellung_json2: shaftData.Massschafterstellung_json2 ?? null,
-      versenden: shaftData.versenden ?? null,
-      bodenkonstruktion_json: shaftData.bodenkonstruktion_json ?? null,
-      isPanding: shaftData.massschuhe_order?.isPanding ?? false,
+    const base: any = {
+      id: shaftData.id,
+      orderNumber: shaftData.orderNumber,
+      other_customer_number: shaftData.other_customer_number ?? null,
+      other_customer_name: shaftData.other_customer_name ?? null,
+      customerId: shaftData.customerId ?? null,
+      invoice: formatImg(shaftData.invoice),
+      totalPrice: shaftData.totalPrice ?? null,
+      image3d_1: formatImg(shaftData.image3d_1),
+      image3d_2: formatImg(shaftData.image3d_2),
+      status: shaftData.status ?? null,
+      catagoary: shaftData.catagoary ?? null,
+      order_status: shaftData.order_status ?? null,
+      createdAt: shaftData.createdAt ?? null,
+      updatedAt: shaftData.updatedAt ?? null,
+      massschuhe_order_id: shaftData.massschuhe_order_id ?? null,
+      isCustomeModels: shaftData.isCustomeModels ?? false,
+      isPanding: mo?.isPanding ?? false,
       customer: shaftData.customer ?? null,
-      courier_contact: Array.isArray(shaftData.courierContacts) && shaftData.courierContacts.length > 0 ? shaftData.courierContacts[0] : null,
+      courier_contact: courierContact,
     };
 
-    // Format customModels if it exists (it's an array, take the first one)
-    if (shaftData.customModels && Array.isArray(shaftData.customModels) && shaftData.customModels.length > 0) {
-      const customModel: any = shaftData.customModels[0];
-      formattedShaft.custom_models = {
-        ...customModel,
-        custom_models_image: formatImage(customModel.custom_models_image),
-      };
+    // massschuhe_order details – fallback fetch only when relation missing
+    if (shaftData.massschuhe_order_id) {
+      let orderData = mo;
+      if (!orderData) {
+        orderData = await prisma.massschuhe_order.findUnique({
+          where: { id: shaftData.massschuhe_order_id },
+          select: { delivery_date: true, arztliche_diagnose: true },
+        });
+      }
+      base.massschuhe_order = orderData
+        ? { delivery_date: orderData.delivery_date ?? null, arztliche_diagnose: orderData.arztliche_diagnose ?? null }
+        : null;
     } else {
-      formattedShaft.custom_models = null;
+      base.massschuhe_order = null;
     }
 
-    // Format maßschaft_kollektion if it exists
-    if (shaftData.maßschaft_kollektion) {
-      const kollektion: any = shaftData.maßschaft_kollektion;
-      formattedShaft.maßschaft_kollektion = {
-        ...kollektion,
-        image: formatImage(kollektion.image),
-      };
+    // Category-specific fields only
+    if (cat === "Halbprobenerstellung") {
+      base.Halbprobenerstellung_json = shaftData.Halbprobenerstellung_json ?? null;
+    } else if (cat === "Massschafterstellung" || cat === "Komplettfertigung") {
+      base.Massschafterstellung_json1 = shaftData.Massschafterstellung_json1 ?? null;
+      base.Massschafterstellung_json2 = shaftData.Massschafterstellung_json2 ?? null;
+      base.versenden = shaftData.versenden ?? null;
+      base.ledertyp_image = formatImg(shaftData.ledertyp_image);
+      base.zipper_image = formatImg(shaftData.zipper_image);
+      base.paintImage = formatImg(shaftData.paintImage);
+      base.invoice2 = formatImg(shaftData.invoice2);
+      base.maßschaftKollektionId = shaftData.maßschaftKollektionId ?? null;
+    } else if (cat === "Bodenkonstruktion") {
+      base.bodenkonstruktion_json = shaftData.bodenkonstruktion_json ?? null;
+      base.staticImage = formatImg(shaftData.staticImage);
+      base.customerName = shaftData.customerName ?? null;
+      base.deliveryDate = shaftData.deliveryDate ?? null;
+      base.isCustomBodenkonstruktion = shaftData.isCustomBodenkonstruktion ?? false;
     } else {
-      formattedShaft.maßschaft_kollektion = null;
+      base.Halbprobenerstellung_json = shaftData.Halbprobenerstellung_json ?? null;
+      base.Massschafterstellung_json1 = shaftData.Massschafterstellung_json1 ?? null;
+      base.Massschafterstellung_json2 = shaftData.Massschafterstellung_json2 ?? null;
+      base.versenden = shaftData.versenden ?? null;
+      base.ledertyp_image = formatImg(shaftData.ledertyp_image);
+      base.zipper_image = formatImg(shaftData.zipper_image);
+      base.paintImage = formatImg(shaftData.paintImage);
+      base.invoice2 = formatImg(shaftData.invoice2);
+      base.maßschaftKollektionId = shaftData.maßschaftKollektionId ?? null;
+      base.bodenkonstruktion_json = shaftData.bodenkonstruktion_json ?? null;
+      base.staticImage = formatImg(shaftData.staticImage);
+      base.customerName = shaftData.customerName ?? null;
+      base.deliveryDate = shaftData.deliveryDate ?? null;
+      base.isCustomBodenkonstruktion = shaftData.isCustomBodenkonstruktion ?? false;
     }
 
-    // Format partner (user) if it exists
-    if (shaftData.user) {
-      const user: any = shaftData.user;
-      formattedShaft.partner = {
-        ...user,
-        image: formatImage(user.image),
-      };
-    } else {
-      formattedShaft.partner = null;
-    }
+    const cm = shaftData.customModels?.[0];
+    base.custom_models = cm
+      ? { ...cm, custom_models_image: formatImg(cm.custom_models_image) }
+      : null;
 
-    delete formattedShaft.user;
-    delete formattedShaft.massschuhe_order;
-    delete formattedShaft.courierContacts;
-    delete formattedShaft.staticName;
-    delete formattedShaft.description;
+    const kol = shaftData.maßschaft_kollektion;
+    base.maßschaft_kollektion = kol
+      ? { ...kol, image: formatImg(kol.image) }
+      : null;
+
+    const user = shaftData.user;
+    base.partner = user ? { ...user, image: formatImg(user.image) } : null;
 
     res.status(200).json({
       success: true,
       message: "Custom shaft fetched successfully",
-      data: formattedShaft,
+      data: base,
     });
   } catch (error: any) {
     console.error("Get Single Custom Shaft Error:", error);
