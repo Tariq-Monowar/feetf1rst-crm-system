@@ -284,6 +284,147 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
   }
 };
 
+// Admin only: update partner info from User + accountInfo (phone, busnessName, email, image, vat_number, vat_country, bankInfo). No location. Partial update.
+export const updatePartnerInfo = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user;
+    const {
+      name,
+      email,
+      phone,
+      busnessName,
+      vat_number,
+      vat_country,
+      bankName,
+      bankNumber,
+    } = req.body;
+
+    const newImage = req.file;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: String(id) },
+      include: { accountInfos: { take: 1 } },
+    });
+
+    if (!existingUser || existingUser.role !== "PARTNER") {
+      if (newImage?.location) deleteFileFromS3(newImage.location);
+      return res.status(404).json({ message: "Partner not found" });
+    }
+
+    if (newImage && existingUser.image?.startsWith("http")) {
+      deleteFileFromS3(existingUser.image);
+    }
+
+    const userData: {
+      email?: string;
+      phone?: string;
+      busnessName?: string;
+      image?: string;
+    } = {};
+    if (email !== undefined) userData.email = email;
+    if (phone !== undefined) userData.phone = phone;
+    if (busnessName !== undefined) userData.busnessName = busnessName;
+    if (newImage) userData.image = newImage.location;
+
+    if (Object.keys(userData).length > 0) {
+      await prisma.user.update({
+        where: { id: String(id) },
+        data: userData,
+      });
+    }
+
+    const accountInfoFieldsSent =
+      vat_number !== undefined ||
+      vat_country !== undefined ||
+      bankName !== undefined ||
+      bankNumber !== undefined ||
+      name !== undefined;
+
+    if (accountInfoFieldsSent) {
+      const primaryAccountInfo = existingUser.accountInfos?.[0];
+      const vatValue =
+        vat_number !== undefined
+          ? vat_number != null && String(vat_number).trim() !== ""
+            ? String(vat_number).trim()
+            : null
+          : primaryAccountInfo?.vat_number ?? null;
+      const vatCountryValue =
+        vat_country !== undefined
+          ? vat_country != null && String(vat_country).trim() !== ""
+            ? String(vat_country).trim()
+            : null
+          : primaryAccountInfo?.vat_country ?? null;
+
+      const currentBankInfo = (primaryAccountInfo?.bankInfo as Record<string, unknown>) || {};
+      const bankInfoUpdate: { bankName?: string | null; bankNumber?: string | null } = {};
+      if (bankName !== undefined) bankInfoUpdate.bankName = bankName ?? null;
+      if (bankNumber !== undefined) bankInfoUpdate.bankNumber = bankNumber ?? null;
+      const mergedBankInfo =
+        Object.keys(bankInfoUpdate).length > 0
+          ? {
+              bankName: bankInfoUpdate.bankName ?? (currentBankInfo.bankName as string) ?? null,
+              bankNumber: bankInfoUpdate.bankNumber ?? (currentBankInfo.bankNumber as string) ?? null,
+            }
+          : null;
+
+      if (primaryAccountInfo) {
+        const updateData: {
+          vat_number?: string | null;
+          vat_country?: string | null;
+          bankInfo?: { bankName: string | null; bankNumber: string | null };
+        } = {};
+        if (vat_number !== undefined) updateData.vat_number = vatValue;
+        if (vat_country !== undefined) updateData.vat_country = vatCountryValue;
+        if (mergedBankInfo) updateData.bankInfo = mergedBankInfo;
+
+        if (Object.keys(updateData).length > 0) {
+          await prisma.accountInfo.update({
+            where: { id: primaryAccountInfo.id },
+            data: updateData,
+          });
+        }
+      } else {
+        await prisma.accountInfo.create({
+          data: {
+            userId: String(id),
+            vat_number: vatValue,
+            vat_country: vatCountryValue,
+            ...(mergedBankInfo && { bankInfo: mergedBankInfo }),
+          },
+        });
+      }
+    }
+
+    const updated = await prisma.user.findUnique({
+      where: { id: String(id) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        busnessName: true,
+        image: true,
+        accountInfos: {
+          select: { vat_number: true, vat_country: true, bankInfo: true },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Partner info updated successfully",
+      user: updated,
+    });
+  } catch (error) {
+    if (req.file?.location) deleteFileFromS3(req.file.location);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : error,
+    });
+  }
+};
+
 export const getAllPartners = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;

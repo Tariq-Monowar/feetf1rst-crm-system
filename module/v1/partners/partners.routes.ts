@@ -2,6 +2,7 @@ import express from "express";
 import {
   createPartnership,
   updatePartnerProfile,
+  updatePartnerInfo,
   getAllPartners,
   getPartnerById,
   updatePartnerByAdmin,
@@ -29,6 +30,13 @@ router.patch(
   updatePartnerProfile
 );
 
+router.patch(
+  "/update-partner-info",
+  verifyUser("ADMIN", "PARTNER"),
+  upload.single("image"),
+  updatePartnerInfo
+);
+
 router.post("/create", verifyUser("ADMIN"), upload.single("image"), createPartnership);
 router.get("/get-partner-by-id/:id", verifyUser("ADMIN"), getPartnerById);
 router.patch("/set-password/:id", setPasswordLink);
@@ -39,6 +47,8 @@ router.get("/get-partner-settings", verifyUser("PARTNER"), getPartnerSettings);
 router.get("/", verifyUser("ADMIN"), getAllPartners);
 
 router.get("/:id", verifyUser("ADMIN"), getPartnerById);
+
+
 
 router.put(
   "/update/:id",
