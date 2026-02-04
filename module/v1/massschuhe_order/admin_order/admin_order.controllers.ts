@@ -693,7 +693,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       "Halbprobenerstellung",
       "Massschafterstellung",
       "Bodenkonstruktion",
-      "row",
+      "Komplettfertigung",
     ] as const;
 
     // Validate status
@@ -714,7 +714,9 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Apply filters
+    // Always ignore canceled orders
+    whereCondition.order_status = { not: "canceled" };
+
     if (status) {
       whereCondition.status = status;
     }
@@ -772,6 +774,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         orderNumber: true,
         catagoary: true,
         status: true,
+        order_status: true,
         totalPrice: true,
         other_customer_number: true,
         createdAt: true,
