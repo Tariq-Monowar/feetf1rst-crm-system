@@ -18,17 +18,20 @@ import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
-router.post("/manage-partner-settings", verifyUser("PARTNER"), managePartnerSettings);
-router.get("/get-partner-settings", verifyUser("PARTNER"), getPartnerSettings);
 
-router.post("/create", verifyUser("ADMIN"), upload.single("image"), createPartnership);
+
 
 router.patch(
-  "/update-partner-profile",
-  verifyUser("ADMIN", "PARTNER"),
+  "/update-partner-profile/:id",
+  verifyUser("ADMIN"),
   upload.single("image"),
   updatePartnerProfile
 );
+
+router.post("/create", verifyUser("ADMIN"), upload.single("image"), createPartnership);
+
+router.post("/manage-partner-settings", verifyUser("PARTNER"), managePartnerSettings);
+router.get("/get-partner-settings", verifyUser("PARTNER"), getPartnerSettings);
 
 router.get("/", verifyUser("ADMIN"), getAllPartners);
 

@@ -16,7 +16,7 @@ model User {
   name String?
 
   email    String  @unique
-  password String
+  password String?
   image    String?
   role     Role    @default(ADMIN)
 
@@ -27,6 +27,8 @@ model User {
 
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
+
+
 
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt

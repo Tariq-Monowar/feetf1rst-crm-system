@@ -12,215 +12,244 @@ import validator from "validator";
 
 const prisma = new PrismaClient();
 
+const BARCODE_PREFIX = "FF";
 
-// • Company / Business Name
-// • Main location / Head office address
-// • VAT ID / Tax number (optional depending on country, but recommended)
-// • Email (login +
+/** Next partner account number (001, 002, ...). Same logic as admin_order_transitions order number. */
+const generateNextPartnerAccountNumber = async (): Promise<string> => {
+  const result = await prisma.$queryRaw<Array<{ partnerId: string }>>`
+    SELECT "partnerId"
+    FROM "users"
+    WHERE role = 'PARTNER'
+      AND "partnerId" IS NOT NULL
+      AND "partnerId" ~ '^[0-9]+$'
+    ORDER BY CAST("partnerId" AS INTEGER) DESC
+    LIMIT 1
+  `;
+  if (!result?.length || !result[0]?.partnerId) {
+    return "001";
+  }
+  const next = parseInt(result[0].partnerId, 10) + 1;
+  return String(next).padStart(3, "0");
+};
 
+/** barcodeLabel = "FF-{first 3 chars of busnessName uppercase}-{accountNumber}" e.g. FF-LAX-002 */
+const buildBarcodeLabel = (busnessName: string, accountNumber: string): string => {
+  const prefix = (busnessName || "")
+    .trim()
+    .slice(0, 3)
+    .toUpperCase()
+    .padEnd(3, "X");
+  return `${BARCODE_PREFIX}-${prefix}-${accountNumber}`;
+};
+
+// Create partner: required = email, busnessName, mainLocation (address). Optional = vat_number. Sets partnerId (001, 002...) and accountInfo.barcodeLabel (FF-XXX-001).
 export const createPartnership = async (req: Request, res: Response) => {
   try {
     const {
       email,
-      password,
-      name,
-      phone,
-      absenderEmail,
-      bankName,
-      bankNumber,
       busnessName,
-      hauptstandort,
+      mainLocation,
+      locationDescription,
+      vat_number,
     } = req.body;
+
+    const missingFields = ["email", "busnessName", "mainLocation"].filter(
+      (field) => !req.body[field]
+    );
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
 
     const newImage = req.file;
 
-    const missingField = ["email", "password"].find(
-      (field) => !req.body[field]
-    );
-
-    if (missingField) {
-      res.status(400).json({
-        message: `${missingField} is required!`,
-      });
+    if (!validator.isEmail(email)) {
+      res.status(400).json({ message: "Invalid email format." });
       return;
     }
 
-    // Check if email exists in user table
-    const existingPartnership = await prisma.user.findUnique({
-      where: { email },
-    });
+    const emailTaken = await prisma.user.findUnique({ where: { email } });
 
-    if (existingPartnership) {
-      res.status(400).json({
-        message: "Email already exists",
-      });
+    if (emailTaken) {
+      res.status(400).json({ message: "Email already exists." });
       return;
     }
 
-    // Check if email exists in employees table
-    const existingEmployee = await prisma.employees.findFirst({
-      where: { email },
-    });
+    const vatValue =
+      vat_number != null && String(vat_number).trim() !== ""
+        ? String(vat_number).trim()
+        : null;
 
-    if (existingEmployee) {
-      res.status(400).json({
-        message: "Email already exists as an employee",
-      });
-      return;
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const parsedHauptstandort: string[] | undefined = Array.isArray(
-      hauptstandort
-    )
-      ? (hauptstandort as string[])
-      : typeof hauptstandort === "string" && hauptstandort.trim().length > 0
-      ? hauptstandort.split(",").map((s: string) => s.trim()).filter(Boolean)
-      : undefined;
+    const accountNumber = await generateNextPartnerAccountNumber();
+    const barcodeLabel = buildBarcodeLabel(busnessName, accountNumber);
 
     const partnership = await prisma.user.create({
       data: {
         email,
-        password: hashedPassword,
         role: "PARTNER",
-        name: name ?? undefined,
-        phone: phone ?? undefined,
-        absenderEmail: absenderEmail ?? undefined,
-        busnessName: busnessName ?? undefined,
-        hauptstandort: parsedHauptstandort ?? [],
+        partnerId: accountNumber,
+        busnessName,
+        hauptstandort: [],
         image: newImage ? newImage.location : undefined,
         accountInfos: {
+          create: { vat_number: vatValue, barcodeLabel },
+        },
+        storeLocations: {
           create: {
-            bankInfo: (bankName || bankNumber) ? {
-              bankName: bankName ?? null,
-              bankNumber: bankNumber ?? null,
-            } : undefined,
+            address: mainLocation,
+            description: locationDescription,
+            isPrimary: true,
           },
         },
       },
-      include: {
-        accountInfos: true,
+      select: {
+        id: true,
+        email: true,
+        partnerId: true,
+        busnessName: true,
+        image: true,
+        accountInfos: {
+          select: {
+            vat_number: true,
+            barcodeLabel: true,
+          },
+        },
+        storeLocations: {
+          select: {
+            address: true,
+            description: true,
+            isPrimary: true,
+          },
+        },
       },
     });
 
-    // Send welcome email with credentials
-    sendPartnershipWelcomeEmail(email, password, name, phone);
+    sendPartnershipWelcomeEmail(email, "", undefined, undefined);
 
     res.status(201).json({
       success: true,
       message: "Partnership created successfully",
-      partnership: {
-        ...partnership,
-        image: partnership.image || null,
-      },
+      data: partnership,
     });
   } catch (error) {
     console.error("Partnership creation error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error,
-    });
+    res
+      .status(500)
+      .json({ success: false, message: "Something went wrong", error });
   }
 };
 
+// Admin only: update a partner's profile. Partial update — only sent fields are changed.
 export const updatePartnerProfile = async (req: Request, res: Response) => {
   try {
-    const { id } = req.user;
+    const { id } = req.params; // partner id (admin updates this partner)
     const {
-      name,
-      phone,
-      absenderEmail,
-      bankName,
-      bankNumber,
+      email,
       busnessName,
-      hauptstandort,
+      mainLocation,
+      locationDescription,
+      vat_number,
     } = req.body;
-    const newImage = req.file;
 
-    
+    const newImage = req.file;
 
     const existingUser = await prisma.user.findUnique({
       where: { id: String(id) },
+      include: {
+        storeLocations: { where: { isPrimary: true }, take: 1 },
+        accountInfos: { take: 1 },
+      },
     });
 
-    if (!existingUser) {
-      // cleanup uploaded image from S3 if user doesn't exist (fire-and-forget, no await)
-      if (newImage?.location) {
-        deleteFileFromS3(newImage.location);
-      }
-      return res.status(404).json({ message: "User not found" });
+    if (!existingUser || existingUser.role !== "PARTNER") {
+      if (newImage?.location) deleteFileFromS3(newImage.location);
+      return res.status(404).json({ message: "Partner not found" });
     }
 
-    // remove old image from S3 if new one is uploaded (fire-and-forget, no await)
-    if (newImage && existingUser.image && existingUser.image.startsWith("http")) {
+    if (newImage && existingUser.image?.startsWith("http")) {
       deleteFileFromS3(existingUser.image);
     }
 
-    const user = await prisma.user.update({
-      where: { id: String(id) },
-      data: {
-        name: name || existingUser.name,
-        image: newImage ? newImage.location : existingUser.image,
-        phone: phone || existingUser.phone,
-        absenderEmail: absenderEmail || existingUser.absenderEmail,
-        busnessName: busnessName || existingUser.busnessName,
-        hauptstandort: hauptstandort || existingUser.hauptstandort,
-      },
-      include: {
-        accountInfos: true,
-      },
-    });
+    // 1. Update user — only fields that were sent
+    const userData: { email?: string; busnessName?: string; image?: string } = {};
+    if (email !== undefined) userData.email = email;
+    if (busnessName !== undefined) userData.busnessName = busnessName;
+    if (newImage) userData.image = newImage.location;
 
-    // Update or create accountInfo if bankName or bankNumber is provided
-    if (bankName !== undefined || bankNumber !== undefined) {
-      const existingAccountInfo = await (prisma as any).accountInfo.findFirst({
-        where: { userId: String(id) },
+    if (Object.keys(userData).length > 0) {
+      await prisma.user.update({
+        where: { id: String(id) },
+        data: userData,
       });
+    }
 
-      const currentBankInfo = existingAccountInfo?.bankInfo || {};
-      const bankInfoUpdate = {
-        bankName: bankName !== undefined ? bankName : currentBankInfo.bankName ?? null,
-        bankNumber: bankNumber !== undefined ? bankNumber : currentBankInfo.bankNumber ?? null,
-      };
+    const primaryLocation = existingUser.storeLocations?.[0];
 
-      if (existingAccountInfo) {
-        await (prisma as any).accountInfo.update({
-          where: { id: existingAccountInfo.id },
-          data: { bankInfo: bankInfoUpdate },
+    // 2. Update or create primary store_location — only if location fields were sent
+    const locationFieldsSent = mainLocation !== undefined || locationDescription !== undefined;
+    if (locationFieldsSent) {
+      if (primaryLocation) {
+        const locationData: { address?: string; description?: string } = {};
+        if (mainLocation !== undefined) locationData.address = mainLocation;
+        if (locationDescription !== undefined) locationData.description = locationDescription;
+        await prisma.store_location.update({
+          where: { id: primaryLocation.id },
+          data: locationData,
         });
       } else {
-        await (prisma as any).accountInfo.create({
+        await prisma.store_location.create({
           data: {
-            userId: String(id),
-            bankInfo: bankInfoUpdate,
+            partnerId: String(id),
+            address: mainLocation ?? null,
+            description: locationDescription ?? null,
+            isPrimary: true,
           },
         });
       }
     }
 
-    // Fetch updated accountInfo
-    const accountInfo = await (prisma as any).accountInfo.findFirst({
-      where: { userId: String(id) },
+    // 3. Update or create accountInfo — only if vat_number was sent
+    if (vat_number !== undefined) {
+      const vatValue =
+        vat_number != null && String(vat_number).trim() !== ""
+          ? String(vat_number).trim()
+          : null;
+      const primaryAccountInfo = existingUser.accountInfos?.[0];
+      if (primaryAccountInfo) {
+        await prisma.accountInfo.update({
+          where: { id: primaryAccountInfo.id },
+          data: { vat_number: vatValue },
+        });
+      } else {
+        await prisma.accountInfo.create({
+          data: { userId: String(id), vat_number: vatValue },
+        });
+      }
+    }
+
+    const updated = await prisma.user.findUnique({
+      where: { id: String(id) },
+      select: {
+        id: true,
+        email: true,
+        busnessName: true,
+        image: true,
+        storeLocations: {
+          select: { address: true, description: true, isPrimary: true },
+        },
+        accountInfos: { select: { vat_number: true } },
+      },
     });
-    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
 
     return res.status(200).json({
       success: true,
       message: "Partner profile updated successfully",
-      user: {
-        ...user,
-        image: user.image || null,
-        bankName: bankInfo?.bankName || null,
-        bankNumber: bankInfo?.bankNumber || null,
-      },
+      user: updated,
     });
   } catch (error) {
-    // cleanup uploaded image from S3 if error occurs (fire-and-forget, no await)
-    if (req.file?.location) {
-      deleteFileFromS3(req.file.location);
-    }
-
+    if (req.file?.location) deleteFileFromS3(req.file.location);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -299,10 +328,13 @@ export const getAllPartners = async (req: Request, res: Response) => {
 
     const partnersWithImageUrls = partners.map((partner) => {
       const accountInfo = partner.accountInfos?.[0];
-      const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
+      const bankInfo = accountInfo?.bankInfo as {
+        bankName?: string;
+        bankNumber?: string;
+      } | null;
       return {
-      ...partner,
-      image: partner.image || null,
+        ...partner,
+        image: partner.image || null,
         bankName: bankInfo?.bankName || null,
         bankNumber: bankInfo?.bankNumber || null,
         barcodeLabel: accountInfo?.barcodeLabel || null,
@@ -338,6 +370,11 @@ export const getPartnerById = async (req: Request, res: Response) => {
       where: { id, role: "PARTNER" },
       include: {
         accountInfos: true,
+        storeLocations: {
+          where: { isPrimary: true },
+          take: 1,
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
@@ -349,9 +386,12 @@ export const getPartnerById = async (req: Request, res: Response) => {
       return;
     }
 
-    // Extract bankInfo from accountInfos
     const accountInfo = partner.accountInfos?.[0];
-    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
+    const bankInfo = accountInfo?.bankInfo as {
+      bankName?: string;
+      bankNumber?: string;
+    } | null;
+    const primaryLocation = partner.storeLocations?.[0];
 
     res.status(200).json({
       success: true,
@@ -363,6 +403,7 @@ export const getPartnerById = async (req: Request, res: Response) => {
         barcodeLabel: accountInfo?.barcodeLabel || null,
         vat_country: accountInfo?.vat_country || null,
         vat_number: accountInfo?.vat_number || null,
+        mainLocation: primaryLocation?.address ?? null,
       },
     });
   } catch (error) {
@@ -390,6 +431,9 @@ export const updatePartnerByAdmin = async (
     busnessName,
     hauptstandort,
     role,
+    vat_number,
+    vat_country,
+    mainLocation,
   } = req.body;
   const newImage = req.file;
 
@@ -427,11 +471,14 @@ export const updatePartnerByAdmin = async (
       }
 
       // Check if email exists in employees table
-      const existingEmployeeEmail = await prisma.employees.findFirst({ where: { email } });
+      const existingEmployeeEmail = await prisma.employees.findFirst({
+        where: { email },
+      });
       if (existingEmployeeEmail) {
-        res
-          .status(400)
-          .json({ success: false, message: "Email already exists as an employee" });
+        res.status(400).json({
+          success: false,
+          message: "Email already exists as an employee",
+        });
         return;
       }
     }
@@ -459,7 +506,10 @@ export const updatePartnerByAdmin = async (
     )
       ? (hauptstandort as string[])
       : typeof hauptstandort === "string" && hauptstandort.trim().length > 0
-      ? hauptstandort.split(",").map((s: string) => s.trim()).filter(Boolean)
+      ? hauptstandort
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
       : undefined;
 
     // Validate role if provided
@@ -484,38 +534,89 @@ export const updatePartnerByAdmin = async (
       },
     });
 
-    // Update or create accountInfo if bankName or bankNumber is provided
-    if (bankName !== undefined || bankNumber !== undefined) {
-      const existingAccountInfo = await (prisma as any).accountInfo.findFirst({
-        where: { userId: id },
-      });
+    const existingAccountInfo = await prisma.accountInfo.findFirst({
+      where: { userId: id },
+    });
 
-      const currentBankInfo = existingAccountInfo?.bankInfo || {};
-      const bankInfoUpdate = {
-        bankName: bankName !== undefined ? bankName : currentBankInfo.bankName ?? null,
-        bankNumber: bankNumber !== undefined ? bankNumber : currentBankInfo.bankNumber ?? null,
-      };
-
-      if (existingAccountInfo) {
-        await (prisma as any).accountInfo.update({
+    if (existingAccountInfo) {
+      const updateData: {
+        bankInfo?: object;
+        vat_number?: string | null;
+        vat_country?: string | null;
+      } = {};
+      if (bankName !== undefined || bankNumber !== undefined) {
+        const currentBankInfo =
+          (existingAccountInfo.bankInfo as Record<string, unknown>) || {};
+        updateData.bankInfo = {
+          bankName:
+            bankName !== undefined
+              ? bankName
+              : (currentBankInfo.bankName as string) ?? null,
+          bankNumber:
+            bankNumber !== undefined
+              ? bankNumber
+              : (currentBankInfo.bankNumber as string) ?? null,
+        };
+      }
+      if (vat_number !== undefined)
+        updateData.vat_number = vat_number === "" ? null : vat_number;
+      if (vat_country !== undefined)
+        updateData.vat_country = vat_country === "" ? null : vat_country;
+      if (Object.keys(updateData).length > 0) {
+        await prisma.accountInfo.update({
           where: { id: existingAccountInfo.id },
-          data: { bankInfo: bankInfoUpdate },
+          data: updateData,
+        });
+      }
+    } else {
+      const createData: {
+        userId: string;
+        bankInfo?: object;
+        vat_number?: string | null;
+        vat_country?: string | null;
+      } = {
+        userId: id,
+      };
+      if (bankName !== undefined || bankNumber !== undefined) {
+        createData.bankInfo = {
+          bankName: bankName ?? null,
+          bankNumber: bankNumber ?? null,
+        };
+      }
+      if (vat_number !== undefined)
+        createData.vat_number = vat_number === "" ? null : vat_number;
+      if (vat_country !== undefined)
+        createData.vat_country = vat_country === "" ? null : vat_country;
+      await prisma.accountInfo.create({ data: createData });
+    }
+
+    if (mainLocation !== undefined) {
+      const primaryStore = await prisma.store_location.findFirst({
+        where: { partnerId: id, isPrimary: true },
+      });
+      const mainLocationVal = mainLocation === "" ? null : mainLocation;
+      if (primaryStore) {
+        await prisma.store_location.update({
+          where: { id: primaryStore.id },
+          data: { address: mainLocationVal },
         });
       } else {
-        await (prisma as any).accountInfo.create({
-          data: {
-            userId: id,
-            bankInfo: bankInfoUpdate,
-          },
+        await prisma.store_location.create({
+          data: { partnerId: id, address: mainLocationVal, isPrimary: true },
         });
       }
     }
 
-    // Fetch updated accountInfo
-    const accountInfo = await (prisma as any).accountInfo.findFirst({
+    const accountInfo = await prisma.accountInfo.findFirst({
       where: { userId: id },
     });
-    const bankInfo = accountInfo?.bankInfo as { bankName?: string; bankNumber?: string } | null;
+    const primaryLocation = await prisma.store_location.findFirst({
+      where: { partnerId: id, isPrimary: true },
+    });
+    const bankInfo = accountInfo?.bankInfo as {
+      bankName?: string;
+      bankNumber?: string;
+    } | null;
 
     res.status(200).json({
       success: true,
@@ -532,6 +633,9 @@ export const updatePartnerByAdmin = async (
         bankNumber: bankInfo?.bankNumber || null,
         busnessName: updated.busnessName,
         hauptstandort: updated.hauptstandort,
+        vat_number: accountInfo?.vat_number ?? null,
+        vat_country: accountInfo?.vat_country ?? null,
+        mainLocation: primaryLocation?.address ?? null,
       },
     });
   } catch (error) {
@@ -817,64 +921,25 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
-
-
-// model partner_settings {
-//   id String @id @default(uuid())
-
-//   partnerId String @unique
-//   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-//   orthotech Boolean @default(false)
-//   opannrit  Boolean @default(false)
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   @@index([partnerId])
-//   @@index([createdAt])
-//   @@index([updatedAt])
-//   @@map("partner_settings")
-// }
-
-
-
-// model partner_settings {
-//   id String @id @default(uuid())
-
-//   partnerId String @unique
-//   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-//   orthotech Boolean @default(false)
-//   opannrit  Boolean @default(false)
-
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-
-//   @@index([partnerId])
-//   @@index([createdAt])
-//   @@index([updatedAt])
-//   @@map("partner_settings")
-// }
 export const managePartnerSettings = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
     const { orthotech, opannrit } = req.body;
 
     // this orthotech and opannrit are boolean values
-    if (orthotech !== undefined && typeof orthotech !== 'boolean') {
+    if (orthotech !== undefined && typeof orthotech !== "boolean") {
       return res.status(400).json({
         success: false,
         message: "orthotech must be a boolean value",
       });
     }
-    if (opannrit !== undefined && typeof opannrit !== 'boolean') {
+    if (opannrit !== undefined && typeof opannrit !== "boolean") {
       return res.status(400).json({
         success: false,
         message: "opannrit must be a boolean value",
       });
     }
-    
+
     // Validate input
     if (orthotech === undefined && opannrit === undefined) {
       return res.status(400).json({
@@ -886,14 +951,14 @@ export const managePartnerSettings = async (req: Request, res: Response) => {
     const partner = await prisma.user.findUnique({
       where: { id },
     });
-    
+
     if (!partner) {
       return res.status(404).json({
         success: false,
         message: "Partner not found",
       });
     }
-    
+
     if (partner.role !== "PARTNER") {
       return res.status(400).json({
         success: false,
@@ -908,7 +973,8 @@ export const managePartnerSettings = async (req: Request, res: Response) => {
     if (!partnersSettingsModel) {
       return res.status(500).json({
         success: false,
-        message: "Partner settings model not available. Please regenerate Prisma client.",
+        message:
+          "Partner settings model not available. Please regenerate Prisma client.",
         error: "Model not found in Prisma client",
       });
     }
@@ -956,18 +1022,18 @@ export const managePartnerSettings = async (req: Request, res: Response) => {
 export const getPartnerSettings = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    
+
     const partner = await prisma.user.findUnique({
       where: { id },
     });
-    
+
     if (!partner) {
       return res.status(404).json({
         success: false,
         message: "Partner not found",
       });
     }
-    
+
     if (partner.role !== "PARTNER") {
       return res.status(400).json({
         success: false,
@@ -979,7 +1045,8 @@ export const getPartnerSettings = async (req: Request, res: Response) => {
     if (!partnersSettingsModel) {
       return res.status(500).json({
         success: false,
-        message: "Partner settings model not available. Please regenerate Prisma client.",
+        message:
+          "Partner settings model not available. Please regenerate Prisma client.",
         error: "Model not found in Prisma client",
       });
     }
