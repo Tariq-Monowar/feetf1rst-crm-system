@@ -823,10 +823,17 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
   }
 };
 
+const VALID_CUSTOM_SHAFTS_CATAGOARIES = [
+  "Halbprobenerstellung",
+  "Massschafterstellung",
+  "Bodenkonstruktion",
+  "Komplettfertigung",
+] as const;
+
 export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const catagoary = req.query.catagoary as string | undefined;
+    const catagoaryQuery = req.query.catagoary as string | undefined;
 
     if (!id) {
       return res.status(400).json({
@@ -835,29 +842,19 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Build where condition
-    const whereCondition: any = { id };
+    const whereCondition: { id: string; catagoary?: (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number] } = { id };
 
-    // Validate and apply category filter if provided
-    const validCatagoaries = [
-      "Halbprobenerstellung",
-      "Massschafterstellung",
-      "Bodenkonstruktion",
-      "row",
-    ] as const;
-
-    if (catagoary) {
-      if (!validCatagoaries.includes(catagoary as any)) {
+    if (catagoaryQuery) {
+      if (!VALID_CUSTOM_SHAFTS_CATAGOARIES.includes(catagoaryQuery as any)) {
         return res.status(400).json({
           success: false,
           message: "Invalid catagoary value",
-          validCatagoaries: validCatagoaries,
+          validCatagoaries: [...VALID_CUSTOM_SHAFTS_CATAGOARIES],
         });
       }
-      whereCondition.catagoary = catagoary;
+      whereCondition.catagoary = catagoaryQuery as (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number];
     }
 
-    // First, get the category to determine which fields to select
     const categoryCheck = await prisma.custom_shafts.findUnique({
       where: whereCondition,
       select: { catagoary: true },
@@ -870,11 +867,11 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Define common fields (same for all categories)
-    const commonFields: any = {
+    const commonFields: Record<string, boolean> = {
       id: true,
       orderNumber: true,
       other_customer_number: true,
+      other_customer_name: true,
       customerId: true,
       invoice: true,
       totalPrice: true,
@@ -882,6 +879,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       image3d_2: true,
       status: true,
       catagoary: true,
+      order_status: true,
       createdAt: true,
       updatedAt: true,
       partnerId: true,
@@ -889,43 +887,43 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       isCustomeModels: true,
     };
 
-    // Build select fields based on category - include JSON fields
-    let selectFields: any = { ...commonFields };
+    const cat = categoryCheck.catagoary;
+    const selectFields: Record<string, boolean> = { ...commonFields };
 
-    if (categoryCheck.catagoary === "Halbprobenerstellung") {
+    if (cat === "Halbprobenerstellung") {
       selectFields.Halbprobenerstellung_json = true;
-    } else if (categoryCheck.catagoary === "Massschafterstellung") {
+    } else if (cat === "Massschafterstellung" || cat === "Komplettfertigung") {
       selectFields.Massschafterstellung_json1 = true;
       selectFields.Massschafterstellung_json2 = true;
-      selectFields.paintImage = true;
-      selectFields.invoice2 = true;
+      selectFields.versenden = true;
+      selectFields.ledertyp_image = true;
       selectFields.zipper_image = true;
+      selectFields.paintImage = true;
+      selectFields.Mehr_ansehen_image = true;
+      selectFields.invoice2 = true;
       selectFields.maßschaftKollektionId = true;
-    } else if (categoryCheck.catagoary === "Bodenkonstruktion") {
+    } else if (cat === "Bodenkonstruktion") {
       selectFields.bodenkonstruktion_json = true;
       selectFields.staticImage = true;
       selectFields.customerName = true;
       selectFields.deliveryDate = true;
       selectFields.isCustomBodenkonstruktion = true;
-    } else if (categoryCheck.catagoary === "row") {
-      // For row category, include Massschafterstellung fields
-      selectFields.Massschafterstellung_json1 = true;
-      selectFields.Massschafterstellung_json2 = true;
-      selectFields.paintImage = true;
-      selectFields.invoice2 = true;
-      selectFields.zipper_image = true;
-      selectFields.maßschaftKollektionId = true;
     } else {
-      // No category or unknown category - include all JSON fields
       selectFields.Halbprobenerstellung_json = true;
       selectFields.Massschafterstellung_json1 = true;
       selectFields.Massschafterstellung_json2 = true;
-      selectFields.bodenkonstruktion_json = true;
-      selectFields.paintImage = true;
-      selectFields.invoice2 = true;
+      selectFields.versenden = true;
+      selectFields.ledertyp_image = true;
       selectFields.zipper_image = true;
-      selectFields.staticImage = true;
+      selectFields.paintImage = true;
+      selectFields.Mehr_ansehen_image = true;
+      selectFields.invoice2 = true;
       selectFields.maßschaftKollektionId = true;
+      selectFields.bodenkonstruktion_json = true;
+      selectFields.staticImage = true;
+      selectFields.customerName = true;
+      selectFields.deliveryDate = true;
+      selectFields.isCustomBodenkonstruktion = true;
     }
 
     // Fetch the custom shaft with category-specific fields
@@ -978,7 +976,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
         user: {
           select: {
             id: true,
-            name: true,
+            busnessName: true,
             email: true,
             image: true,
           },
@@ -999,31 +997,27 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // Images are already S3 URLs, use directly
-    const formatImage = (s3Url: string | null) => s3Url || null;
+    const formatImage = (s3Url: string | null | undefined) => (s3Url && String(s3Url).trim()) || null;
 
-    // Parse JSON fields if they are strings (like in sendToAdminOrder_1)
-
-    // Format the response
     const shaftData: any = customShaft;
     const formattedShaft: any = {
       ...shaftData,
-      // Format common images
       image3d_1: formatImage(shaftData.image3d_1),
       image3d_2: formatImage(shaftData.image3d_2),
       paintImage: formatImage(shaftData.paintImage),
+      invoice: formatImage(shaftData.invoice),
       invoice2: formatImage(shaftData.invoice2),
       staticImage: formatImage(shaftData.staticImage),
       zipper_image: formatImage(shaftData.zipper_image),
-      // Parse JSON fields if they are strings
-      Halbprobenerstellung_json: shaftData.Halbprobenerstellung_json,
-      Massschafterstellung_json1: shaftData.Massschafterstellung_json1,
-      Massschafterstellung_json2: shaftData.Massschafterstellung_json2,
-      bodenkonstruktion_json: shaftData.bodenkonstruktion_json,
-      // Include isPanding from massschuhe_order relation
-      isPanding: shaftData.massschuhe_order?.isPanding || false,
-      // Format relations
-      customer: shaftData.customer || null,
+      ledertyp_image: formatImage(shaftData.ledertyp_image),
+      Mehr_ansehen_image: formatImage(shaftData.Mehr_ansehen_image),
+      Halbprobenerstellung_json: shaftData.Halbprobenerstellung_json ?? null,
+      Massschafterstellung_json1: shaftData.Massschafterstellung_json1 ?? null,
+      Massschafterstellung_json2: shaftData.Massschafterstellung_json2 ?? null,
+      versenden: shaftData.versenden ?? null,
+      bodenkonstruktion_json: shaftData.bodenkonstruktion_json ?? null,
+      isPanding: shaftData.massschuhe_order?.isPanding ?? false,
+      customer: shaftData.customer ?? null,
     };
 
     // Format customModels if it exists (it's an array, take the first one)
