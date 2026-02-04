@@ -14,7 +14,6 @@ const prisma = new PrismaClient();
 
 const BARCODE_PREFIX = "FF";
 
-/** Next partner account number (001, 002, ...). Same logic as admin_order_transitions order number. */
 const generateNextPartnerAccountNumber = async (): Promise<string> => {
   const result = await prisma.$queryRaw<Array<{ partnerId: string }>>`
     SELECT "partnerId"
@@ -32,7 +31,6 @@ const generateNextPartnerAccountNumber = async (): Promise<string> => {
   return String(next).padStart(3, "0");
 };
 
-/** barcodeLabel = "FF-{first 3 chars of busnessName uppercase}-{accountNumber}" e.g. FF-LAX-002 */
 const buildBarcodeLabel = (
   busnessName: string,
   accountNumber: string
@@ -45,7 +43,6 @@ const buildBarcodeLabel = (
   return `${BARCODE_PREFIX}-${prefix}-${accountNumber}`;
 };
 
-// Create partner: required = email, busnessName, mainLocation (address). Optional = vat_number. Sets partnerId (001, 002...) and accountInfo.barcodeLabel (FF-XXX-001).
 export const createPartnership = async (req: Request, res: Response) => {
   try {
     const {
@@ -418,6 +415,72 @@ export const getPartnerById = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong",
       error,
+    });
+  }
+};
+
+export const setPasswordLink = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body;
+    const partner = await prisma.user.findUnique({
+      where: { id, role: "PARTNER" },
+    });
+    if (!partner) {
+      res.status(404).json({ success: false, message: "Partner not found" });
+      return;
+    }
+
+    // set a password
+    const hashedPassword = await bcrypt.hash(password, 8);
+
+    const updatedPartner = await prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        busnessName: true,
+        phone: true,
+        image: true,
+        accountInfos: {
+          select: {
+            barcodeLabel: true,
+            vat_number: true,
+            vat_country: true,
+            bankInfo: true,
+            two_factor_auth: true,
+          },
+        },
+        storeLocations: {
+          select: {
+            address: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    //generate a token
+    const token = jwt.sign(
+      { id: updatedPartner.id, email: updatedPartner.email, role: "PARTNER" },
+      process.env.JWT_SECRET as string
+    );
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Password set successfully",
+        data: updatedPartner,
+        token,
+      });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : error,
     });
   }
 };

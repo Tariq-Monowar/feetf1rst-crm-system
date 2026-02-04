@@ -11,7 +11,8 @@ import {
   resetPassword,
   changePassword,
   managePartnerSettings,
-  getPartnerSettings
+  getPartnerSettings,
+  setPasswordLink
 } from "./partners.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -29,6 +30,8 @@ router.patch(
 );
 
 router.post("/create", verifyUser("ADMIN"), upload.single("image"), createPartnership);
+router.get("/get-partner-by-id/:id", verifyUser("ADMIN"), getPartnerById);
+router.patch("/set-password/:id", setPasswordLink);
 
 router.post("/manage-partner-settings", verifyUser("PARTNER"), managePartnerSettings);
 router.get("/get-partner-settings", verifyUser("PARTNER"), getPartnerSettings);
