@@ -1465,7 +1465,6 @@ model custom_shafts {
   versenden                  Json?
 
   Massschafterstellung_json2 Json?
-  Mehr_ansehen_image         String?
   invoice2                   String?
 
   //---------------------- fiRST Page------------
@@ -1501,10 +1500,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
-   * //এই পেইজে একটা জুতার তলার ছবি আছে
-   * Mehr_ansehen_image       String?
-   * Mehr_ansehen_title       String?
-   * Mehr_ansehen_description String?
+   *   //এই পেইজে একটা জুতার তলার ছবি আছে
    * hinterkappe String?
    * leder_auswahl       String?
    * leder_auswahl_price Float?
@@ -1570,6 +1566,7 @@ model custom_shafts {
   updatedAt             DateTime                  @updatedAt
   customModels          custom_models[]
   adminOrderTransitions admin_order_transitions[]
+  courierContacts       CourierContact[]
 
   @@index([status]) // স্ট্যাটাস অনুসারে দ্রুত সার্চের জন্য
   @@index([customerId]) // কাস্টমার অনুসারে দ্রুত সার্চের জন্য
@@ -1721,6 +1718,9 @@ model CourierContact {
   orderId String?
   order   massschuhe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
+  custom_shafts_id String?
+  custom_shafts    custom_shafts? @relation(fields: [custom_shafts_id], references: [id], onDelete: SetNull)
+
   customerId String?
   customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
@@ -1732,6 +1732,8 @@ model CourierContact {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([custom_shafts_id])
 }
 
 //==================================Massschuhe Order Ended==========================================

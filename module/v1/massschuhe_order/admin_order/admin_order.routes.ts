@@ -43,6 +43,7 @@ router.post(
     { name: "paintImage", maxCount: 1 },
     { name: "invoice2", maxCount: 1 },
     { name: "zipper_image", maxCount: 1 },
+    { name: "ledertyp_image", maxCount: 1 },
     { name: "custom_models_image", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
   ]),

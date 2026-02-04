@@ -899,7 +899,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       selectFields.ledertyp_image = true;
       selectFields.zipper_image = true;
       selectFields.paintImage = true;
-      selectFields.Mehr_ansehen_image = true;
       selectFields.invoice2 = true;
       selectFields.maßschaftKollektionId = true;
     } else if (cat === "Bodenkonstruktion") {
@@ -916,7 +915,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       selectFields.ledertyp_image = true;
       selectFields.zipper_image = true;
       selectFields.paintImage = true;
-      selectFields.Mehr_ansehen_image = true;
       selectFields.invoice2 = true;
       selectFields.maßschaftKollektionId = true;
       selectFields.bodenkonstruktion_json = true;
@@ -987,6 +985,18 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
             isPanding: true,
           },
         },
+        courierContacts: {
+          select: {
+            id: true,
+            address: true,
+            companyName: true,
+            phone: true,
+            email: true,
+            price: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
       },
     });
 
@@ -1010,7 +1020,6 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       staticImage: formatImage(shaftData.staticImage),
       zipper_image: formatImage(shaftData.zipper_image),
       ledertyp_image: formatImage(shaftData.ledertyp_image),
-      Mehr_ansehen_image: formatImage(shaftData.Mehr_ansehen_image),
       Halbprobenerstellung_json: shaftData.Halbprobenerstellung_json ?? null,
       Massschafterstellung_json1: shaftData.Massschafterstellung_json1 ?? null,
       Massschafterstellung_json2: shaftData.Massschafterstellung_json2 ?? null,
@@ -1018,6 +1027,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       bodenkonstruktion_json: shaftData.bodenkonstruktion_json ?? null,
       isPanding: shaftData.massschuhe_order?.isPanding ?? false,
       customer: shaftData.customer ?? null,
+      courier_contact: Array.isArray(shaftData.courierContacts) && shaftData.courierContacts.length > 0 ? shaftData.courierContacts[0] : null,
     };
 
     // Format customModels if it exists (it's an array, take the first one)
@@ -1053,11 +1063,9 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       formattedShaft.partner = null;
     }
 
-    // Remove user and massschuhe_order fields (we use partner and isPanding instead)
     delete formattedShaft.user;
     delete formattedShaft.massschuhe_order;
-
-    // Remove staticName and description if they exist (removed from sendToAdminOrder_3)
+    delete formattedShaft.courierContacts;
     delete formattedShaft.staticName;
     delete formattedShaft.description;
 

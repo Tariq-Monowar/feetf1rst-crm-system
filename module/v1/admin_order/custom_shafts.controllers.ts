@@ -524,6 +524,7 @@ export const createTustomShafts = async (req, res) => {
     invoice2: getFile("invoice2"),
     invoice: getFile("invoice"),
     zipper_image: getFile("zipper_image"),
+    ledertyp_image: getFile("ledertyp_image"),
     staticImage: getFile("staticImage"),
     other_customer_name: otherName,
     other_customer_number: customer ? String(customer.customerNumber) : null,
@@ -556,6 +557,7 @@ export const createTustomShafts = async (req, res) => {
     invoice2: true,
     invoice: true,
     zipper_image: true,
+    ledertyp_image: true,
     staticImage: true,
     other_customer_name: true,
     other_customer_number: true,
@@ -620,6 +622,7 @@ export const createTustomShafts = async (req, res) => {
       await prisma.courierContact.create({
         data: {
           partnerId: id,
+          custom_shafts_id: customShaft.id,
           address: courierData.address,
           companyName: courierData.companyName,
           phone: courierData.phone,
@@ -643,7 +646,7 @@ export const createTustomShafts = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Unexpected file field: ${err.field || "unknown"}`,
-        allowedFields: ["image3d_1", "image3d_2", "invoice", "paintImage", "invoice2", "zipper_image", "custom_models_image", "staticImage"],
+        allowedFields: ["image3d_1", "image3d_2", "invoice", "paintImage", "invoice2", "zipper_image", "ledertyp_image", "custom_models_image", "staticImage"],
       });
     }
     if (err.code === "P2003") {
