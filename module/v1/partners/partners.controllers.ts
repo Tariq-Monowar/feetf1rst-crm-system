@@ -9,8 +9,12 @@ import {
   sendPartnershipWelcomeEmail,
 } from "../../../utils/emailService.utils";
 import validator from "validator";
+import redis from "../../../config/redis.config";
 
 const prisma = new PrismaClient();
+
+const SET_PASSWORD_KEY_PREFIX = "set-password:";
+const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
 
 const BARCODE_PREFIX = "FF";
 
@@ -125,6 +129,14 @@ export const createPartnership = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // One-time set-password link: store in Redis so link works only once (deleted after password set)
+    await redis.set(
+      `${SET_PASSWORD_KEY_PREFIX}${partnership.id}`,
+      "1",
+      "EX",
+      SET_PASSWORD_TTL_SEC
+    );
 
     sendPartnershipWelcomeEmail(email, "", undefined, undefined);
 
@@ -423,15 +435,25 @@ export const setPasswordLink = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { password } = req.body;
+
     const partner = await prisma.user.findUnique({
-      where: { id, role: "PARTNER" },
+      where: { id },
     });
-    if (!partner) {
+    if (!partner || partner.role !== "PARTNER") {
       res.status(404).json({ success: false, message: "Partner not found" });
       return;
     }
 
-    // set a password
+    const setPasswordKey = `${SET_PASSWORD_KEY_PREFIX}${id}`;
+    const allowed = await redis.get(setPasswordKey);
+    if (!allowed) {
+      res.status(404).json({
+        success: false,
+        message: "This link has already been used or is no longer valid",
+      });
+      return;
+    }
+
     const hashedPassword = await bcrypt.hash(password, 8);
 
     const updatedPartner = await prisma.user.update({
@@ -462,7 +484,8 @@ export const setPasswordLink = async (req: Request, res: Response) => {
       },
     });
 
-    //generate a token
+    await redis.del(setPasswordKey);
+
     const token = jwt.sign(
       { id: updatedPartner.id, email: updatedPartner.email, role: "PARTNER" },
       process.env.JWT_SECRET as string
@@ -484,6 +507,7 @@ export const setPasswordLink = async (req: Request, res: Response) => {
     });
   }
 };
+
 
 export const updatePartnerByAdmin = async (
   req: Request,
