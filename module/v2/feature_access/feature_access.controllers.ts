@@ -170,31 +170,51 @@ const getOrCreateFeatureAccess = async (partnerId: string) => {
 
 export const partnerFeatureAccess = async (req: Request, res: Response) => {
   try {
+    const role = req.user?.role;
     const partnerId = req.user.id;
 
-    const partner = await validatePartner(partnerId);
-    if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
+    if (role === "EMPLOYEE") {
+      const employeeId = req.user.employeeId ?? req.user.id;
+      const employee = await prisma.employees.findFirst({
+        where: { id: employeeId, partnerId },
+      });
+      if (!employee) {
+        return res.status(404).json({ success: false, message: "Employee not found" });
+      }
+
+      const partnerAccess = await getOrCreateFeatureAccess(partnerId);
+      let employeeAccess = await prisma.employee_feature_access.findFirst({
+        where: { employeeId: employee.id, partnerId },
+      });
+      if (!employeeAccess) {
+        const data: any = { employeeId: employee.id, partnerId };
+        FEATURE_KEYS.forEach((k) => (data[k] = !!partnerAccess[k]));
+        employeeAccess = await prisma.employee_feature_access.create({ data });
+      }
+
+      const effective: any = {};
+      FEATURE_KEYS.forEach((k) => (effective[k] = !!partnerAccess[k] && !!employeeAccess[k]));
+
+      return res.status(200).json({
+        success: true,
+        message: "Feature access retrieved successfully",
+        data: convertToJSONFormat(effective),
       });
     }
 
+    const partner = await validatePartner(partnerId);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
     const featureAccess = await getOrCreateFeatureAccess(partnerId);
-    const formattedData = convertToJSONFormat(featureAccess);
-
     res.status(200).json({
       success: true,
       message: "Feature access retrieved successfully",
-      data: formattedData,
+      data: convertToJSONFormat(featureAccess),
     });
   } catch (error: any) {
     console.error("Partner Feature Access error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
   }
 };
 

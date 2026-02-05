@@ -372,7 +372,8 @@ export const getPartnerAvailableFeatures = async (
  */
 export const getMyFeatureAccess = async (req: Request, res: Response) => {
   try {
-    const employeeId = req.user.id;
+    /* EMPLOYEE token: employeeId (loginEmployeeById) or id (loginEmployee) */
+    const employeeId = (req.user as { employeeId?: string; id?: string }).employeeId ?? req.user.id;
 
     const employee = await prisma.employees.findUnique({
       where: { id: employeeId },
