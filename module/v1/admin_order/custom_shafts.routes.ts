@@ -87,7 +87,7 @@ router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleCust
 
 router.patch(
   "/update-status/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateCustomShaftStatus
 );
 
@@ -126,7 +126,7 @@ router.post(
 
 router.get(
   "/mabschaft_kollektion",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllMaßschaftKollektion
 );
 
