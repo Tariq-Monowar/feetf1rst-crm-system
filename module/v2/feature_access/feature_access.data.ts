@@ -174,6 +174,12 @@ export const featureAccessData = [
     ],
   },
   {
+    title: "Account Settings",
+    action: true,
+    path: "/dashboard/account-settings",
+    nested: [],
+  },
+  {
     title: "News & Aktuelles",
     action: true,
     path: "/dashboard/news",
@@ -191,6 +197,7 @@ export const featureAccessData = [
     path: "/dashboard/balance-dashboard",
     nested: [],
   },
+
     /**
    * title: Automatisierte Nachrichten
    * /dashboard/automatisierte-nachrichten

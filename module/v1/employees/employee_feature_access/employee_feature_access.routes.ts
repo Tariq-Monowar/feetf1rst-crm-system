@@ -2,7 +2,7 @@ import express from "express";
 import { verifyUser } from "../../../../middleware/verifyUsers";
 import {
   getPartnerAvailableFeatures,
-  getMyFeatureAccess,
+ 
   getEmployeeFeatureAccess,
   manageEmployeeFeatureAccess,
 } from "./employee_feature_access.controllers";
@@ -16,8 +16,7 @@ router.get(
   getPartnerAvailableFeatures,
 );
 
-// GET: Get current employee's own feature access (use with EMPLOYEE token)
-router.get("/my-access", verifyUser("EMPLOYEE"), getMyFeatureAccess);
+
 
 // GET: Get employee feature access (partner only)
 router.get(

@@ -21,6 +21,7 @@ const defaultEmployeeFeatureAccessData = {
   fusubungen: true,
   musterzettel: true,
   einstellungen: true,
+  account_settings: true,
   news_and_aktuelles: true,
   produktkatalog: true,
   balance: true,
@@ -58,6 +59,7 @@ const defaultPartnerFeatureAccessData = {
   fusubungen: true,
   musterzettel: true,
   einstellungen: true,
+  account_settings: true,
   news_and_aktuelles: true,
   produktkatalog: true,
   balance: true,
@@ -231,6 +233,11 @@ const convertToJSONFormat = (featureAccess: any) => {
       path: "/dashboard/settings",
     },
     {
+      field: "account_settings",
+      title: "Account Settings",
+      path: "/dashboard/account-settings",
+    },
+    {
       field: "news_and_aktuelles",
       title: "News & Aktuelles",
       path: "/dashboard/news",
@@ -366,53 +373,6 @@ export const getPartnerAvailableFeatures = async (
   }
 };
 
-/**
- * Get current employee's own feature access (effective = partner ∩ employee).
- * Use with EMPLOYEE token; same response shape as partner-feature / getEmployeeFeatureAccess.
- */
-export const getMyFeatureAccess = async (req: Request, res: Response) => {
-  try {
-    /* EMPLOYEE token: employeeId (loginEmployeeById) or id (loginEmployee) */
-    const employeeId = (req.user as { employeeId?: string; id?: string }).employeeId ?? req.user.id;
-
-    const employee = await prisma.employees.findUnique({
-      where: { id: employeeId },
-    });
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        message: "Employee not found",
-      });
-    }
-
-    const partnerId = employee.partnerId;
-    const partnerFeatureAccess = await getOrCreatePartnerFeatureAccess(partnerId);
-    const employeeFeatureAccess = await getOrCreateEmployeeFeatureAccess(
-      employeeId,
-      partnerId,
-    );
-
-    const effectiveAccess = getEffectiveFeatureAccess(
-      getFeatureSlice(partnerFeatureAccess as Record<string, unknown>),
-      getFeatureSlice(employeeFeatureAccess as Record<string, unknown>),
-    );
-
-    const formattedData = convertToJSONFormat(effectiveAccess);
-
-    res.status(200).json({
-      success: true,
-      message: "Feature access retrieved successfully",
-      data: formattedData,
-    });
-  } catch (error: any) {
-    console.error("Get My Feature Access error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
-  }
-};
 
 export const getEmployeeFeatureAccess = async (req: Request, res: Response) => {
   try {

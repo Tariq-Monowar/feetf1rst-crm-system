@@ -22,6 +22,7 @@ const defaultFeatureAccessData = {
   fusubungen: true,
   musterzettel: true,
   einstellungen: true,
+  account_settings: true,
   news_and_aktuelles: true,
   produktkatalog: true,
   balance: true,
@@ -296,6 +297,11 @@ function convertToJSONFormat(featureAccess: any) {
       field: "einstellungen",
       title: "Einstellungen",
       path: "/dashboard/settings",
+    },
+    {
+      field: "account_settings",
+      title: "Account Settings",
+      path: "/dashboard/account-settings",
     },
     {
       field: "news_and_aktuelles",

@@ -1764,6 +1764,7 @@ model FeatureAccess {
   fusubungen             Boolean @default(true)
   musterzettel           Boolean @default(true)
   einstellungen          Boolean @default(true)
+  account_settings       Boolean @default(true)
 
   news_and_aktuelles Boolean @default(true)
   produktkatalog     Boolean @default(true)
@@ -1822,6 +1823,7 @@ model employee_feature_access {
   fusubungen             Boolean @default(false)
   musterzettel           Boolean @default(false)
   einstellungen          Boolean @default(false)
+  account_settings       Boolean @default(false)
 
   news_and_aktuelles Boolean @default(false)
   produktkatalog     Boolean @default(false)
