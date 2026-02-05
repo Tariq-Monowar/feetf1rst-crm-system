@@ -5,7 +5,6 @@ import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
-
 // model Employees {
 //   id              String  @id @default(uuid())
 //   accountName     String
@@ -26,7 +25,6 @@ const prisma = new PrismaClient();
 //   @@index([createdAt])
 // }
 
-
 export const createEmployee = async (req: Request, res: Response) => {
   // cleanup files
   const file = req.file as any;
@@ -45,15 +43,11 @@ export const createEmployee = async (req: Request, res: Response) => {
       password,
       financialAccess,
       jobPosition,
-    } =
-      req.body;
+    } = req.body;
 
-
-    const missingField = [
-      "accountName",
-      "employeeName",
-      "password",
-    ].find((field) => !req.body[field]);
+    const missingField = ["accountName", "employeeName", "password"].find(
+      (field) => !req.body[field]
+    );
 
     if (missingField) {
       cleanupFiles();
@@ -63,7 +57,10 @@ export const createEmployee = async (req: Request, res: Response) => {
     }
 
     // Convert financialAccess to boolean
-    const financialAccessBool = financialAccess === true || financialAccess === "true" || financialAccess === 1;
+    const financialAccessBool =
+      financialAccess === true ||
+      financialAccess === "true" ||
+      financialAccess === 1;
 
     const employeeData = {
       accountName,
@@ -167,6 +164,41 @@ export const getAllEmployees = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Get All Employees error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getSingleEmployee = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const existingEmployee = await prisma.employees.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        accountName: true,
+        employeeName: true,
+        email: true,
+        financialAccess: true,
+        jobPosition: true,
+        image: true,
+        role: true,
+      },
+    });
+
+    if (!existingEmployee) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Employee not found" });
+    }
+
+
+  } catch (error) {
+    console.error("Get Single Employee error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
