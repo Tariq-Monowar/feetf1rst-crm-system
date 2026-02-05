@@ -653,22 +653,31 @@ export const getAllPartners = async (req: Request, res: Response) => {
   }
 };
 
+/*
+ * Resolve lookup id from token:
+ * - EMPLOYEE: employeeId (loginEmployeeById) or id (loginEmployee)
+ * - ADMIN/PARTNER: id
+ */
+const getAuthLookupId = (payload: { role?: string; id?: string; employeeId?: string }) => {
+  if (payload?.role === "EMPLOYEE") return payload?.employeeId ?? payload?.id;
+  return payload?.id;
+};
+
 export const checkAuthStatus = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    const userRole = req.user?.role;
+    const role = req.user?.role;
+    const lookupId = getAuthLookupId(req.user as { role?: string; id?: string; employeeId?: string });
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "User not authenticated",
-      });
+    if (!lookupId) {
+      return res.status(401).json({ success: false, message: "User not authenticated" });
     }
 
-    let user;
-    if (userRole === "EMPLOYEE") {
-      user = await prisma.employees.findUnique({
-        where: { id: userId },
+    if (role === "EMPLOYEE") {
+      /*
+       * EMPLOYEE: fetch from employees, return employee + partner
+       */
+      const employee = await prisma.employees.findUnique({
+        where: { id: lookupId },
         select: {
           id: true,
           accountName: true,
@@ -692,110 +701,80 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
           },
         },
       });
-    } else {
-      // PARTNER and ADMIN: all User fields (except password) + all accountInfo fields
-      user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          partnerId: true,
-          name: true,
-          email: true,
-          image: true,
-          role: true,
-          phone: true,
-          absenderEmail: true,
-          busnessName: true,
-          hauptstandort: true,
-          createdAt: true,
-          updatedAt: true,
-          accountInfos: {
-            select: {
-              id: true,
-              vat_country: true,
-              vat_number: true,
-              barcodeLabel: true,
-              bankInfo: true,
-              two_factor_auth: true,
-              userId: true,
-            },
-          },
-        },
-      });
-    }
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    if (userRole === "EMPLOYEE") {
+      if (!employee) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
       return res.status(200).json({
         success: true,
         user: {
-          id: user.id,
-          accountName: user.accountName,
-          employeeName: user.employeeName,
-          email: user.email,
-          image: user.image || null,
-          jobPosition: user.jobPosition,
-          financialAccess: user.financialAccess,
-          role: user.role || "EMPLOYEE",
-          partner: user.user || null,
+          id: employee.id,
+          accountName: employee.accountName,
+          employeeName: employee.employeeName,
+          email: employee.email,
+          image: employee.image ?? null,
+          jobPosition: employee.jobPosition,
+          financialAccess: employee.financialAccess,
+          role: employee.role ?? "EMPLOYEE",
+          partner: employee.user ?? null,
         },
       });
     }
 
-    const u = user as {
-      id: string;
-      partnerId: string | null;
-      name: string | null;
-      email: string;
-      image: string | null;
-      role: string;
-      phone: string | null;
-      absenderEmail: string | null;
-      busnessName: string | null;
-      hauptstandort: string[];
-      createdAt: Date;
-      updatedAt: Date;
-      accountInfos: Array<{
-        id: string;
-        vat_country: string | null;
-        vat_number: string | null;
-        barcodeLabel: string | null;
-        bankInfo: unknown;
-        two_factor_auth: boolean;
-        userId: string;
-      }>;
-    };
-    const accountInfo = u.accountInfos?.[0] ?? null;
-
+    /*
+     * ADMIN/PARTNER: fetch from user + accountInfos, return user + accountInfo
+     */
+    const user = await prisma.user.findUnique({
+      where: { id: lookupId },
+      select: {
+        id: true,
+        partnerId: true,
+        name: true,
+        email: true,
+        image: true,
+        role: true,
+        phone: true,
+        absenderEmail: true,
+        busnessName: true,
+        hauptstandort: true,
+        createdAt: true,
+        updatedAt: true,
+        accountInfos: {
+          select: {
+            id: true,
+            vat_country: true,
+            vat_number: true,
+            barcodeLabel: true,
+            bankInfo: true,
+            two_factor_auth: true,
+            userId: true,
+          },
+        },
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+    const accountInfo = user.accountInfos?.[0] ?? null;
     return res.status(200).json({
       success: true,
       user: {
-        id: u.id,
-        partnerId: u.partnerId,
-        name: u.name,
-        email: u.email,
-        image: u.image ?? null,
-        role: u.role,
-        phone: u.phone,
-        absenderEmail: u.absenderEmail,
-        busnessName: u.busnessName,
-        hauptstandort: u.hauptstandort,
-        createdAt: u.createdAt,
-        updatedAt: u.updatedAt,
+        id: user.id,
+        partnerId: user.partnerId,
+        name: user.name,
+        email: user.email,
+        image: user.image ?? null,
+        role: user.role,
+        phone: user.phone,
+        absenderEmail: user.absenderEmail,
+        busnessName: user.busnessName,
+        hauptstandort: user.hauptstandort,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
         accountInfo,
       },
     });
   } catch (error) {
     console.error("Auth check error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Authentication check failed",
-    });
+    return res.status(500).json({ success: false, message: "Authentication check failed" });
   }
 };
