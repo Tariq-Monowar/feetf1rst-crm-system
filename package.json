@@ -18,8 +18,7 @@
     "order_number:admin_order_transitions": "ts-node scripts/order_number-admin_order_transitions.ts",
     "admin_order_transitions:status": "ts-node scripts/admin_order_transitions-status-complated.ts",
     "fix:orderNumber": "ts-node scripts/fix-orderNumber-custom-shafts.ts",
-    "updater-barcode": "ts-node scripts/updater-barcode.ts",
-    "convert_to_json:geschaeftsstandort": "ts-node scripts/convert-to-json-geschaeftsstandort.ts"
+    "updater-barcode": "ts-node scripts/updater-barcode.ts"
   },
   "keywords": [],
   "author": "",

@@ -9,6 +9,7 @@ import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../../utils/emailService.utils";
+import { getGeschaeftsstandortDisplay } from "../../../../utils/geschaeftsstandort.utils";
 
 const prisma = new PrismaClient();
 
@@ -1524,6 +1525,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderNumber: true,
         orderStatus: true,
         geschaeftsstandort: true,
+        backupGeschaeftsstandort: true,
         barcodeCreatedAt: true,
         createdAt: true,
         updatedAt: true,
@@ -1591,7 +1593,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderNumber: order.orderNumber,
         orderStatus: order.orderStatus,
         completedAt: completedAt, // Time when status changed to "Ausgeführt"
-        partnerAddress: order.geschaeftsstandort,
+        partnerAddress: getGeschaeftsstandortDisplay(order.geschaeftsstandort, order.backupGeschaeftsstandort),
         wohnort: order.wohnort,
       },
     });

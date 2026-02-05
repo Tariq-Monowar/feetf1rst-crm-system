@@ -852,9 +852,10 @@ model customerOrders {
   auftragsDatum      DateTime?
   wohnort            String?
   telefon            String?
-  email              String?
-  geschaeftsstandort Json?
-  mitarbeiter        String?
+  email                     String?
+  geschaeftsstandort         Json?   // { display: string } - location/store name
+  backupGeschaeftsstandort   Json?   // { legacyString: string } - backup of original string before migration
+  mitarbeiter                String?
   fertigstellungBis  DateTime? // pickup date
   versorgung         String?
 

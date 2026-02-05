@@ -4,6 +4,7 @@ import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
 import { deleteFileFromS3, deleteMultipleFilesFromS3, downloadFileFromS3 } from "../../../utils/s3utils";
+import { getGeschaeftsstandortDisplay } from "../../../utils/geschaeftsstandort.utils";
 
 const prisma = new PrismaClient();
 
@@ -2736,6 +2737,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
               createdAt: true,
               bezahlt: true,
               geschaeftsstandort: true,
+              backupGeschaeftsstandort: true,
             },
           },
           massschuheOrders: {
@@ -2839,16 +2841,15 @@ export const filterCustomer = async (req: Request, res: Response) => {
       }
     }
 
-    // Filter by geschaeftsstandort based on latest order's geschaeftsstandort (supports JSON)
+    // Filter by geschaeftsstandort based on latest order's geschaeftsstandort
     if (normalizedGeschaeftsstandort) {
       responseData = responseData.filter((customer) => {
-        const latestOrderGeschaeftsstandort = customer.latestOrder?.geschaeftsstandort;
-        if (latestOrderGeschaeftsstandort == null) return false;
-        const searchable =
-          typeof latestOrderGeschaeftsstandort === "object"
-            ? JSON.stringify(latestOrderGeschaeftsstandort)
-            : String(latestOrderGeschaeftsstandort);
-        return searchable.toLowerCase().includes(normalizedGeschaeftsstandort.toLowerCase());
+        const display = getGeschaeftsstandortDisplay(
+          customer.latestOrder?.geschaeftsstandort,
+          customer.latestOrder?.backupGeschaeftsstandort
+        );
+        if (!display) return false;
+        return display.toLowerCase().includes(normalizedGeschaeftsstandort.toLowerCase());
       });
     }
 
@@ -3096,6 +3097,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
         orderNumber: true,
         createdAt: true,
         geschaeftsstandort: true,
+        backupGeschaeftsstandort: true,
         versorgungId: true,
         Versorgungen: {
           select: {
@@ -3133,7 +3135,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
               id: order.id,
               orderNumber: order.orderNumber,
               createdAt: order.createdAt,
-              filiale: order.geschaeftsstandort ?? null,
+              filiale: getGeschaeftsstandortDisplay(order.geschaeftsstandort, order.backupGeschaeftsstandort) || null,
             },
           });
         }
