@@ -51,22 +51,22 @@ router.get(
   "/einlagen-in-produktion", getEinlagenInProduktion
 )
 
-router.get("/", verifyUser("ADMIN", "PARTNER"), getAllCustomers);
+router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllCustomers);
 
-router.get("/search", verifyUser("ADMIN", "PARTNER"), searchCustomers);
+router.get("/search", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), searchCustomers);
 
-router.get("/filter-customers", verifyUser("ADMIN", "PARTNER"), filterCustomer);
+router.get("/filter-customers", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), filterCustomer);
 
-router.delete("/:id", verifyUser("ADMIN", "PARTNER"), deleteCustomer);
+router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteCustomer);
 
 router.patch(
   "/:id",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   updateCustomer
 );
 router.patch(
   "/:id/special-fields",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateCustomerSpecialFields
 );
 
@@ -84,7 +84,7 @@ router.patch(
 
 router.post(
   "/screener-file/:customerId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "picture_10", maxCount: 1 },
     { name: "picture_23", maxCount: 1 },
@@ -103,7 +103,7 @@ router.post(
 
 router.patch(
   "/update-screener-file/:customerId/:screenerId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "picture_10", maxCount: 1 },
     { name: "picture_23", maxCount: 1 },
@@ -122,7 +122,7 @@ router.patch(
 
 router.delete(
   "/delete-screener-file/:screenerId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteScreenerFile
 );
 
