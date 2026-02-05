@@ -4,7 +4,6 @@ import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
 import { deleteFileFromS3, deleteMultipleFilesFromS3, downloadFileFromS3 } from "../../../utils/s3utils";
-import { getGeschaeftsstandortDisplay } from "../../../utils/geschaeftsstandort.utils";
 
 const prisma = new PrismaClient();
 
@@ -2840,12 +2839,13 @@ export const filterCustomer = async (req: Request, res: Response) => {
       }
     }
 
-    // Filter by geschaeftsstandort based on latest order's geschaeftsstandort
+    // Filter by geschaeftsstandort (JSON in DB: match on title or string value)
     if (normalizedGeschaeftsstandort) {
+      const term = normalizedGeschaeftsstandort.toLowerCase();
       responseData = responseData.filter((customer) => {
-        const display = getGeschaeftsstandortDisplay(customer.latestOrder?.geschaeftsstandort);
-        if (!display) return false;
-        return display.toLowerCase().includes(normalizedGeschaeftsstandort.toLowerCase());
+        const gs = customer.latestOrder?.geschaeftsstandort as { title?: string } | string | null;
+        const str = typeof gs === "object" && gs?.title != null ? gs.title : typeof gs === "string" ? gs : "";
+        return str.toLowerCase().includes(term);
       });
     }
 
@@ -3130,7 +3130,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
               id: order.id,
               orderNumber: order.orderNumber,
               createdAt: order.createdAt,
-              filiale: getGeschaeftsstandortDisplay(order.geschaeftsstandort) || null,
+              filiale: order.geschaeftsstandort,
             },
           });
         }

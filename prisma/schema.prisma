@@ -853,7 +853,7 @@ model customerOrders {
   wohnort            String?
   telefon            String?
   email              String?
-  geschaeftsstandort  Json?   // { title: string, description?: string } - location/store name
+  geschaeftsstandort Json?   // { title: string, description?: string }
   mitarbeiter        String?
   fertigstellungBis  DateTime? // pickup date
   versorgung         String?

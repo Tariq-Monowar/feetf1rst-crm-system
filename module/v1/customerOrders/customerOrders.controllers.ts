@@ -10,7 +10,6 @@ import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../utils/emailService.utils";
-import { toGeschaeftsstandortJson } from "../../../utils/geschaeftsstandort.utils";
 
 const prisma = new PrismaClient();
 
@@ -168,7 +167,7 @@ export const createOrder = async (req: Request, res: Response) => {
       wohnort,
       telefon,
       email: werkstattEmail,
-      geschaeftsstandort: geschaeftsstandortBody,
+      geschaeftsstandort,
       mitarbeiter,
       fertigstellungBis,
       versorgung: werkstattVersorgung,
@@ -294,7 +293,7 @@ export const createOrder = async (req: Request, res: Response) => {
         wohnort: wohnort ?? null,
         telefon: telefon ?? null,
         email: werkstattEmail ?? null,
-        geschaeftsstandort: toGeschaeftsstandortJson(geschaeftsstandortBody) ?? undefined,
+        geschaeftsstandort: geschaeftsstandort ?? null,
         mitarbeiter: mitarbeiter ?? null,
         fertigstellungBis: fertigstellungBis ? new Date(fertigstellungBis) : null,
         versorgung: werkstattVersorgung ?? null,
