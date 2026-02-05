@@ -64,19 +64,19 @@ export const seallingLocationRevenue = async (req: Request, res: Response) => {
 
     // Execute both queries in parallel
     const [insolesResult, shoesResult] = await Promise.all([
-      // Insoles: Group by geschaeftsstandort, calculate revenue and count
+      // Insoles: Group by geschaeftsstandort (JSON), calculate revenue and count
       prisma.$queryRaw<
         Array<{ location: string; revenue: number; count: number }>
       >`
         SELECT 
-          COALESCE("geschaeftsstandort", 'Unknown') as location,
+          COALESCE("geschaeftsstandort"::text, 'Unknown') as location,
           COALESCE(SUM("totalPrice"), 0)::float as revenue,
           COUNT(*)::int as count
         FROM "customerOrders"
         WHERE "partnerId" = ${id}::text
           AND "orderStatus" = 'Ausgeführt'
           AND "geschaeftsstandort" IS NOT NULL
-        GROUP BY "geschaeftsstandort"
+        GROUP BY "geschaeftsstandort"::text
       `,
       // Shoes: Group by filiale, calculate revenue and count
       prisma.$queryRaw<

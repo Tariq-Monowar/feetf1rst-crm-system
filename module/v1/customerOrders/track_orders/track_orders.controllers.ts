@@ -1527,10 +1527,10 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         barcodeCreatedAt: true,
         createdAt: true,
         updatedAt: true,
-
+        wohnort: true,
         customer: {
           select: {
-            vorname: true,
+            vorname: true,     
             nachname: true,
             customerNumber: true,
           },
@@ -1592,6 +1592,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderStatus: order.orderStatus,
         completedAt: completedAt, // Time when status changed to "Ausgeführt"
         partnerAddress: order.geschaeftsstandort,
+        wohnort: order.wohnort,
       },
     });
   } catch (error: any) {

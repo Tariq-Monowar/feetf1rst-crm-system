@@ -2839,15 +2839,16 @@ export const filterCustomer = async (req: Request, res: Response) => {
       }
     }
 
-    // Filter by geschaeftsstandort based on latest order's geschaeftsstandort
+    // Filter by geschaeftsstandort based on latest order's geschaeftsstandort (supports JSON)
     if (normalizedGeschaeftsstandort) {
       responseData = responseData.filter((customer) => {
         const latestOrderGeschaeftsstandort = customer.latestOrder?.geschaeftsstandort;
-        if (!latestOrderGeschaeftsstandort) return false;
-        // Case-insensitive partial match
-        return latestOrderGeschaeftsstandort
-          .toLowerCase()
-          .includes(normalizedGeschaeftsstandort.toLowerCase());
+        if (latestOrderGeschaeftsstandort == null) return false;
+        const searchable =
+          typeof latestOrderGeschaeftsstandort === "object"
+            ? JSON.stringify(latestOrderGeschaeftsstandort)
+            : String(latestOrderGeschaeftsstandort);
+        return searchable.toLowerCase().includes(normalizedGeschaeftsstandort.toLowerCase());
       });
     }
 
@@ -3132,7 +3133,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
               id: order.id,
               orderNumber: order.orderNumber,
               createdAt: order.createdAt,
-              filiale: order.geschaeftsstandort || null,
+              filiale: order.geschaeftsstandort ?? null,
             },
           });
         }

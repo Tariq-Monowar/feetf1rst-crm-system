@@ -28,8 +28,6 @@ model User {
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
 
-
-
   createdAt        DateTime              @default(now()) @map("created_at")
   updatedAt        DateTime              @updatedAt
   suggestions      SuggestionFeetf1rst[]
@@ -855,7 +853,7 @@ model customerOrders {
   wohnort            String?
   telefon            String?
   email              String?
-  geschaeftsstandort String?
+  geschaeftsstandort Json?
   mitarbeiter        String?
   fertigstellungBis  DateTime? // pickup date
   versorgung         String?
@@ -1473,6 +1471,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1500,7 +1500,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
-   *   //এই পেইজে একটা জুতার তলার ছবি আছে
+   * /**
+   * /**
+   * //এই পেইজে একটা জুতার তলার ছবি আছে
    * hinterkappe String?
    * leder_auswahl       String?
    * leder_auswahl_price Float?
@@ -1645,6 +1647,11 @@ model custom_models {
   updatedAt          DateTime          @updatedAt
   massschuheOrder    massschuhe_order? @relation(fields: [massschuhe_orderId], references: [id])
   massschuhe_orderId String?
+}
+
+model damian_count {
+  id    String @id @default(cuid())
+  count Int    @default(0)
 }
 
 /**

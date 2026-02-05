@@ -293,7 +293,18 @@ export const createOrder = async (req: Request, res: Response) => {
         wohnort: wohnort ?? null,
         telefon: telefon ?? null,
         email: werkstattEmail ?? null,
-        geschaeftsstandort: geschaeftsstandort ?? null,
+        geschaeftsstandort: (() => {
+          if (geschaeftsstandort == null) return null;
+          if (typeof geschaeftsstandort === "object") return geschaeftsstandort as object;
+          if (typeof geschaeftsstandort === "string") {
+            try {
+              return JSON.parse(geschaeftsstandort) as object;
+            } catch {
+              return { value: geschaeftsstandort };
+            }
+          }
+          return null;
+        })(),
         mitarbeiter: mitarbeiter ?? null,
         fertigstellungBis: fertigstellungBis ? new Date(fertigstellungBis) : null,
         versorgung: werkstattVersorgung ?? null,

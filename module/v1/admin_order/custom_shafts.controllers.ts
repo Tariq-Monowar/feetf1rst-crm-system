@@ -7,13 +7,16 @@ import {
   deleteFileFromS3,
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
-import { generateNextOrderNumber, generateNextCustomShaftOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import {
+  generateNextOrderNumber,
+  generateNextCustomShaftOrderNumber,
+} from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 
 const prisma = new PrismaClient();
 
 export const createMaßschaftKollektion = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   const files = req.files as any;
 
@@ -84,7 +87,7 @@ export const createMaßschaftKollektion = async (
 
 export const getAllMaßschaftKollektion = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -179,7 +182,7 @@ export const getAllMaßschaftKollektion = async (
 
 export const updateMaßschaftKollektion = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   const files = req.files as any;
   const { id } = req.params;
@@ -282,7 +285,7 @@ export const updateMaßschaftKollektion = async (
 
 export const getMaßschaftKollektionById = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   try {
     const { id } = req.params;
@@ -410,21 +413,36 @@ export const createTustomShafts = async (req, res) => {
     }
   }
 
-  const otherName = b.other_customer_name ? String(b.other_customer_name).trim() || null : null;
+  const otherName = b.other_customer_name
+    ? String(b.other_customer_name).trim() || null
+    : null;
 
-  const hasCustomVerschlussart = b.custom_models_verschlussart && String(b.custom_models_verschlussart).trim();
-  const hasCustomPrice = b.custom_models_price != null && b.custom_models_price !== "";
+  const hasCustomVerschlussart =
+    b.custom_models_verschlussart &&
+    String(b.custom_models_verschlussart).trim();
+  const hasCustomPrice =
+    b.custom_models_price != null && b.custom_models_price !== "";
   const hasCustomImage = getFile("custom_models_image");
 
-  const anyCustomModel = hasCustomVerschlussart || hasCustomPrice || hasCustomImage ||
+  const anyCustomModel =
+    hasCustomVerschlussart ||
+    hasCustomPrice ||
+    hasCustomImage ||
     (b.custom_models_name && String(b.custom_models_name).trim()) ||
     (b.custom_models_gender && String(b.custom_models_gender).trim()) ||
     (b.custom_models_description && String(b.custom_models_description).trim());
-  const requiredCustomModel = hasCustomVerschlussart && hasCustomPrice && hasCustomImage;
+  const requiredCustomModel =
+    hasCustomVerschlussart && hasCustomPrice && hasCustomImage;
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models" });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message:
+          "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
+      });
   }
 
   const hasAddr = b.courier_address;
@@ -438,16 +456,29 @@ export const createTustomShafts = async (req, res) => {
 
   if (anyCourier && !allCourier) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "If providing courier contact, all fields are required" });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "If providing courier contact, all fields are required",
+      });
   }
 
   const isCustomModels = !!requiredCustomModel;
   const isCourier = !!allCourier;
 
-  const userExists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  const userExists = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true },
+  });
   if (!userExists) {
     cleanupFiles();
-    return res.status(401).json({ success: false, message: "User not found. Please log in again." });
+    return res
+      .status(401)
+      .json({
+        success: false,
+        message: "User not found. Please log in again.",
+      });
   }
 
   const versenden = toJson(b.versenden);
@@ -455,7 +486,12 @@ export const createTustomShafts = async (req, res) => {
 
   if (!b.customerId && !otherName) {
     cleanupFiles();
-    return res.status(400).json({ success: false, message: "Either customerId or other_customer_name is required" });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Either customerId or other_customer_name is required",
+      });
   }
 
   let customer = null;
@@ -466,14 +502,22 @@ export const createTustomShafts = async (req, res) => {
     });
     if (!customer) {
       cleanupFiles();
-      return res.status(404).json({ success: false, message: "Customer not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
     }
   }
 
   if (!isCustomModels) {
     if (!b.mabschaftKollektionId) {
       cleanupFiles();
-      return res.status(400).json({ success: false, message: "maßschaftKollektionId is required when not using custom models" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message:
+            "maßschaftKollektionId is required when not using custom models",
+        });
     }
     const kollektion = await prisma.maßschaft_kollektion.findUnique({
       where: { id: b.mabschaftKollektionId },
@@ -481,7 +525,9 @@ export const createTustomShafts = async (req, res) => {
     });
     if (!kollektion) {
       cleanupFiles();
-      return res.status(404).json({ success: false, message: "Maßschaft Kollektion not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Maßschaft Kollektion not found" });
     }
   }
 
@@ -495,12 +541,22 @@ export const createTustomShafts = async (req, res) => {
     const addr = toJson(b.courier_address);
     if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
       cleanupFiles();
-      return res.status(400).json({ success: false, message: "courier_address must be a JSON object" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "courier_address must be a JSON object",
+        });
     }
     const price = toNum(b.courier_price);
     if (!price || price <= 0) {
       cleanupFiles();
-      return res.status(400).json({ success: false, message: "courier_price must be a valid number greater than 0" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "courier_price must be a valid number greater than 0",
+        });
     }
     courierData = {
       address: addr,
@@ -513,7 +569,8 @@ export const createTustomShafts = async (req, res) => {
 
   const json1 = toJson(b.Massschafterstellung_json1);
   const json2 = toJson(b.Massschafterstellung_json2);
-  const category = json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
+  const category =
+    json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
   const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
   const shaftData = {
@@ -538,9 +595,12 @@ export const createTustomShafts = async (req, res) => {
     isCustomeModels: Boolean(isCustomModels),
   };
 
-  if (b.customerId) (shaftData as any).customer = { connect: { id: b.customerId } };
+  if (b.customerId)
+    (shaftData as any).customer = { connect: { id: b.customerId } };
   if (!isCustomModels && b.mabschaftKollektionId) {
-    (shaftData as any).maßschaft_kollektion = { connect: { id: b.mabschaftKollektionId } };
+    (shaftData as any).maßschaft_kollektion = {
+      connect: { id: b.mabschaftKollektionId },
+    };
   }
 
   const shaftSelect = {
@@ -568,7 +628,9 @@ export const createTustomShafts = async (req, res) => {
     isCustomeModels: true,
     maßschaftKollektionId: true,
     catagoary: true,
-    maßschaft_kollektion: { select: { id: true, name: true, price: true, image: true } },
+    maßschaft_kollektion: {
+      select: { id: true, name: true, price: true, image: true },
+    },
   };
 
   try {
@@ -589,7 +651,8 @@ export const createTustomShafts = async (req, res) => {
         custom_models_gender: b.custom_models_gender || null,
         custom_models_description: b.custom_models_description || null,
       };
-      if (b.customerId) (modelData as any).customer = { connect: { id: b.customerId } };
+      if (b.customerId)
+        (modelData as any).customer = { connect: { id: b.customerId } };
       customModel = await prisma.custom_models.create({
         data: modelData,
         select: {
@@ -604,7 +667,8 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    const note = otherName && !b.customerId ? `${category} - ${otherName}` : category;
+    const note =
+      otherName && !b.customerId ? `${category} - ${otherName}` : category;
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: customShaft.orderNumber,
@@ -646,19 +710,40 @@ export const createTustomShafts = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Unexpected file field: ${err.field || "unknown"}`,
-        allowedFields: ["image3d_1", "image3d_2", "invoice", "paintImage", "invoice2", "zipper_image", "ledertyp_image", "custom_models_image", "staticImage"],
+        allowedFields: [
+          "image3d_1",
+          "image3d_2",
+          "invoice",
+          "paintImage",
+          "invoice2",
+          "zipper_image",
+          "ledertyp_image",
+          "custom_models_image",
+          "staticImage",
+        ],
       });
     }
     if (err.code === "P2003") {
-      return res.status(400).json({ success: false, message: "Invalid customer ID or Maßschaft Kollektion ID provided" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Invalid customer ID or Maßschaft Kollektion ID provided",
+        });
     }
-    res.status(500).json({ success: false, message: "Something went wrong", error: err.message });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Something went wrong",
+        error: err.message,
+      });
   }
 };
 
 export const createCustomBodenkonstruktionOrder = async (
   req: Request,
-  res: Response,
+  res: Response
 ) => {
   const files = req.files as any;
   const { id } = req.user;
@@ -675,8 +760,12 @@ export const createCustomBodenkonstruktionOrder = async (
   };
 
   try {
-    const { other_customer_name, totalPrice, bodenkonstruktion_json, deliveryDate } =
-      req.body;
+    const {
+      other_customer_name,
+      totalPrice,
+      bodenkonstruktion_json,
+      deliveryDate,
+    } = req.body;
 
     // Validate required fields
     if (!other_customer_name) {
@@ -969,20 +1058,20 @@ export const getTustomShafts = async (req: Request, res: Response) => {
       image3d_2: shaft.image3d_2 || null,
       customer: shaft.customer
         ? {
-          ...shaft.customer,
-        }
+            ...shaft.customer,
+          }
         : null,
       maßschaft_kollektion: shaft.maßschaft_kollektion
         ? {
-          ...shaft.maßschaft_kollektion,
-          image: shaft.maßschaft_kollektion.image || null,
-        }
+            ...shaft.maßschaft_kollektion,
+            image: shaft.maßschaft_kollektion.image || null,
+          }
         : null,
       partner: user
         ? {
-          ...user,
-          image: user.image || null,
-        }
+            ...user,
+            image: user.image || null,
+          }
         : null,
     }));
 
@@ -1088,20 +1177,20 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
       image3d_2: customShaft.image3d_2 || null,
       customer: customShaft.customer
         ? {
-          ...customShaft.customer,
-        }
+            ...customShaft.customer,
+          }
         : null,
       maßschaft_kollektion: customShaft.maßschaft_kollektion
         ? {
-          ...customShaft.maßschaft_kollektion,
-          image: customShaft.maßschaft_kollektion.image || null,
-        }
+            ...customShaft.maßschaft_kollektion,
+            image: customShaft.maßschaft_kollektion.image || null,
+          }
         : null,
       partner: user
         ? {
-          ...user,
-          image: user.image || null,
-        }
+            ...user,
+            image: user.image || null,
+          }
         : null,
     };
 
@@ -1252,7 +1341,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege",
+            "/dashboard/massschuhauftraege"
           );
         }
       }
@@ -1279,9 +1368,8 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege",
+              "/dashboard/massschuhauftraege"
             );
-            
           } else {
             // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
             await prisma.massschuhe_order.update({
@@ -1296,7 +1384,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege",
+              "/dashboard/massschuhauftraege"
             );
           }
         }
@@ -1318,7 +1406,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege",
+            "/dashboard/massschuhauftraege"
           );
         }
       }
@@ -1756,7 +1844,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin. Customer: ${order.customer.vorname} ${order.customer.nachname} (Customer Number: ${order.customer.customerNumber})`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`,
+            `/dashboard/custom-shafts/${order.id}`
           );
         } else {
           await notificationSend(
@@ -1765,7 +1853,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`,
+            `/dashboard/custom-shafts/${order.id}`
           );
         }
       }
@@ -1810,9 +1898,9 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the partner ${order.user?.name}.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`,
-          ),
-        ),
+            `/dashboard/custom-shafts/${order.id}`
+          )
+        )
       );
 
       return res.status(200).json({
@@ -1833,5 +1921,38 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
       message: "Something went wrong while canceling the order",
       error: error.message,
     });
+  }
+};
+
+export const getDamianCount = async (req: Request, res: Response) => {
+  try {
+    const row = await prisma.damian_count.findFirst();
+    res.status(200).json({
+      success: true,
+      data: { count: row?.count ?? 0 },
+    });
+  } catch (error: any) {
+    console.error("Get Damian Count Error:", error);
+    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+  }
+};
+
+export const manageDamianCount = async (req: Request, res: Response) => {
+  try {
+    const { count } = req.body;
+    const num = typeof count === "number" ? count : parseInt(count, 10) || 0;
+    const existing = await prisma.damian_count.findFirst();
+    const row = existing
+      ? await prisma.damian_count.update({
+          where: { id: existing.id },
+          data: { count: num },
+        })
+      : await prisma.damian_count.create({
+          data: { count: num },
+        });
+    res.status(200).json({ success: true, data: row });
+  } catch (error: any) {
+    console.error("Manage Damian Count Error:", error);
+    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
   }
 };

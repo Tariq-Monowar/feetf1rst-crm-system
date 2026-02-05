@@ -14,7 +14,9 @@ import {
   deleteCustomShaft,
   totalPriceResponse,
   createCustomBodenkonstruktionOrder,
-  cancelAdminOrder
+  cancelAdminOrder,
+  getDamianCount,
+  manageDamianCount,
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -104,6 +106,14 @@ router.post(
   cancelAdminOrder
 );
 
+// damian_count
+router.get("/damian-count",  getDamianCount);
+
+router.post(
+  "/manage/damian-count",
+  verifyUser("ADMIN"),
+  manageDamianCount
+);
 
 //==========================ধরিস না======================
 
