@@ -25,12 +25,12 @@ import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
-router.post("/customer-requirements", verifyUser("ADMIN", "PARTNER"), createCustomerRequirements);
-router.get("/customer-requirements", verifyUser("ADMIN", "PARTNER"), getCustomerRequirements);
+router.post("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createCustomerRequirements);
+router.get("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getCustomerRequirements);
 
 router.post(
   "/",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "picture_10", maxCount: 1 },
     { name: "picture_23", maxCount: 1 },
@@ -128,14 +128,14 @@ router.delete(
 
 router.get(
   "/screener-file/:screenerId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getScreenerFileById
 );
 
-router.get("/:id", verifyUser("PARTNER", "ADMIN"), getCustomerById);
+router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getCustomerById);
 
 // get all Versorgungen by customer id which he buy
-router.get("/supply-status/:customerId", verifyUser("PARTNER", "ADMIN"), getAllVersorgungenByCustomerId);
+router.get("/supply-status/:customerId", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllVersorgungenByCustomerId);
 
 
 export default router;

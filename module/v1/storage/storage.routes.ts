@@ -25,27 +25,27 @@ const router = express.Router();
  * তাকে অ্যাাডমিনের কাছ থেকে কিনতে হয়
 */
 // ক্লাইন্ট এখন বলছে পার্টনার নিজে নিজে স্টক ক্রিইয়েট করতে আপারবে কিন্তু ঈমেজ অ্যাাড করতে পারবে না
-router.post("/create", verifyUser("PARTNER", "ADMIN"), upload.single("image"), createStorage);
+router.post("/create", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), upload.single("image"), createStorage);
 
 /*
  * /create এর পরিবর্তে এখন /buy ব্যবহার হয়
 */
-router.post("/buy", verifyUser("PARTNER", "ADMIN"), buyStorage);
+router.post("/buy", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), buyStorage);
 
 // এখনে পার্টনার স্টক অ্যাাড কতে পারবে কিনা ছাড়া
-router.post("/add-storage", verifyUser("PARTNER", "ADMIN"), addStorage);
+router.post("/add-storage", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), addStorage);
 
 
-router.get("/my/get", verifyUser("PARTNER", "ADMIN"), getAllMyStorage);
-router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleStorage);
-router.patch("/update/:id", verifyUser("PARTNER", "ADMIN"), updateStorage);
-router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteStorage);
-router.get("/chart-data", verifyUser("PARTNER", "ADMIN"), getStorageChartData);
-router.get("/history/:id", verifyUser("PARTNER", "ADMIN"), getStorageHistory);
-router.get("/performer", verifyUser("PARTNER", "ADMIN"), getStoragePerformer);
+router.get("/my/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllMyStorage);
+router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleStorage);
+router.patch("/update/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateStorage);
+router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteStorage);
+router.get("/chart-data", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getStorageChartData);
+router.get("/history/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getStorageHistory);
+router.get("/performer", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getStoragePerformer);
 //store overviwe
-router.get("/store-overview", verifyUser("PARTNER", "ADMIN"), getStoreOverviews);
-router.patch("/update-overview-statu", verifyUser("PARTNER", "ADMIN"), updateOverviewStatus);
-router.get("/get-store-overview-by-id/:id", verifyUser("PARTNER", "ADMIN"), getStoreOverviewById);
+router.get("/store-overview", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getStoreOverviews);
+router.patch("/update-overview-statu", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateOverviewStatus);
+router.get("/get-store-overview-by-id/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getStoreOverviewById);
 
 export default router;

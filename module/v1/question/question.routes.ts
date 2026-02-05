@@ -25,7 +25,7 @@ router.get("/shoes/:customerId", getShoesQuestions);
 router.post("/shoes/:customerId", setShoesAnswers);
 
 // Get flattened question overview for partner to control which blocks are active
-router.get("/get-questions", verifyUser("PARTNER"), getQuestions);
+router.get("/get-questions", verifyUser("PARTNER", "EMPLOYEE"), getQuestions);
 
 // router.post("/shoes/:customerId", setShoesAnswers);
 
@@ -42,7 +42,7 @@ router.get("/admin/:categoryTitle/:subCategoryTitle", getQuestionsFlow);
 
 router.post(
   "/controll-questions",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   getControllQuestions
 );
 

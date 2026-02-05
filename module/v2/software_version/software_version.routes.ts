@@ -5,8 +5,8 @@ import { createSoftwareVersion, deleteSoftwareVersion, getAllSoftwareVersions, g
 const router = express.Router();
 
 router.post("/create", verifyUser("ADMIN"), createSoftwareVersion);
-router.get("/get-all",verifyUser("ADMIN", "PARTNER"), getAllSoftwareVersions);
-router.get("/get-single/:id",verifyUser("ADMIN", "PARTNER"), getSoftwareVersionById);
+router.get("/get-all",verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllSoftwareVersions);
+router.get("/get-single/:id",verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getSoftwareVersionById);
 router.delete("/delete/:id",verifyUser("ADMIN"), deleteSoftwareVersion);
 router.patch("/update/:id", verifyUser("ADMIN"), updateSoftwareVersion)
 

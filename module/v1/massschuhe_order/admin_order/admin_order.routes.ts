@@ -17,7 +17,7 @@ const router = express.Router();
 
 router.post(
   "/send-to-admin-1/:orderId",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
@@ -35,7 +35,7 @@ router.post(
 
 router.post(
   "/send-to-admin-2-order/:orderId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
@@ -52,7 +52,7 @@ router.post(
 
 router.post(
   "/send-to-admin-3-order/:orderId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "invoice", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
@@ -60,11 +60,11 @@ router.post(
   sendToAdminOrder_3
 );
 
-router.get("/get", verifyUser("PARTNER", "ADMIN"), getAllAdminOrders);
-router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleAllAdminOrders);
+router.get("/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAdminOrders);
+router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleAllAdminOrders);
 
 // courier contact
-router.post("/courier-contact/create", verifyUser("PARTNER"), createCourierContact);
-router.get("/courier-contact/customer-list-order-contact/:customerId", verifyUser("PARTNER"), customerListOrderContact);
+router.post("/courier-contact/create", verifyUser("PARTNER", "EMPLOYEE"), createCourierContact);
+router.get("/courier-contact/customer-list-order-contact/:customerId", verifyUser("PARTNER", "EMPLOYEE"), customerListOrderContact);
 
 export default router;

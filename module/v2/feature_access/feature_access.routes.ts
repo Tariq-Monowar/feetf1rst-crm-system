@@ -18,7 +18,7 @@ router.post("/manage/:partnerId", verifyUser("ADMIN"), manageFeatureAccess);
 // get feature access routes form partner dashboard
 router.get(
   "/partner-feature",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   partnerFeatureAccess
 );
 

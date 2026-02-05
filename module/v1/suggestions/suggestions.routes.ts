@@ -16,15 +16,15 @@ const router = express.Router();
 
 router.post("/feetf1rst", verifyUser("PARTNER", "ADMIN"), createSuggestions);
 
-router.get("/feetf1rst", verifyUser("PARTNER"), getAllSuggestions);
-router.delete("/feetf1rst/:id", verifyUser("PARTNER"), deleteSuggestion);
-router.delete("/feetf1rst", verifyUser("PARTNER"), deleteAllSuggestions);
+router.get("/feetf1rst", verifyUser("PARTNER", "EMPLOYEE"), getAllSuggestions);
+router.delete("/feetf1rst/:id", verifyUser("PARTNER", "EMPLOYEE"), deleteSuggestion);
+router.delete("/feetf1rst", verifyUser("PARTNER", "EMPLOYEE"), deleteAllSuggestions);
 
 
-router.post("/improvement", verifyUser("PARTNER", "ADMIN"), upload.array("images", 100), createImprovement);
+router.post("/improvement", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), upload.array("images", 100), createImprovement);
 
 router.get("/improvement", getAllImprovements);
 router.delete("/improvement",  deleteImprovement);
-router.delete("/improvement/all", verifyUser("PARTNER"), deleteAllImprovements);
+router.delete("/improvement/all", verifyUser("PARTNER", "EMPLOYEE"), deleteAllImprovements);
 
 export default router;

@@ -10,20 +10,20 @@ import {
 
 const router = express.Router();
 
-router.post("/create", verifyUser("PARTNER", "ADMIN"), createNotification);
+router.post("/create", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createNotification);
 
-router.get("/get-all", verifyUser("PARTNER", "ADMIN"), getAllNotificaions);
+router.get("/get-all", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllNotificaions);
 
 router.get(
   "/unread-count",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getCountUnreadNotifications
 );
 router.patch(
   "/mark-as-read",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   markeAsReadNotifications
 );
-router.delete("/delete", verifyUser("PARTNER", "ADMIN"), deleteNotifications);
+router.delete("/delete", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteNotifications);
 
 export default router;

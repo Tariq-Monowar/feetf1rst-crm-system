@@ -16,20 +16,20 @@ const router = express.Router();
 
 router.patch(
   "/payment-status",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   updateMultiplePaymentStatus
 );
 
 // Add this route to your router
 router.patch(
   "/status/multiple/update",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   updateMultipleOrderStatuses
 );
 
 router.post(
   "/upload-barcode-label/:orderId",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   upload.fields([{ name: "image", maxCount: 1 }]),
   uploadBarcodeLabel
 );
@@ -37,21 +37,21 @@ router.post(
 //এর উদ্দেশ্য হচ্ছে। একটা অর্ডার কি আরজেন্ট ডেলিভেরি দিতে হবে নাকি নরমাল প্রসেজে যাবে তা ঠিক করা।
 router.patch(
   "/update/priority/:id",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   updateOrderPriority
 );
 
 //এদের উদ্দেশ্য ক্লিয়ার না।
 router.post(
   "/upload-invoice/:orderId",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   upload.fields([{ name: "invoice", maxCount: 1 }]),
   uploadInvoice
 );
 
 router.post(
   "/upload-invoice-only/:orderId",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
   upload.fields([{ name: "invoice", maxCount: 1 }]),
   uploadInvoiceOnly
 );

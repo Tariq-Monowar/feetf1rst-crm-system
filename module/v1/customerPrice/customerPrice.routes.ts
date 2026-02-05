@@ -10,11 +10,11 @@ import {
 
 const router = express.Router();
 
-router.post("/", verifyUser("PARTNER"), setNewPrice);
-router.get("/", verifyUser("PARTNER"), getAllPrices);
-router.get("/:id", verifyUser("PARTNER"), getPriceById);
-router.patch("/:id", verifyUser("PARTNER"), updatePrice);
-router.delete("/:id", verifyUser("PARTNER"), deletePrice);
+router.post("/", verifyUser("PARTNER", "EMPLOYEE"), setNewPrice);
+router.get("/", verifyUser("PARTNER", "EMPLOYEE"), getAllPrices);
+router.get("/:id", verifyUser("PARTNER", "EMPLOYEE"), getPriceById);
+router.patch("/:id", verifyUser("PARTNER", "EMPLOYEE"), updatePrice);
+router.delete("/:id", verifyUser("PARTNER", "EMPLOYEE"), deletePrice);
 //-----------------------------------------------------
 
 

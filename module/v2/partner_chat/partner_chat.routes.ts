@@ -35,14 +35,14 @@ router.get(
 
 router.post(
   "/create-group-conversation",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   upload.single("image"),
   createGroupConversation
 );
 
 router.patch(
   "/update-conversation/:conversationId",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   upload.single("image"),
   updateConversation
 );
@@ -55,13 +55,13 @@ router.get(
 
 router.post(
   "/add-member-to-group",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   addMemberToGroup
 );
 
 router.post(
   "/remove-member-from-group",
-  verifyUser("PARTNER"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   removeMemberFromGroup
 );
 

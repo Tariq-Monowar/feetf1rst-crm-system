@@ -16,7 +16,7 @@ router.get("/", verifyUser("PARTNER"), getAllEmployees);
 
 router.post("/", verifyUser("PARTNER"), upload.single("image"), createEmployee);
 
-router.patch("/:id", verifyUser("PARTNER"), upload.single("image"), updateEmployee);
+router.patch("/:id", verifyUser("PARTNER", "EMPLOYEE"), upload.single("image"), updateEmployee);
 router.delete("/:id", verifyUser("PARTNER"), deleteEmployee);
 router.get("/search", verifyUser("PARTNER"), searchEmployees);
 

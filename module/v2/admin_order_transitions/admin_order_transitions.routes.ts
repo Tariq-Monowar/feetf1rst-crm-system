@@ -11,19 +11,19 @@ const router = express.Router();
 
 router.get(
   "/total-price",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getTotalPrice
 );
 
 router.get(
   "/total-price-ratio",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getTotalPriceRatio
 );
 
 router.get(
   "/get-all-transitions",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllTransitions
 );
 
@@ -32,7 +32,7 @@ least one month payment list stated and todat (today to one month before)
 */
 router.get(
   "/least-one-month-payment",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getOneMonthPayment
 );
 

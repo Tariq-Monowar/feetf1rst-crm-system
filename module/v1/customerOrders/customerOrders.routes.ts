@@ -21,24 +21,24 @@ router.get(
   getEinlagenInProduktion
 );
 
-router.post("/create", verifyUser("ADMIN", "PARTNER"), createOrder);
-router.get("/", verifyUser("ADMIN", "PARTNER"), getAllOrders);
-router.get("/:id", verifyUser("ADMIN", "PARTNER"), getOrderById);
+router.post("/create", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
+router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllOrders);
+router.get("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getOrderById);
 
 
 router.get(
   "/customer/:customerId",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getOrdersByCustomerId
 );
 
 router.delete(
   "/multiple/delete",
-  verifyUser("ADMIN", "PARTNER"),
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   deleteMultipleOrders
 );
 
-router.delete("/:id", verifyUser("ADMIN", "PARTNER"), deleteOrder);
+router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteOrder);
 
 
 

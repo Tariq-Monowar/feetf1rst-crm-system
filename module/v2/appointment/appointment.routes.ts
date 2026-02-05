@@ -14,24 +14,24 @@ import { verifyUser } from "../../../middleware/verifyUsers";
 
 const router = express.Router();
 
-router.post("/", verifyUser("PARTNER", "ADMIN"), createAppointment);
+router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);
 
 router.get(
   "/system-appointment/:customerId/:appointmentId",
   getSystemAppointment
 );
 
-router.get("/available-slots", verifyUser("PARTNER", "ADMIN"), getAvailableTimeSlots);
+router.get("/available-slots", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAvailableTimeSlots);
 
-router.get("/", verifyUser("PARTNER", "ADMIN"), getAllAppointments);
+router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
 
-router.get("/my", verifyUser("PARTNER", "ADMIN"), getMyAppointments);
+router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
 
-router.get("/:id", verifyUser("PARTNER", "ADMIN"), getAppointmentById);
+router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentById);
 
-router.put("/:id", verifyUser("PARTNER", "ADMIN"), updateAppointment);
+router.put("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateAppointment);
 
-router.delete("/:id", verifyUser("PARTNER", "ADMIN"), deleteAppointment);
+router.delete("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteAppointment);
 
 
 
