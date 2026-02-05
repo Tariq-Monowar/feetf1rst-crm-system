@@ -2737,7 +2737,6 @@ export const filterCustomer = async (req: Request, res: Response) => {
               createdAt: true,
               bezahlt: true,
               geschaeftsstandort: true,
-              backupGeschaeftsstandort: true,
             },
           },
           massschuheOrders: {
@@ -2844,10 +2843,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
     // Filter by geschaeftsstandort based on latest order's geschaeftsstandort
     if (normalizedGeschaeftsstandort) {
       responseData = responseData.filter((customer) => {
-        const display = getGeschaeftsstandortDisplay(
-          customer.latestOrder?.geschaeftsstandort,
-          customer.latestOrder?.backupGeschaeftsstandort
-        );
+        const display = getGeschaeftsstandortDisplay(customer.latestOrder?.geschaeftsstandort);
         if (!display) return false;
         return display.toLowerCase().includes(normalizedGeschaeftsstandort.toLowerCase());
       });
@@ -3097,7 +3093,6 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
         orderNumber: true,
         createdAt: true,
         geschaeftsstandort: true,
-        backupGeschaeftsstandort: true,
         versorgungId: true,
         Versorgungen: {
           select: {
@@ -3135,7 +3130,7 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
               id: order.id,
               orderNumber: order.orderNumber,
               createdAt: order.createdAt,
-              filiale: getGeschaeftsstandortDisplay(order.geschaeftsstandort, order.backupGeschaeftsstandort) || null,
+              filiale: getGeschaeftsstandortDisplay(order.geschaeftsstandort) || null,
             },
           });
         }

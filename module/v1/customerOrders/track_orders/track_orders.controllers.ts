@@ -1525,7 +1525,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderNumber: true,
         orderStatus: true,
         geschaeftsstandort: true,
-        backupGeschaeftsstandort: true,
         barcodeCreatedAt: true,
         createdAt: true,
         updatedAt: true,
@@ -1593,7 +1592,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderNumber: order.orderNumber,
         orderStatus: order.orderStatus,
         completedAt: completedAt, // Time when status changed to "Ausgeführt"
-        partnerAddress: getGeschaeftsstandortDisplay(order.geschaeftsstandort, order.backupGeschaeftsstandort),
+        partnerAddress: getGeschaeftsstandortDisplay(order.geschaeftsstandort),
         wohnort: order.wohnort,
       },
     });

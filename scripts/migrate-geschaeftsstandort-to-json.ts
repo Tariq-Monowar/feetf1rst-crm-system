@@ -1,10 +1,8 @@
 /**
- * One-time migration: Convert customerOrders.geschaeftsstandort from String to JSON.
- * - Backs up current string into backupGeschaeftsstandort as { "legacyString": "..." }
- * - Converts geschaeftsstandort to JSON { "display": "..." }
- *
- * Run once before or after applying the schema change (geschaeftsstandort String -> Json).
- * If the column is already JSONB, the script skips the conversion.
+ * One-time migration: Convert customerOrders.geschaeftsstandort to JSON { title, description }.
+ * - If column is still string: convert to { title: value, description: "" }
+ * - If column is already JSON (e.g. had "display"): migrate to { title: display, description: "" }
+ * - Drops backupGeschaeftsstandort column if it exists.
  *
  * Usage: npx ts-node scripts/migrate-geschaeftsstandort-to-json.ts
  */
@@ -32,39 +30,45 @@ async function main() {
   }
 
   const dataType = col[0].data_type;
+
+  if (dataType === "character varying" || dataType === "text") {
+    console.log("Converting string to JSON { title, description } and dropping backup column...\n");
+    await prisma.$transaction([
+      prisma.$executeRawUnsafe(`
+        ALTER TABLE "customerOrders"
+        ALTER COLUMN "geschaeftsstandort" TYPE JSONB
+        USING jsonb_build_object('title', "geschaeftsstandort", 'description', '')
+      `),
+      prisma.$executeRawUnsafe(`
+        ALTER TABLE "customerOrders"
+        DROP COLUMN IF EXISTS "backupGeschaeftsstandort"
+      `),
+    ]);
+    console.log("Migration completed: geschaeftsstandort is now { title, description }.");
+    return;
+  }
+
   if (dataType === "jsonb" || dataType === "json") {
-    console.log("geschaeftsstandort is already JSON. Skipping conversion.");
+    console.log("geschaeftsstandort is already JSON. Migrating display -> title/description and dropping backup...\n");
+    await prisma.$transaction([
+      prisma.$executeRawUnsafe(`
+        UPDATE "customerOrders"
+        SET "geschaeftsstandort" = jsonb_build_object(
+          'title', COALESCE("geschaeftsstandort"->>'title', "geschaeftsstandort"->>'display', ''),
+          'description', COALESCE("geschaeftsstandort"->>'description', '')
+        )
+        WHERE "geschaeftsstandort" IS NOT NULL
+      `),
+      prisma.$executeRawUnsafe(`
+        ALTER TABLE "customerOrders"
+        DROP COLUMN IF EXISTS "backupGeschaeftsstandort"
+      `),
+    ]);
+    console.log("Migration completed: geschaeftsstandort is now { title, description }; backup column dropped.");
     return;
   }
 
-  if (dataType !== "character varying" && dataType !== "text") {
-    console.log(`Unexpected type: ${dataType}. Exiting.`);
-    return;
-  }
-
-  console.log("Backing up string to backupGeschaeftsstandort and converting to JSON...\n");
-
-  await prisma.$transaction([
-    // Ensure backup column exists
-    prisma.$executeRawUnsafe(`
-      ALTER TABLE "customerOrders"
-      ADD COLUMN IF NOT EXISTS "backupGeschaeftsstandort" JSONB
-    `),
-    // Copy current string into backup as { "legacyString": "..." }
-    prisma.$executeRawUnsafe(`
-      UPDATE "customerOrders"
-      SET "backupGeschaeftsstandort" = jsonb_build_object('legacyString', "geschaeftsstandort")
-      WHERE "geschaeftsstandort" IS NOT NULL AND "geschaeftsstandort" != ''
-    `),
-    // Convert geschaeftsstandort to JSONB with { "display": "..." }
-    prisma.$executeRawUnsafe(`
-      ALTER TABLE "customerOrders"
-      ALTER COLUMN "geschaeftsstandort" TYPE JSONB
-      USING jsonb_build_object('display', "geschaeftsstandort")
-    `),
-  ]);
-
-  console.log("Migration completed: geschaeftsstandort is now JSON (display) and backup stored in backupGeschaeftsstandort (legacyString).");
+  console.log(`Unexpected type: ${dataType}. Exiting.`);
 }
 
 main()

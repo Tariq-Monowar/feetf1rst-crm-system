@@ -1,32 +1,33 @@
 /**
- * Geschaeftsstandort is stored as JSON: { display: string }.
- * backupGeschaeftsstandort holds the legacy string as { legacyString: string }.
- * Use this helper to get a single display string for APIs and filters.
+ * Geschaeftsstandort is stored as JSON: { title: string, description?: string }.
+ * Use this helper to get a display string (title) for APIs and filters.
  */
-export function getGeschaeftsstandortDisplay(
-  geschaeftsstandort: unknown,
-  backup?: unknown
-): string | null {
-  if (geschaeftsstandort != null && typeof geschaeftsstandort === "object" && "display" in geschaeftsstandort) {
-    const d = (geschaeftsstandort as { display?: unknown }).display;
-    if (typeof d === "string") return d || null;
+export type GeschaeftsstandortJson = { title: string; description?: string };
+
+export function getGeschaeftsstandortDisplay(geschaeftsstandort: unknown): string | null {
+  if (geschaeftsstandort != null && typeof geschaeftsstandort === "object") {
+    const o = geschaeftsstandort as Record<string, unknown>;
+    if (typeof o.title === "string") return o.title || null;
+    // Legacy: was { display: string }
+    if (typeof o.display === "string") return o.display || null;
   }
   if (typeof geschaeftsstandort === "string") return geschaeftsstandort || null;
-  if (backup != null && typeof backup === "object" && "legacyString" in backup) {
-    const s = (backup as { legacyString?: unknown }).legacyString;
-    if (typeof s === "string") return s || null;
-  }
   return null;
 }
 
-/** Build JSON value for geschaeftsstandort from a string (e.g. from API body). */
-export function toGeschaeftsstandortJson(value: string | null | undefined): { display: string } | null {
-  if (value == null || (typeof value === "string" && !value.trim())) return null;
-  return { display: typeof value === "string" ? value : String(value) };
-}
-
-/** Build JSON value for backup (legacy string backup). */
-export function toBackupGeschaeftsstandortJson(value: string | null | undefined): { legacyString: string } | null {
-  if (value == null || (typeof value === "string" && !value.trim())) return null;
-  return { legacyString: typeof value === "string" ? value : String(value) };
+/** Build JSON value for geschaeftsstandort. Accepts object { title, description } or a single string (used as title, description empty). */
+export function toGeschaeftsstandortJson(
+  value: string | { title: string; description?: string } | null | undefined
+): GeschaeftsstandortJson | null {
+  if (value == null) return null;
+  if (typeof value === "object" && "title" in value) {
+    const title = value.title;
+    if (title == null || (typeof title === "string" && !title.trim())) return null;
+    return {
+      title: typeof title === "string" ? title : String(title),
+      description: value.description != null ? String(value.description) : "",
+    };
+  }
+  if (typeof value === "string" && !value.trim()) return null;
+  return { title: typeof value === "string" ? value : String(value), description: "" };
 }
