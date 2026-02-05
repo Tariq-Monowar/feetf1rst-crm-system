@@ -18,21 +18,22 @@ import upload from "../../../../config/multer.config";
 
 const router = express.Router();
 
-router.get("/get-all", verifyUser("PARTNER", "ADMIN"), getAllAdminStore);
+router.get("/get-all", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAdminStore);
+
 router.post(
   "/create",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.single("image"),
   createAdminStore
 );
 router.patch(
   "/update/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.single("image"),
   updateAdminStore
 );
-router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleAdminStore);
-router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteAdminStore);
+router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleAdminStore);
+router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteAdminStore);
 router.get("/track-storage", verifyUser("ADMIN"), trackStorage);
 router.get("/track-price", verifyUser("ADMIN"), getTrackStoragePrice);
 
