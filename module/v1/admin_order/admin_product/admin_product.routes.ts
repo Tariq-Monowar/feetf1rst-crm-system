@@ -13,33 +13,33 @@ const router = express.Router();
 
 router.post(
   "/create/mabschaft_kollektion",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([{ name: "image", maxCount: 1 }]),
   createMaßschaftKollektion
 );
 
 router.get(
   "/mabschaft_kollektion",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllMaßschaftKollektion
 );
 
 router.patch(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([{ name: "image", maxCount: 1 }]),
   updateMaßschaftKollektion
 );
 
 router.get(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getMaßschaftKollektionById
 );
 
 router.delete(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteMaßschaftKollektion
 );
 

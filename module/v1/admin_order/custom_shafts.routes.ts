@@ -55,7 +55,7 @@ only this time partner can able to make an order for customer. usiong this
 
 router.post(
   "/create",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
@@ -72,7 +72,7 @@ router.post(
 
 router.post(
   "/custom-bodenkonstruktion/create",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([
     { name: "invoice", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
@@ -81,9 +81,9 @@ router.post(
 );
 
 
-router.get("/get", verifyUser("PARTNER", "ADMIN"), getTustomShafts);
+router.get("/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getTustomShafts);
 
-router.get("/get/:id", verifyUser("PARTNER", "ADMIN"), getSingleCustomShaft);
+router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleCustomShaft);
 
 router.patch(
   "/update-status/:id",
@@ -91,18 +91,18 @@ router.patch(
   updateCustomShaftStatus
 );
 
-router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN"), deleteCustomShaft);
+router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteCustomShaft);
 
 router.get(
   "/total-price-resio",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   totalPriceResponse
 );
 
 // cancelOrder
 router.post(
   "/cancel-order/:orderId",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   cancelAdminOrder
 );
 
@@ -119,7 +119,7 @@ router.post(
 
 router.post(
   "/create/mabschaft_kollektion",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([{ name: "image", maxCount: 1 }]),
   createMaßschaftKollektion
 );
@@ -132,20 +132,20 @@ router.get(
 
 router.patch(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   upload.fields([{ name: "image", maxCount: 1 }]),
   updateMaßschaftKollektion
 );
 
 router.get(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getMaßschaftKollektionById
 );
 
 router.delete(
   "/mabschaft_kollektion/:id",
-  verifyUser("PARTNER", "ADMIN"),
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteMaßschaftKollektion
 );
 
