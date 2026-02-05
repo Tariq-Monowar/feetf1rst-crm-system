@@ -1815,7 +1815,7 @@ model employee_feature_access {
   // Product Management
   produktverwaltung      Boolean @default(false)
   sammelbestellungen     Boolean @default(false)
-  nachrichten            Boolean @default(true)
+  nachrichten            Boolean @default(false)
   terminkalender         Boolean @default(false)
   monatsstatistik        Boolean @default(false)
   mitarbeitercontrolling Boolean @default(false)
