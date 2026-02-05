@@ -196,6 +196,11 @@ export const getSingleEmployee = async (req: Request, res: Response) => {
         .json({ success: false, message: "Employee not found" });
     }
 
+    res.status(200).json({
+      success: true,
+      message: "Employee fetched successfully",
+      data: existingEmployee,
+    });
 
   } catch (error) {
     console.error("Get Single Employee error:", error);
