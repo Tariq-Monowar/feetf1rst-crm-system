@@ -8,7 +8,8 @@ import {
   deleteMultipleOrders,
   deleteOrder,
   getOrdersByCustomerId,
-  getEinlagenInProduktion
+  getEinlagenInProduktion,
+  getPreviousOrders
  
 } from "./customerOrders.controllers";
 import upload from "../../../config/multer.config";
@@ -40,7 +41,7 @@ router.delete(
 
 router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteOrder);
 
-
+router.get("/previous-orders/:customerId", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getPreviousOrders);
 
 
 

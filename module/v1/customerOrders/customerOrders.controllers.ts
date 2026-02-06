@@ -1493,3 +1493,129 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+const previousOrdersSelect = {
+  id: true,
+  orderNumber: true,
+  createdAt: true,
+  customerId: true,
+  versorgungId: true,
+  screenerId: true,
+  einlagentyp: true,
+  überzug: true,
+  quantity: true,
+  versorgung_note: true,
+  schuhmodell_wählen: true,
+  kostenvoranschlag: true,
+  ausführliche_diagnose: true,
+  versorgung_laut_arzt: true,
+  kundenName: true,
+  auftragsDatum: true,
+  wohnort: true,
+  telefon: true,
+  email: true,
+  geschaeftsstandort: true,
+  mitarbeiter: true,
+  fertigstellungBis: true,
+  versorgung: true,
+  bezahlt: true,
+  fussanalysePreis: true,
+  einlagenversorgungPreis: true,
+  employeeId: true,
+  discount: true,
+  totalPrice: true,
+  Versorgungen: {
+    select: {
+      supplyStatus: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          image: true,
+        },
+      },
+    },
+  },
+};
+
+/**
+ * Get previous orders for a customer in the same shape as create-order payload,
+ * so the client can pre-fill the form when creating a new order from a previous one.
+ * Uses cursor-based pagination (cursor = order id, limit = page size).
+ */
+export const getPreviousOrders = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const where: Record<string, unknown> = { customerId };
+    if (userRole !== "ADMIN" && userId) {
+      where.partnerId = userId;
+    }
+
+    if (cursor) {
+      const cursorOrder = await prisma.customerOrders.findFirst({
+        where: { id: cursor, ...where },
+        select: { createdAt: true },
+      });
+
+      if (!cursorOrder) {
+        return res.status(200).json({
+          success: true,
+          message: "Previous orders fetched successfully",
+          data: [],
+          hasMore: false,
+        });
+      }
+
+      where.createdAt = { lt: cursorOrder.createdAt };
+    }
+
+    const orders = await prisma.customerOrders.findMany({
+      where,
+      take: limit + 1,
+      orderBy: { createdAt: "desc" },
+      select: previousOrdersSelect,
+    });
+
+    const hasMore = orders.length > limit;
+    const data = hasMore ? orders.slice(0, limit) : orders;
+
+    return res.status(200).json({
+      success: true,
+      message: "Previous orders fetched successfully",
+      data,
+      hasMore,
+    });
+  } catch (error: any) {
+    console.error("Get Previous Orders Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching previous orders",
+      error: error?.message ?? "Unknown error",
+    });
+  }
+};
