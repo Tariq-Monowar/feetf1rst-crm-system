@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
+import { notificationSend } from "../../../utils/notification.utils";
 const prisma = new PrismaClient();
 
 export const createFeetf1rstShop = async (req: Request, res: Response) => {
@@ -165,8 +166,10 @@ export const getAllFeetf1rstShop = async (req: Request, res: Response) => {
   }
 };
 
-
-export const getFeetf1rstShopDetailsById = async (req: Request, res: Response) => {
+export const getFeetf1rstShopDetailsById = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { id } = req.params;
 
@@ -187,7 +190,6 @@ export const getFeetf1rstShopDetailsById = async (req: Request, res: Response) =
       message: "Feetf1rst shop details fetched successfully",
       data: feetf1rstShop,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -195,4 +197,92 @@ export const getFeetf1rstShopDetailsById = async (req: Request, res: Response) =
       error: error,
     });
   }
-}
+};
+
+export const deleteFeetf1rstShop = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const feetf1rstShop = await prisma.feetf1rst_shop.delete({
+      where: { id },
+    });
+
+    if (feetf1rstShop.image) {
+      deleteFileFromS3(feetf1rstShop.image);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Feetf1rst shop deleted successfully",
+      data: { id },
+    });
+  } catch (error: any) {
+    if (error?.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "shop not found",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error?.message ?? error,
+    });
+  }
+};
+
+export const addInterestsToFeetf1rstShop = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.user;
+    const { shop_id, question } = req.body;
+
+
+    const feetf1rstShop = await prisma.feetf1rst_shop.findUnique({
+      where: {id: shop_id},
+    });
+
+    if (!feetf1rstShop) {
+      return res.status(404).json({
+        success: false,
+        message: "Feetf1rst shop not found",
+      });
+    }
+
+    const interests = await prisma.feetf1rst_shop_interests.create({
+      data: {
+        feetf1rst_shop_id: shop_id,
+        partnerId: id,
+        question: question,
+      },
+      select: {
+        id: true,
+        question: true,
+      },
+    });
+
+    // //send notification to all admin
+    // const admins = await prisma.user.findMany({
+    //   where: {
+    //     role: "ADMIN",
+    //   },
+    // });
+    // admins.forEach(async (admin) => {
+    //   await notificationSend(admin.id, "new_interest", "New interest added", interests.id, false, `/feetf1rst-shop/${shop_id}`);
+    // });
+
+    res.status(200).json({
+      success: true,
+      message: "Interests added successfully",
+      data: interests,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error?.message ?? error,
+    });
+  }
+};
