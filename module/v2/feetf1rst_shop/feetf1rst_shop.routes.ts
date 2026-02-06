@@ -12,8 +12,8 @@ import {
    updateFeetf1rstShop,
   deleteFeetf1rstShop,
   addInterestsToFeetf1rstShop,
-//   getInterestsOfFeetf1rstShop,
-//   deleteInterestsOfFeetf1rstShop,
+  getInterestsOfFeetf1rstShop,
+  deleteInterestsOfFeetf1rstShop,
 } from "./feetf1rst_shop.controllers";
 
 /*
@@ -48,16 +48,16 @@ router.delete("/delete/:id", verifyUser("ADMIN"), deleteFeetf1rstShop);
 
 router.post("/add-interests", verifyUser("PARTNER", "EMPLOYEE"), addInterestsToFeetf1rstShop);
 
-// router.get(
-//   "/get-interests/:id",
-//   verifyUser("ANY"),
-//   getInterestsOfFeetf1rstShop
-// );
+router.get(
+  "/get-interests",
+  verifyUser("ADMIN"),
+  getInterestsOfFeetf1rstShop
+);
 
-// router.delete(
-//   "/delete-interests/:id",
-//   verifyUser("ADMIN"),
-//   deleteInterestsOfFeetf1rstShop
-// );
+router.delete(
+  "/delete-interests/:id",
+  verifyUser("ADMIN"),
+  deleteInterestsOfFeetf1rstShop
+);
 
 export default router;

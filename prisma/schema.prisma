@@ -1882,6 +1882,7 @@ enum notificationType {
   Appointment_Created
   updated_massschuhe_order_status
   admin_order_canceled
+  shop_interest
   test
 }
 
