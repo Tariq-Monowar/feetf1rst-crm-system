@@ -12,6 +12,7 @@ import partner_payout from './partner_payout/partner_payout.routes'
 import pickups from './pickups/pickups.routes'
 import admin_order_transitions from './admin_order_transitions/admin_order_transitions.routes'
 import news from './news/news.routes'
+import feetf1rst_shop from './feetf1rst_shop/feetf1rst_shop.routes'
 
 const router = express.Router();
 
@@ -27,7 +28,8 @@ const moduleRoutes = [
   { path: '/partner-payout', route: partner_payout},
   { path: '/pickups', route: pickups},
   { path: '/admin-order-transitions', route: admin_order_transitions},
-  { path: '/news', route: news}
+  { path: '/news', route: news},
+  { path: '/feetf1rst-shop', route: feetf1rst_shop}
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

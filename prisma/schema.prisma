@@ -75,6 +75,7 @@ model User {
   customModels                custom_models[]
   accountInfos                accountInfo[]
   employeeFeatureAccess       employee_feature_access[]
+  feetf1RstShopInterests      feetf1rst_shop_interests[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -853,7 +854,7 @@ model customerOrders {
   wohnort            String?
   telefon            String?
   email              String?
-  geschaeftsstandort Json?   // { title: string, description?: string }
+  geschaeftsstandort Json? // { title: string, description?: string }
   mitarbeiter        String?
   fertigstellungBis  DateTime? // pickup date
   versorgung         String?
@@ -1473,6 +1474,11 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1496,6 +1502,11 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2073,4 +2084,43 @@ model news {
   @@index([subtitle])
   @@index([createdAt])
   @@index([updatedAt])
+}
+
+model feetf1rst_shop {
+  id String @id @default(uuid())
+
+  category      String?
+  title         String?
+  price         Float?
+  quantity      Int?
+  delivery_time String?
+
+  system_description String? //just inly 12 word of description
+  description        String?
+
+  image String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  //relationa
+  feetf1RstShopInterests feetf1rst_shop_interests[]
+}
+
+model feetf1rst_shop_interests {
+  id String @id @default(uuid())
+
+  question String?
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  feetf1rst_shop_id String
+  feetf1rst_shop    feetf1rst_shop @relation(fields: [feetf1rst_shop_id], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([feetf1rst_shop_id])
 }
