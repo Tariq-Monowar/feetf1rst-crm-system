@@ -473,6 +473,8 @@ export const getMassschuheOrder = async (req: Request, res: Response) => {
               email: true,
             },
           },
+          createdAt: true,
+          updatedAt: true,
           massschuheOrderHistories: {
             orderBy: { startedAt: "desc" },
             select: {
