@@ -78,19 +78,19 @@ export const seallingLocationRevenue = async (req: Request, res: Response) => {
           AND "geschaeftsstandort" IS NOT NULL
         GROUP BY "geschaeftsstandort"->>'title'
       `,
-      // Shoes: Group by filiale, calculate revenue and count
+      // Shoes: Group by filiale (JSON - use ::text for grouping any JSON type)
       prisma.$queryRaw<
         Array<{ location: string; revenue: number; count: number }>
       >`
         SELECT 
-          COALESCE(filiale, 'Unknown') as location,
+          COALESCE(filiale::text, 'Unknown') as location,
           COALESCE(SUM(COALESCE("fußanalyse", 0) + COALESCE("einlagenversorgung", 0)), 0)::float as revenue,
           COUNT(*)::int as count
         FROM "massschuhe_order"
         WHERE "userId" = ${id}::text
           AND status = 'Geliefert'
           AND filiale IS NOT NULL
-        GROUP BY filiale
+        GROUP BY filiale::text
       `,
     ]);
 

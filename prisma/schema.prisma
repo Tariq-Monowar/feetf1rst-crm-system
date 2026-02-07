@@ -1251,7 +1251,7 @@ model massschuhe_order {
   //workload section
   delivery_date      String?
   telefon            String?
-  filiale            String? //location
+  filiale            Json? //location - accepts any JSON data
   kunde              String? //customer name
   email              String?
   button_text        String?
