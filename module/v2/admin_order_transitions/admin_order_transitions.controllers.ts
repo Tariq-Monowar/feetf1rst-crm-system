@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -228,25 +228,23 @@ export const getTotalPriceRatio = async (req: Request, res: Response) => {
 };
 
 
-// API 3: Get all transitions with cursor pagination
+// Raw SQL row type for getAllTransitions
+
+
+// API 3: Get all transitions with cursor pagination (optimized for billions of rows + high concurrency)
 export const getAllTransitions = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 100);
     const cursor = req.query.cursor as string | undefined;
     const status = req.query.status as string | undefined;
     const orderFor = req.query.orderFor as string | undefined;
+    const search = (req.query.search as string)?.trim();
 
-    const whereCondition: any = {
-      partnerId: id,
-    };
-
-    // Validate and apply status filter
+    // Validate status filter
     if (status) {
       const validStatuses = ["panding", "complated"];
-      if (validStatuses.includes(status)) {
-        whereCondition.status = status;
-      } else {
+      if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
           message: "Invalid status",
@@ -255,12 +253,10 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       }
     }
 
-    // Validate and apply orderFor filter
+    // Validate orderFor filter
     if (orderFor) {
       const validOrderFor = ["insole", "shoes", "store"];
-      if (validOrderFor.includes(orderFor)) {
-        whereCondition.orderFor = orderFor;
-      } else {
+      if (!validOrderFor.includes(orderFor)) {
         return res.status(400).json({
           success: false,
           message: "Invalid orderFor",
@@ -269,89 +265,91 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       }
     }
 
-    // Handle cursor pagination
-    // Cursor is the ID of the last item from previous page
-    // We fetch that record to get its createdAt timestamp, then get records created before it
-    // This ensures consistent pagination even if records are added/updated between requests
-    if (cursor) {
-      const cursorTransition = await prisma.admin_order_transitions.findUnique({
-        where: { id: cursor },
-        select: { createdAt: true },
-      });
+    // Build WHERE conditions - uses composite indexes: (partnerId, createdAt), (partnerId, status, createdAt), (partnerId, orderFor, createdAt)
+    const conditions: Prisma.Sql[] = [Prisma.sql`aot."partnerId" = ${id}::text`];
+    if (status) conditions.push(Prisma.sql`aot.status = ${status}::"admin_order_transitions_status"`);
+    if (orderFor) conditions.push(Prisma.sql`aot."orderFor" = ${orderFor}::"transitions_for"`);
 
-      if (!cursorTransition) {
-        // Invalid cursor - return empty result
-        return res.status(200).json({
-          success: true,
-          message: "Transitions retrieved successfully",
-          data: [],
-          hasMore: false,
-        });
-      }
-
-      // Get records created before the cursor record (for desc order = older records)
-      whereCondition.createdAt = {
-        lt: cursorTransition.createdAt,
-      };
+    if (search) {
+      const searchTerm = `%${search}%`;
+      conditions.push(
+        Prisma.sql`(
+          c.vorname ILIKE ${searchTerm} OR
+          c.nachname ILIKE ${searchTerm} OR
+          aot."orderNumber" ILIKE ${searchTerm} OR
+          cs."orderNumber" ILIKE ${searchTerm}
+        )`
+      );
     }
 
-    // Fetch transitions with limit + 1 to check if there's more data
-    const transitions = await prisma.admin_order_transitions.findMany({
-      where: whereCondition,
-      take: limit + 1,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        orderFor: true,
-        price: true,
-        note: true,
-        custom_shafts_catagoary: true,
-        custom_shafts: {
-          select: {
-            orderNumber: true,
-            id: true,
-            invoice: true,
-            invoice2: true,
-            status: true,
-            order_status: true,
-            other_customer_name: true,
-          },
-        },
-        customer: {
-          select: {
-            vorname: true,
-            nachname: true,
-          },
-        },
-        createdAt: true,
-        customerId: true,
-      },
-    });
+    // Single-query cursor: keyset pagination with (createdAt, id) for stable ordering - no extra round-trip
+    if (cursor) {
+      conditions.push(
+        Prisma.sql`(aot."createdAt", aot.id) < (
+          SELECT "createdAt", id FROM "admin_order_transitions"
+          WHERE id = ${cursor}::text AND "partnerId" = ${id}::text
+        )`
+      );
+    }
 
-    // Determine pagination info
+    const whereClause = Prisma.join(conditions, " AND ");
+
+    const transitions = await prisma.$queryRaw<any>`
+      SELECT
+        aot.id,
+        aot."orderNumber",
+        aot.status,
+        aot."orderFor",
+        aot.price,
+        aot.note,
+        aot."custom_shafts_catagoary",
+        aot."createdAt",
+        aot."customerId",
+        cs.id AS "cs_id",
+        cs."orderNumber" AS "cs_orderNumber",
+        cs.invoice AS "cs_invoice",
+        cs.invoice2 AS "cs_invoice2",
+        cs.status AS "cs_status",
+        cs."order_status" AS "cs_order_status",
+        cs."other_customer_name" AS "cs_other_customer_name",
+        c.vorname,
+        c.nachname
+      FROM "admin_order_transitions" aot
+      LEFT JOIN "customers" c ON c.id = aot."customerId"
+      LEFT JOIN "custom_shafts" cs ON cs.id = aot."custom_shafts_id"
+      WHERE ${whereClause}
+      ORDER BY aot."createdAt" DESC, aot.id DESC
+      LIMIT ${limit + 1}
+    `;
+
     const hasMore = transitions.length > limit;
     const transitionsData = hasMore ? transitions.slice(0, limit) : transitions;
 
-    // Conditionally format invoice fields based on category
-    const data = transitionsData.map((transition: any) => {
-      const isKomplettfertigung = transition.custom_shafts_catagoary === "Komplettfertigung";
-      
-      // If Komplettfertigung, return both invoices; otherwise only invoice
-      const custom_shafts = transition.custom_shafts ? {
-        id: transition.custom_shafts.id,
-        orderNumber: transition.custom_shafts.orderNumber,
-        invoice: transition.custom_shafts.invoice,
-        invoice2: transition.custom_shafts.invoice2,
-        status: transition.custom_shafts.status,
-        order_status: transition.custom_shafts.order_status,
-        other_customer_name: transition.custom_shafts.other_customer_name,
-        ...(isKomplettfertigung && { invoice2: transition.custom_shafts.invoice2 }),
-      } : null;
+    const data = transitionsData.map((row) => {
+      const isKomplettfertigung = row.custom_shafts_catagoary === "Komplettfertigung";
+      const custom_shafts = row.cs_id
+        ? {
+            id: row.cs_id,
+            orderNumber: row.cs_orderNumber,
+            invoice: row.cs_invoice,
+            invoice2: isKomplettfertigung ? row.cs_invoice2 : undefined,
+            status: row.cs_status,
+            order_status: row.cs_order_status,
+            other_customer_name: row.cs_other_customer_name,
+          }
+        : null;
 
       return {
-        ...transition,
+        id: row.id,
+        orderNumber: row.orderNumber,
+        status: row.status,
+        orderFor: row.orderFor,
+        price: row.price,
+        note: row.note,
+        custom_shafts_catagoary: row.custom_shafts_catagoary,
+        customer: { vorname: row.vorname, nachname: row.nachname },
+        createdAt: row.createdAt,
+        customerId: row.customerId,
         custom_shafts,
       };
     });

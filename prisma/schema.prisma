@@ -1714,6 +1714,11 @@ model admin_order_transitions {
   @@index([orderFor])
   @@index([createdAt])
   @@index([partnerId, orderNumber]) // Composite index for fast orderNumber lookup per partner
+  // High-scale indexes for getAllTransitions (billions of rows, thousands of concurrent users)
+  @@index([partnerId, createdAt(sort: Desc)]) // Main list + cursor pagination
+  @@index([partnerId, status, createdAt(sort: Desc)]) // With status filter
+  @@index([partnerId, orderFor, createdAt(sort: Desc)]) // With orderFor filter
+  @@index([partnerId, id]) // Fast cursor lookup by id
 }
 
 enum admin_order_transitions_status {
