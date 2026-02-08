@@ -427,7 +427,7 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         //inside message i need to show
-        message: `No matching size in store. your required length: ${error.requiredLength}mm. Nearest lower size: ${error.nearestLowerSize?.length}mm. Nearest upper size: ${error.nearestUpperSize?.length}mm.`,
+        message: `Keine passende Größe im Lager. Erforderliche Länge: ${error.requiredLength}mm. Nächstkleinere Größe: ${error.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere Größe: ${error.nearestUpperSize?.length ?? "–"}mm.`,
       });
     }
     console.error("Create Order Error:", error);
