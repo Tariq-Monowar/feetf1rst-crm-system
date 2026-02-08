@@ -1540,58 +1540,106 @@ const previousOrdersSelect = {
 };
 
 /**
- * Get previous orders for a customer in the same shape as create-order payload,
- * so the client can pre-fill the form when creating a new order from a previous one.
- * Uses cursor-based pagination (cursor = order id, limit = page size).
+ * Get previous orders for a customer (create-order payload shape for pre-fill).
+ * Query: productType=insole | shoes (default insole). Pagination: cursor, limit.
  */
 export const getPreviousOrders = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
     const cursor = req.query.cursor as string | undefined;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 10), 100);
+    const productType = (req.query.productType as string)?.toLowerCase() || "insole";
     const userId = req.user?.id;
     const userRole = req.user?.role;
 
     if (!customerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer ID is required",
-      });
+      return res.status(400).json({ success: false, message: "Customer ID is required" });
+    }
+    if (productType !== "insole" && productType !== "shoes") {
+      return res.status(400).json({ success: false, message: "productType must be 'insole' or 'shoes'" });
     }
 
     const customer = await prisma.customers.findUnique({
       where: { id: customerId },
       select: { id: true },
     });
-
     if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+
+    if (productType === "shoes") {
+      const whereShoes: any = { customerId };
+      if (userRole !== "ADMIN" && userId) whereShoes.userId = userId;
+      if (cursor) {
+        const cur = await prisma.massschuhe_order.findFirst({
+          where: { id: cursor, ...whereShoes },
+          select: { createdAt: true },
+        });
+        if (!cur) {
+          return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data: [], hasMore: false });
+        }
+        whereShoes.createdAt = { lt: cur.createdAt };
+      }
+
+      const shoesOrders = await prisma.massschuhe_order.findMany({
+        where: whereShoes,
+        take: limit + 1,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true, orderNumber: true, createdAt: true, arztliche_diagnose: true, usführliche_diagnose: true,
+          rezeptnummer: true, durchgeführt_von: true, note: true, albprobe_geplant: true, kostenvoranschlag: true,
+          delivery_date: true, telefon: true, filiale: true, kunde: true, email: true, button_text: true,
+          fußanalyse: true, einlagenversorgung: true, customer_note: true, location: true, employeeId: true, customerId: true,
+        },
       });
+
+      const hasMore = shoesOrders.length > limit;
+      const items = hasMore ? shoesOrders.slice(0, limit) : shoesOrders;
+      const datum = (d: Date) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+      const data = items.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        arztliche_diagnose: o.arztliche_diagnose ?? "",
+        button_text: o.button_text ?? "Bestellung speichern",
+        customerId: o.customerId ?? "",
+        customer_note: o.customer_note ?? "",
+        datumAuftrag: datum(o.createdAt),
+        delivery_date: o.delivery_date ?? "",
+        durchgeführt_von: o.durchgeführt_von ?? "",
+        einlagenversorgung: o.einlagenversorgung ?? 0,
+        email: o.email ?? "",
+        employeeId: o.employeeId ?? "",
+        fertigstellungBis: o.delivery_date ?? "",
+        filiale: o.filiale ?? {},
+        fußanalyse: o.fußanalyse ?? 0,
+        halbprobe_geplant: o.albprobe_geplant ?? false,
+        kostenvoranschlag: o.kostenvoranschlag ?? false,
+        kunde: o.kunde ?? "",
+        location: o.location ?? "",
+        note: o.note ?? "",
+        orderNote: "",
+        paymentType: "privat",
+        quantity: 1,
+        rezeptnummer: o.rezeptnummer ?? "",
+        statusBezahlt: false,
+        telefon: o.telefon ?? "",
+        usführliche_diagnose: o.usführliche_diagnose ?? "",
+      }));
+
+      return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data, hasMore });
     }
 
-    const where: Record<string, unknown> = { customerId };
-    if (userRole !== "ADMIN" && userId) {
-      where.partnerId = userId;
-    }
-
+    const where: any = { customerId };
+    if (userRole !== "ADMIN" && userId) where.partnerId = userId;
     if (cursor) {
-      const cursorOrder = await prisma.customerOrders.findFirst({
+      const cur = await prisma.customerOrders.findFirst({
         where: { id: cursor, ...where },
         select: { createdAt: true },
       });
-
-      if (!cursorOrder) {
-        return res.status(200).json({
-          success: true,
-          message: "Previous orders fetched successfully",
-          data: [],
-          hasMore: false,
-        });
+      if (!cur) {
+        return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data: [], hasMore: false });
       }
-
-      where.createdAt = { lt: cursorOrder.createdAt };
+      where.createdAt = { lt: cur.createdAt };
     }
 
     const orders = await prisma.customerOrders.findMany({
@@ -1600,16 +1648,10 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
       select: previousOrdersSelect,
     });
-
     const hasMore = orders.length > limit;
     const data = hasMore ? orders.slice(0, limit) : orders;
 
-    return res.status(200).json({
-      success: true,
-      message: "Previous orders fetched successfully",
-      data,
-      hasMore,
-    });
+    return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data, hasMore });
   } catch (error: any) {
     console.error("Get Previous Orders Error:", error);
     return res.status(500).json({
