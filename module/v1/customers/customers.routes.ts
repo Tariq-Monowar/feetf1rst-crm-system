@@ -140,4 +140,3 @@ router.get("/supply-status/:customerId", verifyUser("PARTNER", "ADMIN", "EMPLOYE
 
 export default router;
 
- 

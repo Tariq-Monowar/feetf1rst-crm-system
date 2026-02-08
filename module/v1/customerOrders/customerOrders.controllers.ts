@@ -182,11 +182,26 @@ export const createOrder = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
 
     // Combined validation
-    if (!customerId || !versorgungId || !screenerId || !bezahlt) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer ID, Versorgung ID, Screener ID, and Payment status are required",
-      });
+    // if (!customerId || !versorgungId || !screenerId || !bezahlt) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Customer ID, Versorgung ID, Screener ID, and Payment status are required",
+    //   });
+    // }
+    const requiredFields = [
+      "customerId",
+      "versorgungId",
+      "screenerId",
+      "bezahlt",
+    ];
+    
+    for (const field of requiredFields) {
+      if (!req.body[field]) {
+        return res.status(400).json({
+          success: false,
+          message: `${field} is required`,
+        });
+      }
     }
 
     const validPaymentStatuses = ["Privat_Bezahlt", "Privat_offen", "Krankenkasse_Ungenehmigt", "Krankenkasse_Genehmigt"];
@@ -244,9 +259,13 @@ export const createOrder = async (req: Request, res: Response) => {
 
     let matchedSizeKey = determineProductSize(customer, versorgung);
 
+    const targetLength = versorgung.storeId
+      ? Math.max(Number(customer.fusslange1), Number(customer.fusslange2)) + 5
+      : 0;
+
     const order = await prisma.$transaction(async (tx) => {
-      // Parallel: Create product, get order number, and find employee
-      const [customerProduct, orderNumber, defaultEmployee] = await Promise.all([
+      // Parallel: product, order number, employee, and store (when needed)
+      const [customerProduct, orderNumber, defaultEmployee, store] = await Promise.all([
         tx.customerProduct.create({
           data: {
             name: versorgung.name,
@@ -263,11 +282,16 @@ export const createOrder = async (req: Request, res: Response) => {
         !werkstattEmployeeId
           ? tx.employees.findFirst({ where: { partnerId }, select: { id: true } })
           : null,
+        versorgung.storeId
+          ? tx.stores.findUnique({
+              where: { id: versorgung.storeId },
+              select: { id: true, groessenMengen: true, userId: true },
+            })
+          : null,
       ]);
 
       const finalEmployeeId = werkstattEmployeeId || defaultEmployee?.id;
 
-      // Build order data
       const orderData: any = {
         orderNumber,
         fußanalyse: null,
@@ -283,7 +307,6 @@ export const createOrder = async (req: Request, res: Response) => {
         versorgung_laut_arzt,
         einlagentyp,
         überzug,
-        // menge,
         versorgung_note,
         schuhmodell_wählen,
         kostenvoranschlag,
@@ -299,63 +322,66 @@ export const createOrder = async (req: Request, res: Response) => {
         versorgung: werkstattVersorgung ?? null,
         quantity: orderQuantity,
       };
-
       if (versorgung.storeId) orderData.store = { connect: { id: versorgung.storeId } };
       if (finalEmployeeId) orderData.employee = { connect: { id: finalEmployeeId } };
       if (fussanalysePreis != null) orderData.fussanalysePreis = Number(fussanalysePreis);
       if (einlagenversorgungPreis != null) orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
 
-      // Create order
       const newOrder = await tx.customerOrders.create({
         data: orderData,
         select: { id: true, employeeId: true },
       });
 
-      // Update store stock if needed
-      if (versorgung.storeId) {
-        const store = await tx.stores.findUnique({
-          where: { id: versorgung.storeId },
-          select: { id: true, groessenMengen: true, userId: true },
-        });
+      let storeUpdatePromise: Promise<unknown> | null = null;
+      if (store?.groessenMengen && typeof store.groessenMengen === "object") {
+        const sizes = { ...(store.groessenMengen as any) };
+        const storeMatchedSizeKey = determineSizeFromGroessenMengen(sizes, targetLength);
 
-        if (store?.groessenMengen && typeof store.groessenMengen === "object") {
-          const sizes = { ...(store.groessenMengen as any) };
-          const targetLength = Math.max(Number(customer.fusslange1), Number(customer.fusslange2)) + 5;
-          const storeMatchedSizeKey = determineSizeFromGroessenMengen(sizes, targetLength);
+        if (!storeMatchedSizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
 
-          if (!storeMatchedSizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
-
-          const sizeValue = sizes[storeMatchedSizeKey];
-          const currentQty = getQuantity(sizeValue);
-          const newQty = Math.max(currentQty - 1, 0);
-
-          sizes[storeMatchedSizeKey] = updateSizeQuantity(sizeValue, newQty);
-
-          // Parallel: Update store and create history
-          await Promise.all([
-            tx.stores.update({ where: { id: store.id }, data: { groessenMengen: sizes } }),
-            tx.storesHistory.create({
-              data: {
-                storeId: store.id,
-                changeType: "sales",
-                quantity: currentQty > 0 ? 1 : 0,
-                newStock: newQty,
-                reason: `Order size ${storeMatchedSizeKey}`,
-                partnerId: store.userId,
-                customerId,
-                orderId: newOrder.id,
-                status: "SELL_OUT",
-              },
-            }),
-          ]);
-
-          matchedSizeKey = storeMatchedSizeKey;
+        const matchedLength = extractLengthValue(sizes[storeMatchedSizeKey]);
+        if (matchedLength == null || Math.abs(targetLength - matchedLength) > 10) {
+          let nearestLower: { sizeKey: string; length: number } | null = null;
+          let nearestUpper: { sizeKey: string; length: number } | null = null;
+          for (const [sizeKey, sizeData] of Object.entries(sizes as Record<string, any>)) {
+            const len = extractLengthValue(sizeData);
+            if (len == null) continue;
+            if (len < targetLength && (nearestLower == null || len > nearestLower.length)) nearestLower = { sizeKey, length: len };
+            if (len > targetLength && (nearestUpper == null || len < nearestUpper.length)) nearestUpper = { sizeKey, length: len };
+          }
+          const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
+          err.requiredLength = targetLength;
+          err.nearestLowerSize = nearestLower;
+          err.nearestUpperSize = nearestUpper;
+          throw err;
         }
+
+        const sizeValue = sizes[storeMatchedSizeKey];
+        const currentQty = getQuantity(sizeValue);
+        const newQty = Math.max(currentQty - 1, 0);
+        sizes[storeMatchedSizeKey] = updateSizeQuantity(sizeValue, newQty);
+        matchedSizeKey = storeMatchedSizeKey;
+
+        storeUpdatePromise = Promise.all([
+          tx.stores.update({ where: { id: store.id }, data: { groessenMengen: sizes } }),
+          tx.storesHistory.create({
+            data: {
+              storeId: store.id,
+              changeType: "sales",
+              quantity: currentQty > 0 ? 1 : 0,
+              newStock: newQty,
+              reason: `Order size ${storeMatchedSizeKey}`,
+              partnerId: store.userId,
+              customerId,
+              orderId: newOrder.id,
+              status: "SELL_OUT",
+            },
+          }),
+        ]);
       }
 
-      // Parallel: Create both histories
-      await Promise.all([
+      const historyPromises: Promise<unknown>[] = [
         tx.customerHistorie.create({
           data: {
             customerId,
@@ -376,7 +402,9 @@ export const createOrder = async (req: Request, res: Response) => {
             note: null,
           } as any,
         }),
-      ]);
+      ];
+      if (storeUpdatePromise) historyPromises.push(storeUpdatePromise);
+      await Promise.all(historyPromises);
 
       return { ...newOrder, matchedSizeKey };
     });
@@ -393,6 +421,13 @@ export const createOrder = async (req: Request, res: Response) => {
         success: false,
         message:
           "Unable to determine nearest size from groessenMengen for this store",
+      });
+    }
+    if (error?.message === "SIZE_OUT_OF_TOLERANCE") {
+      return res.status(400).json({
+        success: false,
+        //inside message i need to show
+        message: `No matching size in store. your required length: ${error.requiredLength}mm. Nearest lower size: ${error.nearestLowerSize?.length}mm. Nearest upper size: ${error.nearestUpperSize?.length}mm.`,
       });
     }
     console.error("Create Order Error:", error);
