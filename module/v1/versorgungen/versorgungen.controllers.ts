@@ -1368,20 +1368,13 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
         message: `${missingField} is required`,
       });
     }
-    if (!imageS3Url) {
-      return res.status(400).json({
-        success: false,
-        message: "Image is required",
-      });
-    }
-
     const partnerId = req.user?.id;
 
     const supplyStatus = await prisma.supplyStatus.create({
       data: {
         name,
         price: priceFloat,
-        image: imageS3Url,
+        image: imageS3Url || null,
         description: description || null,
         partner: {
           connect: { id: partnerId },
