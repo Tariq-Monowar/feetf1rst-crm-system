@@ -459,14 +459,17 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
       // Track initial status from order creation
       let statusStartTime = order.createdAt;
       let statusAssignee =
-        (order as any).mitarbeiter || order.employee?.employeeName || order.partner?.name || "System";
-      let statusAssigneeId =
-        order.employeeId || order.partner?.id || null;
-      let statusAssigneeType: "employee" | "partner" | "system" = order.employeeId
-        ? "employee"
-        : order.partner?.id
-        ? "partner"
-        : "system";
+        (order as any).mitarbeiter ||
+        order.employee?.employeeName ||
+        order.partner?.name ||
+        "System";
+      let statusAssigneeId = order.employeeId || order.partner?.id || null;
+      let statusAssigneeType: "employee" | "partner" | "system" =
+        order.employeeId
+          ? "employee"
+          : order.partner?.id
+          ? "partner"
+          : "system";
 
       // Process each status change
       for (let i = 0; i < actualStatusChanges.length; i++) {
@@ -522,10 +525,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
           order.employee?.employeeName ||
           order.partner?.name ||
           "System",
-        assigneeId:
-          order.employeeId ||
-          order.partner?.id ||
-          null,
+        assigneeId: order.employeeId || order.partner?.id || null,
         assigneeType: order.employeeId
           ? "employee"
           : order.partner?.id
@@ -1345,7 +1345,9 @@ export const getSupplyInfo = async (req: Request, res: Response) => {
         );
 
         if (matchedSize) {
-          const sizeData = (store.groessenMengen as Record<string, any>)[matchedSize];
+          const sizeData = (store.groessenMengen as Record<string, any>)[
+            matchedSize
+          ];
           storeInfo = {
             produktname: store.produktname,
             hersteller: store.hersteller,
@@ -1410,7 +1412,6 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             diagnosis_status: true,
             material: true,
             versorgung: true,
-           
           },
         },
         store: {
@@ -1418,7 +1419,6 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             produktname: true,
             hersteller: true,
             groessenMengen: true,
-            
           },
         },
       },
@@ -1530,7 +1530,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         wohnort: true,
         customer: {
           select: {
-            vorname: true,     
+            vorname: true,
             nachname: true,
             customerNumber: true,
           },
@@ -1542,6 +1542,11 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
             image: true,
             hauptstandort: true,
             busnessName: true,
+            accountInfos: {
+              select: {
+                barcodeLabel: true,
+              },
+            },
           },
         },
       },

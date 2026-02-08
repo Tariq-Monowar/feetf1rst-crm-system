@@ -14,15 +14,6 @@ const validateMonthYear = (month: number, year: number) => {
   return { valid: true };
 };
 
-// Helper function to get month name
-const getMonthName = (month: number): string => {
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-  ];
-  return monthNames[month - 1];
-};
-
 // Helper function to format date
 const formatDateLocal = (date: Date): string => {
   const year = date.getFullYear();
@@ -68,8 +59,6 @@ export const generateNextCustomShaftOrderNumber = async (partnerId: string): Pro
   const maxNumber = parseInt(result[0].orderNumber, 10);
   return String(maxNumber + 1);
 };
-//-------------------------------------
-
 
 // API 1: Simple total price calculation
 export const getTotalPrice = async (req: Request, res: Response) => {
@@ -227,10 +216,6 @@ export const getTotalPriceRatio = async (req: Request, res: Response) => {
   }
 };
 
-
-// Raw SQL row type for getAllTransitions
-
-
 // API 3: Get all transitions with cursor pagination (optimized for billions of rows + high concurrency)
 export const getAllTransitions = async (req: Request, res: Response) => {
   try {
@@ -369,7 +354,6 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 // Helper function to format date in readable format (e.g., "1 January 2025")
 const formatDateReadable = (date: Date): string => {
