@@ -1111,7 +1111,8 @@ model Stores {
   opannrit  Boolean @default(false)
 
   /// versorgungen এর সাথে রিলেশন হচ্ছে ID,  Artikelhersteller = hersteller, Rohling Hersteller = Artikelbezeichnung (balance)
-  versorgungen Versorgungen[]
+
+  type StoreType @default(rady_insole)
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1119,10 +1120,11 @@ model Stores {
   adminStoreId String?
   adminStore   admin_store? @relation(fields: [adminStoreId], references: [id])
 
-  storesHistory StoresHistory[] // History of stock changes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  storesHistory StoresHistory[] // History of stock changes
+  versorgungen          Versorgungen[]
   customerOrders        customerOrders[]
   customerVersorgungens customer_versorgungen[]
   storeOrderOverviews   StoreOrderOverview[]
@@ -1133,6 +1135,10 @@ model Stores {
   @@map("stores")
 }
 
+enum StoreType {
+  milling_block
+  rady_insole
+}
 enum CreateStatus {
   by_self
   by_admin
@@ -1499,6 +1505,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1522,6 +1529,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

@@ -18,7 +18,11 @@
     "order_number:admin_order_transitions": "ts-node scripts/order_number-admin_order_transitions.ts",
     "admin_order_transitions:status": "ts-node scripts/admin_order_transitions-status-complated.ts",
     "fix:orderNumber": "ts-node scripts/fix-orderNumber-custom-shafts.ts",
-    "updater-barcode": "ts-node scripts/updater-barcode.ts"
+    "updater-barcode": "ts-node scripts/updater-barcode.ts",
+    "all_data:rady_insole": "ts-node scripts/all_data-stores.ts rady_insole",
+    "all_data:milling_block": "ts-node scripts/all_data-stores.ts milling_block",
+    "all_data:update:rady_insole": "ts-node scripts/all_data-stores.ts update rady_insole",
+    "all_data:update:milling_block": "ts-node scripts/all_data-stores.ts update milling_block"
   },
   "keywords": [],
   "author": "",
