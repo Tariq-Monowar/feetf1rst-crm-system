@@ -606,13 +606,14 @@ export const getAllCustomers = async (req: Request, res: Response) => {
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-        include: {
-          versorgungen: true,
-          screenerFile: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-          },
-        },
+         select: {
+          id: true,
+          customerNumber: true,
+          vorname: true,
+          nachname: true,
+          wohnort: true,
+          createdAt: true,
+         },
       }),
       prisma.customers.count({
         where: {
@@ -622,31 +623,31 @@ export const getAllCustomers = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const customersWithImages = customers.map((c) => ({
-      ...c,
-      screenerFile: c.screenerFile.map((screener) => ({
-        id: screener.id,
-        customerId: screener.customerId,
-        picture_10: screener.picture_10 || null,
-        picture_23: screener.picture_23 || null,
-        paint_24: screener.paint_24 || null,
-        paint_23: screener.paint_23 || null,
-        picture_11: screener.picture_11 || null,
-        picture_24: screener.picture_24 || null,
-        threed_model_left: screener.threed_model_left || null,
-        threed_model_right: screener.threed_model_right || null,
-        picture_17: screener.picture_17 || null,
-        picture_16: screener.picture_16 || null,
-        csvFile: screener.csvFile || null,
-        createdAt: screener.createdAt,
-        updatedAt: screener.updatedAt,
-      })),
-    }));
+    // const customersWithImages = customers.map((c) => ({
+    //   ...c,
+    //   screenerFile: c.screenerFile.map((screener) => ({
+    //     id: screener.id,
+    //     customerId: screener.customerId,
+    //     picture_10: screener.picture_10 || null,
+    //     picture_23: screener.picture_23 || null,
+    //     paint_24: screener.paint_24 || null,
+    //     paint_23: screener.paint_23 || null,
+    //     picture_11: screener.picture_11 || null,
+    //     picture_24: screener.picture_24 || null,
+    //     threed_model_left: screener.threed_model_left || null,
+    //     threed_model_right: screener.threed_model_right || null,
+    //     picture_17: screener.picture_17 || null,
+    //     picture_16: screener.picture_16 || null,
+    //     csvFile: screener.csvFile || null,
+    //     createdAt: screener.createdAt,
+    //     updatedAt: screener.updatedAt,
+    //   })),
+    // }));
 
     res.status(200).json({
       success: true,
       message: "Customers fetched successfully",
-      data: customersWithImages,
+      data: customers,
       pagination: {
         totalItems: totalCount,
         totalPages: Math.ceil(totalCount / limit),

@@ -16,3 +16,4 @@ const router = express.Router();
 router.post("/update-secret-password", verifyUser("PARTNER"), setSecretPassword);
 
 export default router;
+ 
