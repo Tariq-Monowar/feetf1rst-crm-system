@@ -15,11 +15,11 @@ model User {
 
   name String?
 
-  email    String  @unique
-  password String?
+  email          String  @unique
+  password       String?
   secretPassword String?
-  image    String?
-  role     Role    @default(ADMIN)
+  image          String?
+  role           Role    @default(ADMIN)
 
   phone         String?
   absenderEmail String?
@@ -77,6 +77,7 @@ model User {
   accountInfos                accountInfo[]
   employeeFeatureAccess       employee_feature_access[]
   feetf1RstShopInterests      feetf1rst_shop_interests[]
+  stockMaterials              stock_material[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -1213,6 +1214,23 @@ enum ChangeType {
   updateStock
 }
 
+model stock_material {
+  id String @id @default(uuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  manufacturer      String?
+  delivery_business String?
+  article           String?
+  ein               String?
+  quantity          Int?
+  value             Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 /**
  * ----------------------------------------------------------------------
  * ============================Store end=================================
@@ -1480,6 +1498,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1503,6 +1522,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

@@ -14,6 +14,7 @@ import admin_order_transitions from './admin_order_transitions/admin_order_trans
 import news from './news/news.routes'
 import feetf1rst_shop from './feetf1rst_shop/feetf1rst_shop.routes'
 import auth from './auth/auth.routes'
+import stock_material from './storage/stock_material/stock_material.routes'
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ const moduleRoutes = [
   { path: '/news', route: news},
   { path: '/feetf1rst-shop', route: feetf1rst_shop},
   { path: '/auth', route: auth},
+  { path: '/stock-material', route: stock_material},
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

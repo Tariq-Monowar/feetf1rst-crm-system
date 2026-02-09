@@ -3098,7 +3098,7 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
 
     const skip = (page - 1) * limit;
 
-    const data = await prisma.customerHistorie.findMany({
+    const rawData = await prisma.customerHistorie.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
@@ -3112,6 +3112,9 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
       },
     });
 
+    const hasNextPage = rawData.length > limit;
+    const data = hasNextPage ? rawData.slice(0, limit) : rawData;
+
     return res.status(200).json({
       success: true,
       message: "Customer history retrieved successfully",
@@ -3119,7 +3122,7 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
       pagination: {
         currentPage: page,
         itemsPerPage: limit,
-        hasNextPage: data.length > limit,
+        hasNextPage,
         hasPrevPage: page > 1,
       },
     });
