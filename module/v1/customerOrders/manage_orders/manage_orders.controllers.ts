@@ -66,6 +66,7 @@ export const updateMultiplePaymentStatus = async (
       },
       select: {
         id: true,
+        customerId: true,
         bezahlt: true,
         orderStatus: true,
       },
@@ -96,8 +97,28 @@ export const updateMultiplePaymentStatus = async (
             paymentTo: bezahlt,
             isPrementChange: true,
             partnerId: req.user?.id || null,
-            employeeId: null, // add if you have employeeId in request
+            employeeId: null,
             note: `Payment status changed from "${order.bezahlt}" to "${bezahlt}"`,
+          },
+        });
+
+        // Customer history for payment change
+        const paymentLabels = {
+          Privat_Bezahlt: "Privat bezahlt",
+          Privat_offen: "Privat offen",
+          Krankenkasse_Ungenehmigt: "Krankenkasse ungenehmigt",
+          Krankenkasse_Genehmigt: "Krankenkasse genehmigt",
+        };
+        const paymentLabel = paymentLabels[bezahlt] ?? bezahlt;
+        
+        await prisma.customerHistorie.create({
+          data: {
+            customerId: order.customerId,
+            orderId: order.id,
+            category: "Zahlungen",
+            eventId: order.id,
+            paymentIs: bezahlt,
+            system_note: paymentLabel,
           },
         });
       }
@@ -274,6 +295,19 @@ export const updateMultipleOrderStatuses = async (
         updatedOrders,
       };
     });
+    if (orderStatus === "Abholbereit_Versandt") {
+      for (const order of result.updatedOrders) {
+        await prisma.customerHistorie.create({
+          data: {
+            customerId: order.customerId,
+            orderId: order.id,
+            category: "Bestellungen",
+            note: ``,
+            system_note: `Einlegesohlenbestellung abholbereit`,
+          },
+        });
+      }
+    }
 
     // Format orders with invoice URLs (already S3 URLs)
     const formattedOrders = result.updatedOrders.map((order) => ({

@@ -1,9 +1,13 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-import { deleteFileFromS3, deleteMultipleFilesFromS3, downloadFileFromS3 } from "../../../utils/s3utils";
+import {
+  deleteFileFromS3,
+  deleteMultipleFilesFromS3,
+  downloadFileFromS3,
+} from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -65,7 +69,7 @@ async function parseCSV(csvS3Url: string): Promise<any> {
 
       // Download file from S3
       const csvBuffer = await downloadFileFromS3(csvS3Url);
-      
+
       // Create a readable stream from the buffer
       const stream = Readable.from(csvBuffer);
 
@@ -93,23 +97,9 @@ async function parseCSV(csvS3Url: string): Promise<any> {
 
 export const createCustomers = async (req: Request, res: Response) => {
   console.log("createCustomers", req.body);
-  const files = req.files as any;
-
-  const cleanupFiles = () => {
-    if (!files) return;
-    Object.keys(files).forEach((key) => {
-      files[key].forEach((file: any) => {
-        if (file.location) {
-          // Delete from S3 if file was uploaded
-          deleteFileFromS3(file.location);
-        }
-      });
-    });
-  };
 
   // Validate user is authenticated
   if (!req.user?.id) {
-    cleanupFiles();
     return res.status(401).json({
       success: false,
       message: "Unauthorized: user not authenticated",
@@ -186,30 +176,19 @@ export const createCustomers = async (req: Request, res: Response) => {
       where: { email },
     });
     if (existingCustomer) {
-      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Email already exists",
       });
     }
 
-    let csvData: any = {};
-    let csvS3Url: string | null = null;
-    if (files.csvFile && files.csvFile[0]) {
-      csvS3Url = files.csvFile[0].location;
-      if (csvS3Url) {
-        csvData = await parseCSV(csvS3Url);
-      }
-    }
-    let screenerFileId = null;
-
-    const customerWithScreener = await prisma.$transaction(async (tx) => {
+    const newCustomer = await prisma.$transaction(async (tx) => {
       const customerNumber = await getNextCustomerNumberForPartner(
         tx,
         req.user.id
       );
 
-      const newCustomer = await tx.customers.create({
+      return tx.customers.create({
         data: {
           vorname,
           nachname,
@@ -223,21 +202,12 @@ export const createCustomers = async (req: Request, res: Response) => {
           kodexeMassschuhe: kodexeMassschuhe || null,
           kodexeEinlagen: kodexeEinlagen || null,
           sonstiges: sonstiges || null,
-          fusslange1: csvData.B58 || null,
-          fusslange2: csvData.C58 || null,
-          fussbreite1: csvData.B73 || null,
-          fussbreite2: csvData.C73 || null,
-          kugelumfang1: csvData.B102 || null,
-          kugelumfang2: csvData.C102 || null,
-          rist1: csvData.B105 || null,
-          rist2: csvData.C105 || null,
-          archIndex1: csvData.B120 || null,
-          archIndex2: csvData.C120 || null,
-          zehentyp1: csvData.B136 || null,
-          zehentyp2: csvData.C136 || null,
           partnerId: req.user.id,
           updatedBy: null,
-          geburtsdatum: geburtsdatum || null,
+          geburtsdatum:
+            geburtsdatum != null && geburtsdatum !== ""
+              ? String(geburtsdatum)
+              : null,
           billingType: billingType || null,
           gender: gender || null,
           land: land || null,
@@ -245,123 +215,23 @@ export const createCustomers = async (req: Request, res: Response) => {
           straße: straße || null,
         },
       });
-
-      let screenerFile = null;
-      if (
-        files.picture_10 ||
-        files.picture_23 ||
-        files.paint_24 ||
-        files.paint_23 ||
-        files.threed_model_left ||
-        files.picture_17 ||
-        files.picture_11 ||
-        files.picture_24 ||
-        files.threed_model_right ||
-        files.picture_16 ||
-        csvS3Url
-      ) {
-        screenerFile = await tx.screener_file.create({
-          data: {
-            customerId: newCustomer.id,
-            picture_10: files.picture_10?.[0]?.location || null,
-            picture_23: files.picture_23?.[0]?.location || null,
-            paint_24: files.paint_24?.[0]?.location || null,
-            paint_23: files.paint_23?.[0]?.location || null,
-            threed_model_left: files.threed_model_left?.[0]?.location || null,
-            picture_17: files.picture_17?.[0]?.location || null,
-            picture_11: files.picture_11?.[0]?.location || null,
-            picture_24: files.picture_24?.[0]?.location || null,
-            threed_model_right: files.threed_model_right?.[0]?.location || null,
-            picture_16: files.picture_16?.[0]?.location || null,
-            csvFile: csvS3Url,
-            fusslange1: csvData.B58 || null,
-            fusslange2: csvData.C58 || null,
-            fussbreite1: csvData.B73 || null,
-            fussbreite2: csvData.C73 || null,
-            kugelumfang1: csvData.B102 || null,
-            kugelumfang2: csvData.C102 || null,
-            rist1: csvData.B105 || null,
-            rist2: csvData.C105 || null,
-            archIndex1: csvData.B120 || null,
-            archIndex2: csvData.C120 || null,
-            zehentyp1: csvData.B136 || null,
-            zehentyp2: csvData.C136 || null,
-          },
-        });
-        screenerFileId = screenerFile.id;
-      }
-
-      await tx.customerHistorie.create({
-        data: {
-          customerId: newCustomer.id,
-          category: "Leistungen",
-          url: `/customers/screener-file/${screenerFileId}`,
-          methord: "GET",
-          eventId: newCustomer.id,
-          system_note: "Fußscan",
-        },
-      });
-
-      return {
-        ...newCustomer,
-        screenerFile: screenerFile ? [screenerFile] : [],
-      };
     });
-
-    // if (csvFileName && files.csvFile?.[0]?.path) {
-    //   try {
-    //     fs.unlinkSync(files.csvFile[0].path);
-    //   } catch (err) {
-    //     console.error(
-    //       `Failed to delete CSV file ${files.csvFile[0].path}`,
-    //       err
-    //     );
-    //   }
-    // }
-
-    // console.log("Customer created successfully:", customerWithScreener);
-
-    const customerWithImages = {
-      ...customerWithScreener,
-      screenerFile: customerWithScreener.screenerFile.map((screener) => ({
-        id: screener.id,
-        customerId: screener.customerId,
-        picture_10: screener.picture_10 || null,
-        picture_23: screener.picture_23 || null,
-        paint_24: screener.paint_24 || null,
-        paint_23: screener.paint_23 || null,
-        picture_11: screener.picture_11 || null,
-        picture_24: screener.picture_24 || null,
-        threed_model_left: screener.threed_model_left || null,
-        threed_model_right: screener.threed_model_right || null,
-        picture_17: screener.picture_17 || null,
-        picture_16: screener.picture_16 || null,
-        csvFile: screener.csvFile || null,
-        createdAt: screener.createdAt,
-        updatedAt: screener.updatedAt,
-        fusslange1: screener.fusslange1,
-        fusslange2: screener.fusslange2,
-        fussbreite1: screener.fussbreite1,
-        fussbreite2: screener.fussbreite2,
-        kugelumfang1: screener.kugelumfang1,
-        kugelumfang2: screener.kugelumfang2,
-        rist1: screener.rist1,
-        rist2: screener.rist2,
-        archIndex1: screener.archIndex1,
-        archIndex2: screener.archIndex2,
-        zehentyp1: screener.zehentyp1,
-        zehentyp2: screener.zehentyp2,
-      })),
-    };
+    await prisma.customerHistorie.create({
+      data: {
+        customerId: newCustomer.id,
+        category: "Leistungen",
+        note: ``,
+        system_note: `Kunde erstellt`,
+      },
+    });
 
     res.status(201).json({
       success: true,
       message: "Customer created successfully",
-      data: customerWithImages,
+      data: newCustomer,
     });
   } catch (err: any) {
     console.error("Create Customer Error:", err);
-    cleanupFiles();
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -606,15 +476,16 @@ export const getAllCustomers = async (req: Request, res: Response) => {
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-         select: {
+        select: {
           id: true,
           customerNumber: true,
           vorname: true,
           nachname: true,
           wohnort: true,
           createdAt: true,
-         },
+        },
       }),
+
       prisma.customers.count({
         where: {
           ...whereCondition,
@@ -1993,7 +1864,6 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
     }
     //------------------------------------------------------------------
 
-
     if (files?.threed_model_left?.[0]) {
       deleteOldIfNew(
         files.threed_model_left[0],
@@ -2482,7 +2352,8 @@ export const filterCustomer = async (req: Request, res: Response) => {
     const oneOrdersInProductionFilter = parseBoolean(oneOrdersInProduction);
     const finishedOrdersFilter = parseBoolean(finishedOrders);
     const normalizedPaymnentType = normalizeString(paymnentType)?.toLowerCase();
-    const normalizedGeschaeftsstandort = normalizeString(geschaeftsstandort)?.trim();
+    const normalizedGeschaeftsstandort =
+      normalizeString(geschaeftsstandort)?.trim();
 
     // Validate mutually exclusive filters
     const activeOrderFilters = [
@@ -2496,7 +2367,9 @@ export const filterCustomer = async (req: Request, res: Response) => {
     if (activeOrderFilters.length > 1) {
       return res.status(400).json({
         success: false,
-        message: `Only one order filter can be used at a time. Active filters: ${activeOrderFilters.map((f) => f.name).join(", ")}`,
+        message: `Only one order filter can be used at a time. Active filters: ${activeOrderFilters
+          .map((f) => f.name)
+          .join(", ")}`,
       });
     }
 
@@ -2715,7 +2588,11 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
     // If payment type, geschaeftsstandort, or count-based filters are applied, fetch more records to account for filtering
     // We'll filter after fetching, so we need a larger batch to ensure we get enough results
-    const needsPostFilter = normalizedPaymnentType || normalizedGeschaeftsstandort || oneAllOrdersFilter || oneOrdersInProductionFilter;
+    const needsPostFilter =
+      normalizedPaymnentType ||
+      normalizedGeschaeftsstandort ||
+      oneAllOrdersFilter ||
+      oneOrdersInProductionFilter;
     const fetchLimit = needsPostFilter
       ? limitNumber * 5 // Fetch 5x more to account for filtering
       : limitNumber;
@@ -2844,8 +2721,16 @@ export const filterCustomer = async (req: Request, res: Response) => {
     if (normalizedGeschaeftsstandort) {
       const term = normalizedGeschaeftsstandort.toLowerCase();
       responseData = responseData.filter((customer) => {
-        const gs = customer.latestOrder?.geschaeftsstandort as { title?: string } | string | null;
-        const str = typeof gs === "object" && gs?.title != null ? gs.title : typeof gs === "string" ? gs : "";
+        const gs = customer.latestOrder?.geschaeftsstandort as
+          | { title?: string }
+          | string
+          | null;
+        const str =
+          typeof gs === "object" && gs?.title != null
+            ? gs.title
+            : typeof gs === "string"
+            ? gs
+            : "";
         return str.toLowerCase().includes(term);
       });
     }
@@ -2884,9 +2769,10 @@ export const filterCustomer = async (req: Request, res: Response) => {
     // Calculate total for pagination
     // Note: When payment type, geschaeftsstandort, or count-based filters are applied, totalItems is approximate
     // as we only count the filtered results from the fetched batch
-    const filteredTotal = needsPostFilter || oneAllOrdersFilter || oneOrdersInProductionFilter
-      ? Math.min(responseData.length + skip, totalCount) // Approximate
-      : totalCount;
+    const filteredTotal =
+      needsPostFilter || oneAllOrdersFilter || oneOrdersInProductionFilter
+        ? Math.min(responseData.length + skip, totalCount) // Approximate
+        : totalCount;
 
     res.status(200).json({
       success: true,
@@ -3051,8 +2937,10 @@ export const getCustomerRequirements = async (req: Request, res: Response) => {
   }
 };
 
-
-export const getAllVersorgungenByCustomerId = async (req: Request, res: Response) => {
+export const getAllVersorgungenByCustomerId = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { customerId } = req.params;
     const userId = req.user.id;
@@ -3114,11 +3002,11 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
 
     // Group by versorgungId and keep only the latest order for each Versorgungen
     const versorgungenMap = new Map();
-    
+
     orders.forEach((order) => {
       const versorgungId = order.versorgungId;
       const supplyStatus = order.Versorgungen?.supplyStatus;
-      
+
       if (versorgungId && supplyStatus && supplyStatus.id) {
         // If this versorgungId hasn't been seen yet, or this order is newer, keep it
         if (!versorgungenMap.has(versorgungId)) {
@@ -3167,6 +3055,80 @@ export const getAllVersorgungenByCustomerId = async (req: Request, res: Response
       success: false,
       message: "Something went wrong while fetching versorgungen",
       error: error.message,
+    });
+  }
+};
+
+
+export const getCustomerHistory = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 15;
+    const category = req.query.category;
+
+    if (!customerId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer ID is required" });
+    }
+
+    if(category) {
+      const validCategories = [
+        "Notizen",
+        "Bestellungen",
+        "Leistungen",
+        "Rechnungen",
+        "Zahlungen",
+        "Emails",
+        "Termin",
+      ];
+      if(!validCategories.includes(category as any)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid category",
+          validCategories: validCategories,
+        });
+      }
+    }
+
+    const where: any = { customerId };
+    if (category) where.category = category as any;
+
+    const skip = (page - 1) * limit;
+
+    const data = await prisma.customerHistorie.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit + 1,
+      select: {
+        id: true,
+        category: true,
+        system_note: true,
+        note: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer history retrieved successfully",
+      data,
+      pagination: {
+        currentPage: page,
+        itemsPerPage: limit,
+        hasNextPage: data.length > limit,
+        hasPrevPage: page > 1,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Customer History Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching customer history",
+      error: error?.message,
     });
   }
 };

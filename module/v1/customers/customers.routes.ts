@@ -6,6 +6,7 @@ import {
   deleteCustomer,
   getAllCustomers,
   getCustomerById,
+  getCustomerHistory,
   searchCustomers,
   // undoAssignVersorgungToCustomer,
   updateCustomer,
@@ -18,8 +19,7 @@ import {
   filterCustomer,
   createCustomerRequirements,
   getCustomerRequirements,
-  getAllVersorgungenByCustomerId
-
+  getAllVersorgungenByCustomerId,
 } from "./customers.controllers";
 import upload from "../../../config/multer.config";
 
@@ -28,24 +28,7 @@ const router = express.Router();
 router.post("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createCustomerRequirements);
 router.get("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getCustomerRequirements);
 
-router.post(
-  "/",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  upload.fields([
-    { name: "picture_10", maxCount: 1 },
-    { name: "picture_23", maxCount: 1 },
-    { name: "paint_24", maxCount: 1 },
-    { name: "paint_23", maxCount: 1 },
-    { name: "threed_model_left", maxCount: 1 },
-    { name: "picture_17", maxCount: 1 },
-    { name: "picture_11", maxCount: 1 },
-    { name: "picture_24", maxCount: 1 },
-    { name: "threed_model_right", maxCount: 1 },
-    { name: "picture_16", maxCount: 1 },
-    { name: "csvFile", maxCount: 1 },
-  ]),
-  createCustomers
-);
+router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createCustomers);
 
 router.get(
   "/einlagen-in-produktion", getEinlagenInProduktion
@@ -64,6 +47,7 @@ router.patch(
   verifyUser("PARTNER", "EMPLOYEE"),
   updateCustomer
 );
+
 router.patch(
   "/:id/special-fields",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -131,6 +115,8 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getScreenerFileById
 );
+
+router.get("/history/:customerId", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getCustomerHistory);
 
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getCustomerById);
 
