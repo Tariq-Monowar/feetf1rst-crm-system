@@ -29,14 +29,7 @@ const extractLengthValue = (value: any): number | null => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
-/** Infer approximate length (mm) from EU shoe size key when "length" is missing. e.g. "35" -> 225, "36" -> 230. */
-const inferLengthFromSizeKey = (sizeKey: string): number | null => {
-  const num = parseInt(sizeKey, 10);
-  if (!Number.isFinite(num) || num < 15 || num > 55) return null;
-  return 220 + (num - 35) * 5;
-};
-
-/** rady_insole: find closest size key by length (e.g. "35", "36"). Uses "length" from data, or infers from size key if missing. */
+/** rady_insole: find closest size key by length (e.g. "35", "36"). */
 const determineSizeFromGroessenMengen = (
   groessenMengen: any,
   targetLength: number
@@ -51,11 +44,10 @@ const determineSizeFromGroessenMengen = (
   for (const [sizeKey, sizeData] of Object.entries(
     groessenMengen as Record<string, any>
   )) {
-    let lengthValue = extractLengthValue(sizeData);
+    const lengthValue = extractLengthValue(sizeData);
     if (lengthValue === null) {
-      lengthValue = inferLengthFromSizeKey(sizeKey);
+      continue;
     }
-    if (lengthValue === null) continue;
     const diff = Math.abs(targetLength - lengthValue);
     if (diff < smallestDiff) {
       smallestDiff = diff;
@@ -66,7 +58,7 @@ const determineSizeFromGroessenMengen = (
   return closestSizeKey;
 };
 
-/** milling_block: find block key "1"|"2"|"3" by foot length. Only considers keys 1,2,3; default ranges: 1 <200mm, 2 200–250mm, 3 ≥250mm. */
+/** milling_block: find block key "1"|"2"|"3" by foot length. Uses min_mm/max_mm per block (editable); default ranges: 1 &lt;200mm, 2 200-250mm, 3 &gt;250mm. */
 const determineBlockSizeFromGroessenMengen = (
   groessenMengen: any,
   footLengthMm: number
@@ -79,17 +71,20 @@ const determineBlockSizeFromGroessenMengen = (
     "3": { min_mm: 250, max_mm: 99999 },
   };
 
-  for (const blockKey of ["1", "2", "3"]) {
-    if (!Object.prototype.hasOwnProperty.call(groessenMengen, blockKey)) continue;
-    const data = (groessenMengen as Record<string, any>)[blockKey];
+  for (const [blockKey, data] of Object.entries(groessenMengen as Record<string, any>)) {
     const def = defaultRanges[blockKey];
-    let minMm = def.min_mm;
-    let maxMm = def.max_mm;
+    let minMm: number | null = null;
+    let maxMm: number | null = null;
     if (data && typeof data === "object") {
       const d = data as Record<string, unknown>;
       if ("min_mm" in d && Number.isFinite(Number(d.min_mm))) minMm = Number(d.min_mm);
       if ("max_mm" in d && Number.isFinite(Number(d.max_mm))) maxMm = Number(d.max_mm);
     }
+    if (def) {
+      if (minMm == null) minMm = def.min_mm;
+      if (maxMm == null) maxMm = def.max_mm;
+    }
+    if (minMm == null || maxMm == null) continue;
     if (footLengthMm >= minMm && footLengthMm < maxMm) return blockKey;
   }
   return null;
@@ -390,23 +385,11 @@ export const createOrder = async (req: Request, res: Response) => {
         let sizeKey: string | null = null;
         if (isMillingBlock) {
           sizeKey = determineBlockSizeFromGroessenMengen(sizes, footLengthMm);
-          if (!sizeKey) {
-            const err: any = new Error("NO_MATCHED_SIZE_IN_STORE");
-            err.storeType = store.type;
-            err.groessenMengenKeys = Object.keys(sizes);
-            err.footLengthMm = footLengthMm;
-            throw err;
-          }
+          if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
         } else {
           sizeKey = determineSizeFromGroessenMengen(sizes, targetLengthRady);
-          if (!sizeKey) {
-            const err: any = new Error("NO_MATCHED_SIZE_IN_STORE");
-            err.storeType = store.type;
-            err.groessenMengenKeys = Object.keys(sizes);
-            throw err;
-          }
-          let lengthMm = extractLengthValue(sizes[sizeKey]);
-          if (lengthMm == null) lengthMm = inferLengthFromSizeKey(sizeKey);
+          if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
+          const lengthMm = extractLengthValue(sizes[sizeKey]);
           const tolerance = 10;
           if (lengthMm == null || Math.abs(targetLengthRady - lengthMm) > tolerance) {
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
@@ -487,17 +470,9 @@ export const createOrder = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     if (error?.message === "NO_MATCHED_SIZE_IN_STORE") {
-      const storeType = error?.storeType ?? "unknown";
-      const keys = error?.groessenMengenKeys ?? [];
-      const hint =
-        storeType === "milling_block"
-          ? ` Store type is milling_block: groessenMengen must have keys "1", "2", "3" (block sizes). Found keys: ${keys.length ? keys.join(", ") : "none"}.`
-          : ` Store type is rady_insole: each size should have "length" (mm) or use size keys like 35, 36. Found keys: ${keys.length ? keys.join(", ") : "none"}.`;
       return res.status(400).json({
         success: false,
-        message: "Unable to determine nearest size from groessenMengen for this store." + hint,
-        storeType,
-        groessenMengenKeys: keys,
+        message: "Unable to determine nearest size from groessenMengen for this store",
       });
     }
     if (error?.message === "SIZE_OUT_OF_TOLERANCE") {
