@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, StoreOrderOverviewStatus } from "@prisma/client";
+import { PrismaClient, StoreOrderOverviewStatus, StoreType } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
@@ -181,9 +181,14 @@ export const createStorage = async (req: Request, res: Response) => {
 
     const userId = req.user.id;
 
-    if (!userId) {
+    const validStoreTypes: StoreType[] = ["rady_insole", "milling_block"];
+    const type = (req.query?.type as string)?.trim() || "rady_insole";
+    if (!validStoreTypes.includes(type as StoreType)) {
       cleanupFile();
-      return res.status(401).json({ message: "Unauthorized" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Must be rady_insole or milling_block",
+      });
     }
 
     if (typeof groessenMengen === "string") {
@@ -270,6 +275,7 @@ export const createStorage = async (req: Request, res: Response) => {
       create_status: "by_self", // TODO: Uncomment after running migration to add create_status column
       image,
       userId,
+      type: type as StoreType,
       // Note: adminStoreId is NOT included when create_status is "by_self"
     };
 
