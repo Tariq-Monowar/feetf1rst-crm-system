@@ -668,11 +668,17 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     const skip = (page - 1) * limit;
     const search = req.query.search as string;
 
-    const type = req.query.type as string;
+    const type = (req.query.type as string)?.trim();
 
     const whereCondition: any = {};
 
     if (type) {
+      if (!VALID_STORE_TYPES_BUY.includes(type as StoreType)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid type. Must be rady_insole or milling_block",
+        });
+      }
       whereCondition.type = type as StoreType;
     }
 
