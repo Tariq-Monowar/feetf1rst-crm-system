@@ -367,19 +367,9 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Get admin store data (must include type: rady_insole | milling_block — use as-is, never default)
+    // Get admin store data (includes type: rady_insole | milling_block)
     const adminStore = await prisma.admin_store.findUnique({
       where: { id: admin_store_id },
-      select: {
-        id: true,
-        productName: true,
-        brand: true,
-        artikelnummer: true,
-        groessenMengen: true,
-        price: true,
-        image: true,
-        type: true, // critical: preserve exact type from admin_store
-      },
     });
 
     if (!adminStore) {
@@ -394,29 +384,13 @@ export const buyStorage = async (req, res) => {
       !adminStore.productName ||
       !adminStore.brand ||
       !adminStore.artikelnummer ||
-      !adminStore.groessenMengen
+      !adminStore.groessenMengen ||
+      !adminStore.type
     ) {
       return res.status(400).json({
         success: false,
         message:
-          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
-      });
-    }
-
-    // Use store type exactly as stored in admin_store (never default — keep rady_insole vs milling_block as-is)
-    const rawType = adminStore.type;
-    if (rawType == null || rawType === undefined) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Admin store has no type set. It must have type rady_insole or milling_block.",
-      });
-    }
-    const storeType = rawType as StoreType;
-    if (!VALID_STORE_TYPES_BUY.includes(storeType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid store type. Must be rady_insole or milling_block",
+          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen, type)",
       });
     }
 
@@ -427,7 +401,7 @@ export const buyStorage = async (req, res) => {
         : (adminStore.groessenMengen as Record<string, any> | null) ?? {};
     const transformedGroessenMengen = transformGroessenMengenForStore(
       sourceGroessenMengen,
-      storeType,
+      adminStore.type as StoreType,
     );
 
     // Create Stores record from admin_store data (with correct type and groessenMengen structure)
@@ -443,7 +417,7 @@ export const buyStorage = async (req, res) => {
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
-        type: storeType,
+        type: adminStore.type as StoreType,
       },
     });
 
@@ -460,7 +434,7 @@ export const buyStorage = async (req, res) => {
         admin_storeId: admin_store_id,
         price: price ?? 0,
         image: adminStore.image,
-        type: storeType,
+        type: adminStore.type as StoreType,
       },
     });
 
