@@ -310,6 +310,43 @@ export const createStorage = async (req: Request, res: Response) => {
   }
 };
 
+const VALID_STORE_TYPES_BUY: StoreType[] = ["rady_insole", "milling_block"];
+
+/**
+ * Transform groessenMengen to Stores format.
+ * - rady_insole: keys = shoe sizes e.g. "35", "36"; each has length, quantity, mindestmenge, auto_order_*, warningStatus.
+ * - milling_block: keys = block sizes "1", "2", "3"; each has length (fixed foot length), quantity, mindestmenge, auto_order_*, warningStatus.
+ */
+function transformGroessenMengenForStore(
+  source: Record<string, any> | null | undefined,
+  storeType: StoreType,
+): Record<string, any> {
+  const result: Record<string, any> = {};
+  if (!source || typeof source !== "object") return result;
+
+  for (const sizeKey of Object.keys(source)) {
+    const sizeData = source[sizeKey];
+    if (sizeData && typeof sizeData === "object") {
+      result[sizeKey] = {
+        length: sizeData.length ?? 0,
+        quantity: sizeData.quantity ?? 0,
+        mindestmenge: sizeData.mindestmenge ?? 0,
+        auto_order_limit: sizeData.auto_order_limit ?? 0,
+        auto_order_quantity: sizeData.auto_order_quantity ?? 0,
+      };
+    } else {
+      result[sizeKey] = {
+        length: 0,
+        quantity: typeof sizeData === "number" ? sizeData : 0,
+        mindestmenge: 0,
+        auto_order_limit: 0,
+        auto_order_quantity: 0,
+      };
+    }
+  }
+  return result;
+}
+
 export const buyStorage = async (req, res) => {
   try {
     const { id: userId } = req.user;
@@ -317,7 +354,7 @@ export const buyStorage = async (req, res) => {
       admin_store_id,
       lagerort = null as string | null, // এটা স্টর লোকেশন।
       selling_price = 0,
-      groessenMengen,
+      groessenMengen: bodyGroessenMengen,
       price,
     } = req.body;
 
@@ -330,11 +367,9 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Get admin store data
+    // Get admin store data (includes type: rady_insole | milling_block)
     const adminStore = await prisma.admin_store.findUnique({
-      where: {
-        id: admin_store_id,
-      },
+      where: { id: admin_store_id },
     });
 
     if (!adminStore) {
@@ -358,36 +393,26 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Transform groessenMengen from admin_store format to Stores format
-    // Admin format: {"35": {"length": 225, "quantity": 5}}
-    // Stores format: {"35": {"length": 225, "quantity": 5, "mindestmenge": 0, "auto_order_limit": 0, "auto_order_quantity": 0}}
-    let transformedGroessenMengen: any = {};
-    if (groessenMengen && typeof groessenMengen === "object") {
-      const sizes = groessenMengen as Record<string, any>;
-      for (const sizeKey of Object.keys(sizes)) {
-        const sizeData = sizes[sizeKey];
-        if (sizeData && typeof sizeData === "object") {
-          transformedGroessenMengen[sizeKey] = {
-            length: sizeData.length || 0,
-            quantity: sizeData.quantity || 0,
-            mindestmenge: 0,
-            auto_order_limit: 0,
-            auto_order_quantity: 0,
-          };
-        } else {
-          // Fallback if format is different
-          transformedGroessenMengen[sizeKey] = {
-            length: 0,
-            quantity: typeof sizeData === "number" ? sizeData : 0,
-            mindestmenge: 0,
-            auto_order_limit: 0,
-            auto_order_quantity: 0,
-          };
-        }
-      }
+    // Use and validate store type from admin_store (required for rady_insole vs milling_block)
+    const storeType = (adminStore.type ?? "rady_insole") as StoreType;
+    if (!VALID_STORE_TYPES_BUY.includes(storeType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid store type. Must be rady_insole or milling_block",
+      });
     }
 
-    // Create Stores record from admin_store data
+    // Source: body can override; otherwise use admin_store.groessenMengen. Transform by type so structure is correct.
+    const sourceGroessenMengen =
+      bodyGroessenMengen && typeof bodyGroessenMengen === "object"
+        ? (bodyGroessenMengen as Record<string, any>)
+        : (adminStore.groessenMengen as Record<string, any> | null) ?? {};
+    const transformedGroessenMengen = transformGroessenMengenForStore(
+      sourceGroessenMengen,
+      storeType,
+    );
+
+    // Create Stores record from admin_store data (with correct type and groessenMengen structure)
     const createdStore = await prisma.stores.create({
       data: {
         produktname: adminStore.productName,
@@ -395,15 +420,16 @@ export const buyStorage = async (req, res) => {
         artikelnummer: adminStore.artikelnummer,
         lagerort: lagerort,
         groessenMengen: transformedGroessenMengen,
-        purchase_price: adminStore.price || 0,
+        purchase_price: adminStore.price ?? 0,
         selling_price: selling_price,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
+        type: storeType,
       },
     });
 
-    // Create tracking record
+    // Create tracking record (with same type)
     await prisma.admin_store_tracking.create({
       data: {
         storeId: createdStore.id,
@@ -412,10 +438,11 @@ export const buyStorage = async (req, res) => {
         hersteller: adminStore.brand,
         artikelnummer: adminStore.artikelnummer,
         lagerort: lagerort,
-        groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
+        groessenMengen: transformedGroessenMengen,
         admin_storeId: admin_store_id,
-        price: price || 0,
+        price: price ?? 0,
         image: adminStore.image,
+        type: storeType,
       },
     });
 
