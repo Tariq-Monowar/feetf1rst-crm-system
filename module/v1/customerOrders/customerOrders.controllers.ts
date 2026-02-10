@@ -817,126 +817,66 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
 
 export const getAllOrders = async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const days = parseInt(req.query.days as string);
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+
+    const type = (String(req.query.type || "rady_insole")).trim();
+    if (type !== "rady_insole" && type !== "milling_block") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Use rady_insole or milling_block",
+      });
+    }
 
     const partnerId = req.user?.id;
     const userRole = req.user?.role;
+    const customerNumber = String(req.query.customerNumber || "").trim();
+    const orderNumber = String(req.query.orderNumber || "").trim();
+    const customerName = String(req.query.customerName || "").trim();
 
-    const customerNumber = req.query.customerNumber as string;
-    const orderNumber = req.query.orderNumber as string;
-    const customerName = req.query.customerName as string;
-
-    const where: any = {};
-
-    if (days && !isNaN(days)) {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-      where.createdAt = {
-        gte: startDate,
-      };
-    }
+    const where: any = { type };
 
     if (req.query.customerId) {
-      where.customerId = req.query.customerId as string;
+      where.customerId = req.query.customerId;
     }
 
     if (userRole === "PARTNER") {
       where.partnerId = partnerId;
     } else if (req.query.partnerId) {
-      where.partnerId = req.query.partnerId as string;
+      where.partnerId = req.query.partnerId;
+    }
+
+    const days = Number(req.query.days);
+    if (days && !isNaN(days)) {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      where.createdAt = { gte: startDate };
     }
 
     if (req.query.orderStatus) {
-      const statuses = (req.query.orderStatus as string)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      if (statuses.length === 1) {
-        where.orderStatus = statuses[0];
-      } else if (statuses.length > 1) {
-        where.orderStatus = { in: statuses };
-      }
+      const statuses = String(req.query.orderStatus).split(",").map((s) => s.trim()).filter(Boolean);
+      where.orderStatus = statuses.length === 1 ? statuses[0] : { in: statuses };
     }
 
-    const searchConditions: any[] = [];
-
-    if (customerNumber || orderNumber || customerName) {
-      if (
-        customerNumber &&
-        customerNumber.trim() &&
-        !isNaN(Number(customerNumber))
-      ) {
-        searchConditions.push({
-          customer: {
-            customerNumber: parseInt(customerNumber),
-          },
-        });
-      }
-
-      if (orderNumber && orderNumber.trim()) {
-        const orderNum = parseInt(orderNumber);
-        if (!isNaN(orderNum)) {
-          searchConditions.push({
-            orderNumber: orderNum,
-          });
-        }
-      }
-
-      if (customerName && customerName.trim()) {
-        const nameTerms = customerName.trim().split(/\s+/).filter(Boolean);
-
-        if (nameTerms.length === 1) {
-          searchConditions.push({
-            customer: {
-              OR: [
-                {
-                  vorname: {
-                    contains: nameTerms[0],
-                    mode: "insensitive",
-                  },
-                },
-                {
-                  nachname: {
-                    contains: nameTerms[0],
-                    mode: "insensitive",
-                  },
-                },
-              ],
-            },
-          });
-        } else {
-          searchConditions.push({
-            customer: {
-              AND: [
-                {
-                  vorname: {
-                    contains: nameTerms[0],
-                    mode: "insensitive",
-                  },
-                },
-                {
-                  nachname: {
-                    contains: nameTerms.slice(1).join(" "),
-                    mode: "insensitive",
-                  },
-                },
-              ],
-            },
-          });
-        }
-      }
-
-      if (searchConditions.length > 0) {
-        if (searchConditions.length === 1) {
-          Object.assign(where, searchConditions[0]);
-        } else {
-          where.AND = searchConditions;
-        }
-      }
+    const searchParts = [];
+    if (customerNumber && !isNaN(Number(customerNumber))) {
+      searchParts.push({ customer: { customerNumber: parseInt(customerNumber, 10) } });
+    }
+    if (orderNumber && !isNaN(Number(orderNumber))) {
+      searchParts.push({ orderNumber: parseInt(orderNumber, 10) });
+    }
+    if (customerName) {
+      const terms = customerName.split(/\s+/).filter(Boolean);
+      const nameFilter = terms.length === 1
+        ? { OR: [{ vorname: { contains: terms[0], mode: "insensitive" } }, { nachname: { contains: terms[0], mode: "insensitive" } }] }
+        : { AND: [{ vorname: { contains: terms[0], mode: "insensitive" } }, { nachname: { contains: terms.slice(1).join(" "), mode: "insensitive" } }] };
+      searchParts.push({ customer: nameFilter });
+    }
+    if (searchParts.length === 1) {
+      Object.assign(where, searchParts[0]);
+    } else if (searchParts.length > 1) {
+      where.AND = searchParts;
     }
 
     const [orders, totalCount] = await Promise.all([
@@ -960,88 +900,40 @@ export const getAllOrders = async (req: Request, res: Response) => {
           fertigstellungBis: true,
           geschaeftsstandort: true,
           auftragsDatum: true,
-          customer: {
-            select: {
-              id: true,
-              vorname: true,
-              nachname: true,
-              email: true,
-              wohnort: true,
-              customerNumber: true,
-            },
-          },
+          customer: { select: { id: true, vorname: true, nachname: true, email: true, wohnort: true, customerNumber: true } },
           product: true,
           versorgung: true,
-          employee: {
-            select: {
-              accountName: true,
-              employeeName: true,
-              email: true,
-            },
-          },
+          employee: { select: { accountName: true, employeeName: true, email: true } },
         },
       }),
       prisma.customerOrders.count({ where }),
     ]);
 
-    const formattedOrders = orders.map((order) => ({
-      ...order,
-      // Invoice is already S3 URL, use directly
-      invoice: order.invoice || null,
-      // BarcodeLabel is already S3 URL, use directly
-      barcodeLabel: order.barcodeLabel || null,
-    }));
-
     const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
-
-    let message = "All orders fetched successfully";
     const filters = [];
-
-    if (req.query.orderStatus) {
-      filters.push(`status: ${req.query.orderStatus}`);
-    }
-    if (customerNumber) {
-      filters.push(`customer number: ${customerNumber}`);
-    }
-    if (orderNumber) {
-      filters.push(`order number: ${orderNumber}`);
-    }
-    if (customerName) {
-      filters.push(`customer name: "${customerName}"`);
-    }
-
-    if (filters.length > 0) {
-      message = `Orders with ${filters.join(", ")}`;
-    }
+    if (req.query.orderStatus) filters.push(`status: ${req.query.orderStatus}`);
+    if (customerNumber) filters.push(`customer number: ${customerNumber}`);
+    if (orderNumber) filters.push(`order number: ${orderNumber}`);
+    if (customerName) filters.push(`customer name: "${customerName}"`);
 
     res.status(200).json({
       success: true,
-      message,
-      data: formattedOrders,
+      message: filters.length ? `Orders with ${filters.join(", ")}` : "All orders fetched successfully",
+      data: orders.map((o) => ({ ...o, invoice: o.invoice || null, barcodeLabel: o.barcodeLabel || null })),
       pagination: {
         totalItems: totalCount,
         totalPages,
         currentPage: page,
         itemsPerPage: limit,
-        hasNextPage,
-        hasPrevPage,
-        filter: days ? `Last ${days} days` : "All time",
-        search: {
-          customerNumber: customerNumber || null,
-          orderNumber: orderNumber || null,
-          customerName: customerName || null,
-        },
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        filter: days && !isNaN(days) ? `Last ${days} days` : "All time",
+        search: { customerNumber: customerNumber || null, orderNumber: orderNumber || null, customerName: customerName || null },
       },
     });
   } catch (error: any) {
     console.error("Get All Orders Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
+    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
   }
 };
 
