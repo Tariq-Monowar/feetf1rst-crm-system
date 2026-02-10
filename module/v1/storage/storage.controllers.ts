@@ -315,7 +315,7 @@ const VALID_STORE_TYPES_BUY: StoreType[] = ["rady_insole", "milling_block"];
 /**
  * Transform groessenMengen to Stores format.
  * - rady_insole: keys = shoe sizes e.g. "35", "36"; each has length, quantity, mindestmenge, auto_order_*, warningStatus.
- * - milling_block: keys = block sizes "1", "2", "3"; each has length (fixed foot length), quantity, mindestmenge, auto_order_*, warningStatus.
+ * - milling_block: keys = block sizes "1", "2", "3"; no length from input (block sizes are fixed); quantity, mindestmenge, auto_order_*, etc.
  */
 function transformGroessenMengenForStore(
   source: Record<string, any> | null | undefined,
@@ -324,11 +324,13 @@ function transformGroessenMengenForStore(
   const result: Record<string, any> = {};
   if (!source || typeof source !== "object") return result;
 
+  const isMillingBlock = storeType === "milling_block";
+
   for (const sizeKey of Object.keys(source)) {
     const sizeData = source[sizeKey];
     if (sizeData && typeof sizeData === "object") {
       result[sizeKey] = {
-        length: sizeData.length ?? 0,
+        length: isMillingBlock ? 0 : (sizeData.length ?? 0),
         quantity: sizeData.quantity ?? 0,
         mindestmenge: sizeData.mindestmenge ?? 0,
         auto_order_limit: sizeData.auto_order_limit ?? 0,
@@ -394,34 +396,44 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Source: body can override; otherwise use admin_store.groessenMengen. Transform by type so structure is correct.
+    // Type is read-only from admin_store — never override or change; keep exactly as stored.
+    const storeType = adminStore.type as StoreType;
+
+    // Use body if user sent it, else fall back to admin_store
     const sourceGroessenMengen =
-      bodyGroessenMengen && typeof bodyGroessenMengen === "object"
+      bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
         ? (bodyGroessenMengen as Record<string, any>)
         : (adminStore.groessenMengen as Record<string, any> | null) ?? {};
     const transformedGroessenMengen = transformGroessenMengenForStore(
       sourceGroessenMengen,
-      adminStore.type as StoreType,
+      storeType,
     );
 
-    // Create Stores record from admin_store data (with correct type and groessenMengen structure)
+    const lagerortFinal =
+      req.body.lagerort !== undefined ? req.body.lagerort : (null as string | null);
+    const sellingPriceFinal =
+      req.body.selling_price !== undefined ? selling_price : 0;
+    const priceFinal =
+      req.body.price !== undefined ? (price ?? 0) : (adminStore.price ?? 0);
+
+    // Create Stores record: body overrides when provided, else admin_store
     const createdStore = await prisma.stores.create({
       data: {
         produktname: adminStore.productName,
         hersteller: adminStore.brand,
         artikelnummer: adminStore.artikelnummer,
-        lagerort: lagerort,
+        lagerort: lagerortFinal,
         groessenMengen: transformedGroessenMengen,
         purchase_price: adminStore.price ?? 0,
-        selling_price: selling_price,
+        selling_price: sellingPriceFinal,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
-        type: adminStore.type as StoreType,
+        type: storeType,
       },
     });
 
-    // Create tracking record (with same type)
+    // Create tracking record (same type, same groessenMengen as store)
     await prisma.admin_store_tracking.create({
       data: {
         storeId: createdStore.id,
@@ -429,12 +441,12 @@ export const buyStorage = async (req, res) => {
         produktname: adminStore.productName,
         hersteller: adminStore.brand,
         artikelnummer: adminStore.artikelnummer,
-        lagerort: lagerort,
+        lagerort: lagerortFinal,
         groessenMengen: transformedGroessenMengen,
         admin_storeId: admin_store_id,
-        price: price ?? 0,
+        price: priceFinal,
         image: adminStore.image,
-        type: adminStore.type as StoreType,
+        type: storeType,
       },
     });
 
