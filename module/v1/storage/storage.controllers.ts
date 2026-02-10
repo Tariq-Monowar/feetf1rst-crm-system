@@ -1033,22 +1033,37 @@ export const getStorageHistory = async (req: Request, res: Response) => {
     const userId = req.user.id;
     const storeId = req.params.id;
 
-    // Pagination values
+    // Ensure store exists and belongs to the user; get store type from data for response
+    const store = await prisma.stores.findFirst({
+      where: { id: storeId },
+      select: { id: true, type: true, produktname: true, hersteller: true },
+    });
+    console.log(store);
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found or you do not have access to it",
+      });
+    }
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
 
-    // Count total entries
-    const totalItems = await prisma.storesHistory.count({
-      where: { storeId },
-    });
+    const where = {
+      storeId,
+      store: { userId },
+    };
 
-    // If no items, return empty result with totalPages = 0
+    const totalItems = await prisma.storesHistory.count({ where });
+
     if (totalItems === 0) {
       return res.status(200).json({
         success: true,
         message: "Storage history fetched successfully",
         data: [],
+        storeType: store.type,
         pagination: {
           totalItems: 0,
           totalPages: 0,
@@ -1060,11 +1075,10 @@ export const getStorageHistory = async (req: Request, res: Response) => {
       });
     }
 
-    // Calculate total pages normally if items > 0
     const totalPages = Math.ceil(totalItems / limit);
 
     const history = await prisma.storesHistory.findMany({
-      where: { storeId, user: { id: userId } },
+      where,
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
@@ -1076,7 +1090,6 @@ export const getStorageHistory = async (req: Request, res: Response) => {
             vorname: true,
             nachname: true,
             email: true,
-            // telefonnummer: true,
             telefon: true,
             wohnort: true,
           },
@@ -1102,6 +1115,7 @@ export const getStorageHistory = async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
+            image: true,
             busnessName: true,
           },
         },
@@ -1112,6 +1126,7 @@ export const getStorageHistory = async (req: Request, res: Response) => {
       success: true,
       message: "Storage history fetched successfully",
       data: history,
+      storeType: store.type,
       pagination: {
         totalItems,
         totalPages,
