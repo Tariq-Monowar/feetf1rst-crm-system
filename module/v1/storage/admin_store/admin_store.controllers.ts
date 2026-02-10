@@ -1,4 +1,4 @@
-import { PrismaClient, StoreType } from "@prisma/client";
+import { PrismaClient, StoreType, Prisma } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 const prisma = new PrismaClient();
 
@@ -96,8 +96,6 @@ export const createAdminStore = async (req, res) => {
       });
     }
 
-
-
     const adminStore = await prisma.admin_store.create({
       data: {
         image,
@@ -112,19 +110,23 @@ export const createAdminStore = async (req, res) => {
     });
 
     // Upsert brand_store by brand + type (one record per brand per type)
-    await prisma.brand_store.upsert({
-      where: {
-        brand_type: { brand, type: type as StoreType },
-      },
-      create: {
-        brand,
-        groessenMengen: parsedGroessenMengen,
-        type: type as StoreType,
-      },
-      update: {
-        groessenMengen: parsedGroessenMengen,
-      },
+    const existingBrandStore = await prisma.brand_store.findFirst({
+      where: { brand, type: type as StoreType },
     });
+    if (existingBrandStore) {
+      await prisma.brand_store.update({
+        where: { id: existingBrandStore.id },
+        data: { groessenMengen: parsedGroessenMengen },
+      });
+    } else {
+      await prisma.brand_store.create({
+        data: {
+          brand,
+          groessenMengen: parsedGroessenMengen,
+          type: type as StoreType,
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -444,67 +446,100 @@ export const deleteAdminStore = async (req, res) => {
 
 export const trackStorage = async (req, res) => {
   try {
-    //pagination
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    const cursor = req.query.cursor as string | undefined;
+    const limitParam = parseInt(req.query.limit as string, 10);
+    const limit =
+      Number.isNaN(limitParam) || limitParam < 1 ? 10 : Math.min(limitParam, 100);
+    const type = (req.query.type as string)?.trim() || "rady_insole";
+    const search = (req.query.search as string)?.trim();
 
-    const search = (req.query.search as string) || "";
-
-    const where: any = {};
-
-    if (search) {
-      where.OR = [
-        { produktname: { contains: search, mode: "insensitive" } },
-        { hersteller: { contains: search, mode: "insensitive" } },
-      ];
+    if (!VALID_STORE_TYPES.includes(type as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. It must be rady_insole or milling_block",
+      });
     }
-    const totalItems = await prisma.admin_store_tracking.count({ where });
 
-    const totalPages = Math.ceil(totalItems / limit);
+    const conditions: Prisma.Sql[] = [Prisma.sql`t.type = ${type}::"StoreType"`];
+    if (search) {
+      const term = `%${search}%`;
+      conditions.push(
+        Prisma.sql`(t.produktname ILIKE ${term} OR t.hersteller ILIKE ${term})`
+      );
+    }
+    if (cursor) {
+      conditions.push(Prisma.sql`t."parcessAt" < ${new Date(cursor)}::timestamp`);
+    }
+    const whereClause = Prisma.join(conditions, " AND ");
 
-    const adminStoreTracking = await prisma.admin_store_tracking.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { parcessAt: "desc" },
-      include: {
-        partner: {
-          select: {
-            name: true,
-            email: true,
-            image: true,
-            phone: true,
-            busnessName: true,
-          },
-        },
-      },
-    });
+    const items = await prisma.$queryRaw<any>`
+      SELECT
+        t.id,
+        t."storeId",
+        t."partnerId",
+        t.produktname,
+        t.hersteller,
+        t.artikelnummer,
+        t.lagerort,
+        t.mindestbestand,
+        t."groessenMengen",
+        t.price,
+        t.image,
+        t.type,
+        t."parcessAt",
+        t."admin_storeId",
+        u.name AS "partner_name",
+        u.email AS "partner_email",
+        u.image AS "partner_image",
+        u.phone AS "partner_phone",
+        u."busnessName" AS "partner_busnessName"
+      FROM admin_store_tracking t
+      LEFT JOIN users u ON u.id = t."partnerId"
+      WHERE ${whereClause}
+      ORDER BY t."parcessAt" DESC
+      LIMIT ${limit + 1}
+    `;
 
-    const formattedAdminStoreTracking = adminStoreTracking.map((item) => ({
-      ...item,
-      // Images are already S3 URLs, use directly
-      image: item.image || null,
-      partner: item.partner
-        ? {
-            ...item.partner,
-            image: item.partner.image || null,
-          }
-        : null,
+    const hasMore = items.length > limit;
+    const data = hasMore ? items.slice(0, limit) : items;
+
+    const formattedData = data.map((row: any) => ({
+      id: row.id,
+      storeId: row.storeId,
+      partnerId: row.partnerId,
+      produktname: row.produktname,
+      hersteller: row.hersteller,
+      artikelnummer: row.artikelnummer,
+      lagerort: row.lagerort,
+      mindestbestand: row.mindestbestand,
+      groessenMengen: row.groessenMengen,
+      price: row.price,
+      image: row.image ?? null,
+      type: row.type,
+      parcessAt: row.parcessAt,
+      admin_storeId: row.admin_storeId,
+      partner:
+        row.partner_name != null || row.partner_email != null
+          ? {
+              name: row.partner_name,
+              email: row.partner_email,
+              image: row.partner_image ?? null,
+              phone: row.partner_phone,
+              busnessName: row.partner_busnessName,
+            }
+          : null,
     }));
 
     res.status(200).json({
       success: true,
       message: "Admin store tracking fetched successfully",
-      data: formattedAdminStoreTracking,
-      pagination: {
-        totalItems,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-      },
+      data: formattedData,
+      hasMore,
+      ...(hasMore && {
+        nextCursor:
+          data[data.length - 1]?.parcessAt?.toISOString?.() ??
+          data[data.length - 1]?.parcessAt,
+      }),
     });
   } catch (error: any) {
     console.log(error);

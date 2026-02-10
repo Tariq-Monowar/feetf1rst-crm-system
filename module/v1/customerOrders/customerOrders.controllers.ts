@@ -29,6 +29,7 @@ const extractLengthValue = (value: any): number | null => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
+/** rady_insole: find closest size key by length (e.g. "35", "36"). */
 const determineSizeFromGroessenMengen = (
   groessenMengen: any,
   targetLength: number
@@ -55,6 +56,38 @@ const determineSizeFromGroessenMengen = (
   }
 
   return closestSizeKey;
+};
+
+/** milling_block: find block key "1"|"2"|"3" by foot length. Uses min_mm/max_mm per block (editable); default ranges: 1 &lt;200mm, 2 200-250mm, 3 &gt;250mm. */
+const determineBlockSizeFromGroessenMengen = (
+  groessenMengen: any,
+  footLengthMm: number
+): string | null => {
+  if (!groessenMengen || typeof groessenMengen !== "object") return null;
+
+  const defaultRanges: Record<string, { min_mm: number; max_mm: number }> = {
+    "1": { min_mm: 0, max_mm: 200 },
+    "2": { min_mm: 200, max_mm: 250 },
+    "3": { min_mm: 250, max_mm: 99999 },
+  };
+
+  for (const [blockKey, data] of Object.entries(groessenMengen as Record<string, any>)) {
+    const def = defaultRanges[blockKey];
+    let minMm: number | null = null;
+    let maxMm: number | null = null;
+    if (data && typeof data === "object") {
+      const d = data as Record<string, unknown>;
+      if ("min_mm" in d && Number.isFinite(Number(d.min_mm))) minMm = Number(d.min_mm);
+      if ("max_mm" in d && Number.isFinite(Number(d.max_mm))) maxMm = Number(d.max_mm);
+    }
+    if (def) {
+      if (minMm == null) minMm = def.min_mm;
+      if (maxMm == null) maxMm = def.max_mm;
+    }
+    if (minMm == null || maxMm == null) continue;
+    if (footLengthMm >= minMm && footLengthMm < maxMm) return blockKey;
+  }
+  return null;
 };
 
 //-------------------------
@@ -151,12 +184,12 @@ const updateSizeQuantity = (sizeData: any, newQty: number): any => {
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
+    const partnerId = req.user.id;
     const {
       customerId,
       versorgungId,
       einlagentyp,
       überzug,
-      // menge,
       versorgung_note,
       schuhmodell_wählen,
       kostenvoranschlag,
@@ -177,24 +210,18 @@ export const createOrder = async (req: Request, res: Response) => {
       werkstattEmployeeId,
       screenerId,
       discount,
-      quantity = 1
+      quantity = 1,
     } = req.body;
-    const partnerId = req.user.id;
 
-    // Combined validation
-    // if (!customerId || !versorgungId || !screenerId || !bezahlt) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Customer ID, Versorgung ID, Screener ID, and Payment status are required",
-    //   });
-    // }
+    // ─────────────────────────────────────────────────────────────────────────
+    // STEP 1: Validate required fields
+    // ─────────────────────────────────────────────────────────────────────────
     const requiredFields = [
       "customerId",
       "versorgungId",
       "screenerId",
       "bezahlt",
     ];
-    
     for (const field of requiredFields) {
       if (!req.body[field]) {
         return res.status(400).json({
@@ -204,7 +231,12 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    const validPaymentStatuses = ["Privat_Bezahlt", "Privat_offen", "Krankenkasse_Ungenehmigt", "Krankenkasse_Genehmigt"];
+    const validPaymentStatuses = [
+      "Privat_Bezahlt",
+      "Privat_offen",
+      "Krankenkasse_Ungenehmigt",
+      "Krankenkasse_Genehmigt",
+    ];
     if (!validPaymentStatuses.includes(bezahlt)) {
       return res.status(400).json({
         success: false,
@@ -213,9 +245,12 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // Parallel validation and data fetching
+    // STEP 2: Load screener, customer, versorgung in parallel (single round-trip)
     const [screenerFile, customer, versorgung] = await Promise.all([
-      prisma.screener_file.findUnique({ where: { id: screenerId }, select: { id: true } }),
+      prisma.screener_file.findUnique({
+        where: { id: screenerId },
+        select: { id: true },
+      }),
       prisma.customers.findUnique({
         where: { id: customerId },
         select: { fusslange1: true, fusslange2: true },
@@ -235,62 +270,70 @@ export const createOrder = async (req: Request, res: Response) => {
       }),
     ]);
 
-    if (!screenerFile || !customer || !versorgung) {
-      return res.status(404).json({
-        success: false,
-        message: "Screener file, Customer, or Versorgung not found",
-      });
+    if (!screenerFile) {
+      return res.status(404).json({ success: false, message: "Screener file not found" });
+    }
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Customer not found" });
+    }
+    if (!versorgung) {
+      return res.status(404).json({ success: false, message: "Versorgung not found" });
     }
 
     if (!customer.fusslange1 || !customer.fusslange2) {
       return res.status(400).json({
         success: false,
-        message: "Customer fusslange1 and fusslange2 are required",
+        message:
+          customer.fusslange1 && customer.fusslange2
+            ? "Customer fusslange1 and fusslange2 are not found"
+            : customer.fusslange1
+            ? "Customer fusslange1 is required"
+            : "Customer fusslange2 is required",
       });
     }
 
-    // Calculate price
+    // STEP 3: Price = (foot analysis + insole) × quantity, then apply discount
+    const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const basePrice = Number(fussanalysePreis || 0) + Number(einlagenversorgungPreis || 0);
-    const orderQuantity = quantity ? parseInt(quantity, 10) : 1;
-    const totalBeforeDiscount = basePrice * orderQuantity;
-    const discountPercent = discount ? parseFloat(discount) : 0;
-    const discountAmount = totalBeforeDiscount * (discountPercent / 100);
-    const totalPrice = Math.max(0, totalBeforeDiscount - discountAmount);
+    const discountPercent = discount ? parseFloat(String(discount)) : 0;
+    const totalPrice = Math.round(
+      (basePrice * orderQuantity) * (1 - discountPercent / 100) * 100
+    ) / 100;
 
-    let matchedSizeKey = determineProductSize(customer, versorgung);
+    const footLengthMm = Math.max(Number(customer.fusslange1), Number(customer.fusslange2));
+    // rady_insole: reserve by closest length (longest foot + 5 mm). milling_block: reserve by block (1/2/3) from foot length range.
+    const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
 
-    const targetLength = versorgung.storeId
-      ? Math.max(Number(customer.fusslange1), Number(customer.fusslange2)) + 5
-      : 0;
-
+    // STEP 4: Create order and related records in one transaction
     const order = await prisma.$transaction(async (tx) => {
-      // Parallel: product, order number, employee, and store (when needed)
-      const [customerProduct, orderNumber, defaultEmployee, store] = await Promise.all([
-        tx.customerProduct.create({
-          data: {
-            name: versorgung.name,
-            rohlingHersteller: versorgung.rohlingHersteller,
-            artikelHersteller: versorgung.artikelHersteller,
-            versorgung: versorgung.versorgung,
-            material: serializeMaterial(versorgung.material),
-            langenempfehlung: {},
-            status: "Alltagseinlagen",
-            diagnosis_status: versorgung.diagnosis_status,
-          },
-        }),
+      let matchedSizeKey: string | null = null;
+
+      const customerProduct = await tx.customerProduct.create({
+        data: {
+          name: versorgung.name,
+          rohlingHersteller: versorgung.rohlingHersteller,
+          artikelHersteller: versorgung.artikelHersteller,
+          versorgung: versorgung.versorgung,
+          material: serializeMaterial(versorgung.material),
+          langenempfehlung: {},
+          status: "Alltagseinlagen",
+          diagnosis_status: versorgung.diagnosis_status,
+        },
+      });
+
+      const [orderNumber, defaultEmployee, store] = await Promise.all([
         getNextOrderNumberForPartner(tx, partnerId),
-        !werkstattEmployeeId
-          ? tx.employees.findFirst({ where: { partnerId }, select: { id: true } })
-          : null,
+        werkstattEmployeeId
+          ? Promise.resolve(null)
+          : tx.employees.findFirst({ where: { partnerId }, select: { id: true } }),
         versorgung.storeId
           ? tx.stores.findUnique({
               where: { id: versorgung.storeId },
-              select: { id: true, groessenMengen: true, userId: true },
+              select: { id: true, groessenMengen: true, userId: true, type: true },
             })
-          : null,
+          : Promise.resolve(null),
       ]);
-
-      const finalEmployeeId = werkstattEmployeeId || defaultEmployee?.id;
+      const finalEmployeeId = werkstattEmployeeId ?? defaultEmployee?.id ?? null;
 
       const orderData: any = {
         orderNumber,
@@ -327,84 +370,94 @@ export const createOrder = async (req: Request, res: Response) => {
       if (fussanalysePreis != null) orderData.fussanalysePreis = Number(fussanalysePreis);
       if (einlagenversorgungPreis != null) orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
+      orderData.type = store?.type ?? "rady_insole";
 
       const newOrder = await tx.customerOrders.create({
         data: orderData,
         select: { id: true, employeeId: true },
       });
 
-      let storeUpdatePromise: Promise<unknown> | null = null;
+      // Reserve one unit from store: rady_insole by length, milling_block by foot-length range (block 1/2/3)
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
-        const sizes = { ...(store.groessenMengen as any) };
-        const storeMatchedSizeKey = determineSizeFromGroessenMengen(sizes, targetLength);
+        const sizes = { ...(store.groessenMengen as Record<string, any>) };
+        const isMillingBlock = store.type === "milling_block";
 
-        if (!storeMatchedSizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
-
-        const matchedLength = extractLengthValue(sizes[storeMatchedSizeKey]);
-        if (matchedLength == null || Math.abs(targetLength - matchedLength) > 10) {
-          let nearestLower: { sizeKey: string; length: number } | null = null;
-          let nearestUpper: { sizeKey: string; length: number } | null = null;
-          for (const [sizeKey, sizeData] of Object.entries(sizes as Record<string, any>)) {
-            const len = extractLengthValue(sizeData);
-            if (len == null) continue;
-            if (len < targetLength && (nearestLower == null || len > nearestLower.length)) nearestLower = { sizeKey, length: len };
-            if (len > targetLength && (nearestUpper == null || len < nearestUpper.length)) nearestUpper = { sizeKey, length: len };
+        let sizeKey: string | null = null;
+        if (isMillingBlock) {
+          sizeKey = determineBlockSizeFromGroessenMengen(sizes, footLengthMm);
+          if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
+        } else {
+          sizeKey = determineSizeFromGroessenMengen(sizes, targetLengthRady);
+          if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
+          const lengthMm = extractLengthValue(sizes[sizeKey]);
+          const tolerance = 10;
+          if (lengthMm == null || Math.abs(targetLengthRady - lengthMm) > tolerance) {
+            const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
+            err.requiredLength = targetLengthRady;
+            let lowerLen: number | null = null;
+            let upperLen: number | null = null;
+            for (const [, data] of Object.entries(sizes)) {
+              const L = extractLengthValue(data);
+              if (L == null) continue;
+              if (L < targetLengthRady && (lowerLen == null || L > lowerLen)) lowerLen = L;
+              if (L > targetLengthRady && (upperLen == null || L < upperLen)) upperLen = L;
+            }
+            err.nearestLowerSize = lowerLen != null ? { length: lowerLen } : null;
+            err.nearestUpperSize = upperLen != null ? { length: upperLen } : null;
+            throw err;
           }
-          const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
-          err.requiredLength = targetLength;
-          err.nearestLowerSize = nearestLower;
-          err.nearestUpperSize = nearestUpper;
-          throw err;
         }
 
-        const sizeValue = sizes[storeMatchedSizeKey];
-        const currentQty = getQuantity(sizeValue);
-        const newQty = Math.max(currentQty - 1, 0);
-        sizes[storeMatchedSizeKey] = updateSizeQuantity(sizeValue, newQty);
-        matchedSizeKey = storeMatchedSizeKey;
+        const currentQty = getQuantity(sizes[sizeKey]);
+        if (currentQty < 1) {
+          const err: any = new Error("INSUFFICIENT_STOCK");
+          err.sizeKey = sizeKey;
+          err.isMillingBlock = isMillingBlock;
+          throw err;
+        }
+        const newQty = currentQty - 1;
+        sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
+        matchedSizeKey = sizeKey;
 
-        storeUpdatePromise = Promise.all([
-          tx.stores.update({ where: { id: store.id }, data: { groessenMengen: sizes } }),
-          tx.storesHistory.create({
-            data: {
-              storeId: store.id,
-              changeType: "sales",
-              quantity: currentQty > 0 ? 1 : 0,
-              newStock: newQty,
-              reason: `Order size ${storeMatchedSizeKey}`,
-              partnerId: store.userId,
-              customerId,
-              orderId: newOrder.id,
-              status: "SELL_OUT",
-            },
-          }),
-        ]);
+        await tx.stores.update({
+          where: { id: store.id },
+          data: { groessenMengen: sizes },
+        });
+        await tx.storesHistory.create({
+          data: {
+            storeId: store.id,
+            changeType: "sales",
+            quantity: currentQty > 0 ? 1 : 0,
+            newStock: newQty,
+            reason: isMillingBlock ? `Order block ${sizeKey}` : `Order size ${sizeKey}`,
+            partnerId: store.userId,
+            customerId,
+            orderId: newOrder.id,
+            status: "SELL_OUT",
+          } as any,
+        });
       }
 
-      const historyPromises: Promise<unknown>[] = [
-        tx.customerHistorie.create({
-          data: {
-            customerId,
-            category: "Bestellungen",
-            eventId: newOrder.id,
-            note: ``,
-            system_note: `Einlagenbestellung erstellt`,
-            paymentIs: totalPrice.toString(),
-          } as any,
-        }),
-        tx.customerOrdersHistory.create({
-          data: {
-            orderId: newOrder.id,
-            statusFrom: "Warten_auf_Versorgungsstart",
-            statusTo: "Warten_auf_Versorgungsstart",
-            partnerId,
-            employeeId: newOrder.employeeId || null,
-            note: null,
-          } as any,
-        }),
-      ];
-      if (storeUpdatePromise) historyPromises.push(storeUpdatePromise);
-      await Promise.all(historyPromises);
+      await tx.customerHistorie.create({
+        data: {
+          customerId,
+          category: "Bestellungen",
+          eventId: newOrder.id,
+          note: "",
+          system_note: "Einlagenbestellung erstellt",
+          paymentIs: totalPrice.toString(),
+        } as any,
+      });
+      await tx.customerOrdersHistory.create({
+        data: {
+          orderId: newOrder.id,
+          statusFrom: "Warten_auf_Versorgungsstart",
+          statusTo: "Warten_auf_Versorgungsstart",
+          partnerId,
+          employeeId: newOrder.employeeId ?? null,
+          note: null,
+        } as any,
+      });
 
       return { ...newOrder, matchedSizeKey };
     });
@@ -419,15 +472,22 @@ export const createOrder = async (req: Request, res: Response) => {
     if (error?.message === "NO_MATCHED_SIZE_IN_STORE") {
       return res.status(400).json({
         success: false,
-        message:
-          "Unable to determine nearest size from groessenMengen for this store",
+        message: "Unable to determine nearest size from groessenMengen for this store",
       });
     }
     if (error?.message === "SIZE_OUT_OF_TOLERANCE") {
       return res.status(400).json({
         success: false,
-        //inside message i need to show
         message: `Keine passende Größe im Lager. Erforderliche Länge: ${error.requiredLength}mm. Nächstkleinere Größe: ${error.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere Größe: ${error.nearestUpperSize?.length ?? "–"}mm.`,
+      });
+    }
+    if (error?.message === "INSUFFICIENT_STOCK") {
+      const label = error.isMillingBlock ? "Block" : "Größe";
+      return res.status(400).json({
+        success: false,
+        message: `${label} ${error.sizeKey} ist nicht auf Lager (Menge: 0). Bestellung nicht möglich.`,
+        warning: "Insufficient stock",
+        sizeKey: error.sizeKey,
       });
     }
     console.error("Create Order Error:", error);
@@ -1463,8 +1523,6 @@ export const deleteOrder = async (req: Request, res: Response) => {
   }
 };
 
-
-
 const formatChartDate = (dateString: string): string => {
   const date = new Date(dateString);
   const month = date.toLocaleString("en-US", { month: "short" });
@@ -1529,7 +1587,6 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
   }
 };
 
-
 const previousOrdersSelect = {
   id: true,
   orderNumber: true,
@@ -1582,16 +1639,27 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
     const cursor = req.query.cursor as string | undefined;
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 10), 100);
-    const productType = (req.query.productType as string)?.toLowerCase() || "insole";
+    const limit = Math.min(
+      Math.max(1, parseInt(req.query.limit as string) || 10),
+      100
+    );
+    const productType =
+      (req.query.productType as string)?.toLowerCase() || "insole";
     const userId = req.user?.id;
     const userRole = req.user?.role;
 
     if (!customerId) {
-      return res.status(400).json({ success: false, message: "Customer ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer ID is required" });
     }
     if (productType !== "insole" && productType !== "shoes") {
-      return res.status(400).json({ success: false, message: "productType must be 'insole' or 'shoes'" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "productType must be 'insole' or 'shoes'",
+        });
     }
 
     const customer = await prisma.customers.findUnique({
@@ -1599,7 +1667,9 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
       select: { id: true },
     });
     if (!customer) {
-      return res.status(404).json({ success: false, message: "Customer not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
     }
 
     if (productType === "shoes") {
@@ -1611,7 +1681,14 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
           select: { createdAt: true },
         });
         if (!cur) {
-          return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data: [], hasMore: false });
+          return res
+            .status(200)
+            .json({
+              success: true,
+              message: "Previous orders fetched successfully",
+              data: [],
+              hasMore: false,
+            });
         }
         whereShoes.createdAt = { lt: cur.createdAt };
       }
@@ -1621,16 +1698,35 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
         take: limit + 1,
         orderBy: { createdAt: "desc" },
         select: {
-          id: true, orderNumber: true, createdAt: true, arztliche_diagnose: true, usführliche_diagnose: true,
-          rezeptnummer: true, durchgeführt_von: true, note: true, albprobe_geplant: true, kostenvoranschlag: true,
-          delivery_date: true, telefon: true, filiale: true, kunde: true, email: true, button_text: true,
-          fußanalyse: true, einlagenversorgung: true, customer_note: true, location: true, employeeId: true, customerId: true,
+          id: true,
+          orderNumber: true,
+          createdAt: true,
+          arztliche_diagnose: true,
+          usführliche_diagnose: true,
+          rezeptnummer: true,
+          durchgeführt_von: true,
+          note: true,
+          albprobe_geplant: true,
+          kostenvoranschlag: true,
+          delivery_date: true,
+          telefon: true,
+          filiale: true,
+          kunde: true,
+          email: true,
+          button_text: true,
+          fußanalyse: true,
+          einlagenversorgung: true,
+          customer_note: true,
+          location: true,
+          employeeId: true,
+          customerId: true,
         },
       });
 
       const hasMore = shoesOrders.length > limit;
       const items = hasMore ? shoesOrders.slice(0, limit) : shoesOrders;
-      const datum = (d: Date) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+      const datum = (d: Date) =>
+        d ? new Date(d).toISOString().slice(0, 10) : "";
       const data = items.map((o) => ({
         id: o.id,
         orderNumber: o.orderNumber,
@@ -1661,7 +1757,14 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
         usführliche_diagnose: o.usführliche_diagnose ?? "",
       }));
 
-      return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data, hasMore });
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message: "Previous orders fetched successfully",
+          data,
+          hasMore,
+        });
     }
 
     const where: any = { customerId };
@@ -1672,7 +1775,14 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
         select: { createdAt: true },
       });
       if (!cur) {
-        return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data: [], hasMore: false });
+        return res
+          .status(200)
+          .json({
+            success: true,
+            message: "Previous orders fetched successfully",
+            data: [],
+            hasMore: false,
+          });
       }
       where.createdAt = { lt: cur.createdAt };
     }
@@ -1686,7 +1796,14 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
     const hasMore = orders.length > limit;
     const data = hasMore ? orders.slice(0, limit) : orders;
 
-    return res.status(200).json({ success: true, message: "Previous orders fetched successfully", data, hasMore });
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message: "Previous orders fetched successfully",
+        data,
+        hasMore,
+      });
   } catch (error: any) {
     console.error("Get Previous Orders Error:", error);
     return res.status(500).json({

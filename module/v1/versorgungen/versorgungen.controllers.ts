@@ -44,6 +44,7 @@ export const getAllVersorgungen = async (req: Request, res: Response) => {
         store: {
           select: {
             groessenMengen: true,
+            type: true,
           },
         },
         supplyStatus: {
@@ -568,6 +569,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
         store: {
           select: {
             groessenMengen: true,
+            type: true,
           },
         },
       },
@@ -1111,6 +1113,7 @@ export const getVersorgungenByDiagnosis = async (
             id: true,
             produktname: true,
             groessenMengen: true,
+            type: true,
           },
         },
       },
@@ -1140,6 +1143,7 @@ export const getVersorgungenByDiagnosis = async (
             groessenMengen: versorgung.store.groessenMengen,
           }
         : null,
+      type: versorgung.store?.type || null,
     }));
 
     const totalPages = Math.ceil(totalCount / limitNumber);
@@ -1184,6 +1188,7 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
         store: {
           select: {
             groessenMengen: true,
+            type: true,
           },
         },
       },
@@ -1204,6 +1209,7 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
           }
         : null,
       store: versorgungen.store ? versorgungen.store.groessenMengen : null,
+      type: versorgungen.store?.type || null,
     };
     res.status(200).json({
       success: true,

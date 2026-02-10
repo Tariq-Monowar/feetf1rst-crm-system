@@ -47,5 +47,4 @@ router.get("/get-brand-store/:id", verifyUser("ADMIN"), getSingleBrandStore);
 router.patch("/update-brand-store/:id", verifyUser("ADMIN"), updateBrandStore);
 router.delete("/delete-brand-store", verifyUser("ADMIN"), deleteBrandStore);
 
-
 export default router;

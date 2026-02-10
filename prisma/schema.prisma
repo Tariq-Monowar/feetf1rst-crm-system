@@ -329,6 +329,7 @@ model Employees {
   partnerConversationMessages partner_conversation_message[]
   employeeFeatureAccess       employee_feature_access[]
 
+  @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
 }
 
@@ -878,10 +879,12 @@ model customerOrders {
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
   // KrankenkasseStatus String? @default("Krankenkasse_Ungenehmigt")
+  type StoreType @default(rady_insole)
 
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
   @@index([partnerId])
+  @@index([partnerId, orderNumber]) // createOrder: getNextOrderNumberForPartner
   @@index([createdAt])
   @@index([totalPrice])
   @@index([customerId, partnerId])
