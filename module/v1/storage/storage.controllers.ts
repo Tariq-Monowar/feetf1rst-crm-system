@@ -367,9 +367,19 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Get admin store data (includes type: rady_insole | milling_block)
+    // Get admin store data (must include type: rady_insole | milling_block — use as-is, never default)
     const adminStore = await prisma.admin_store.findUnique({
       where: { id: admin_store_id },
+      select: {
+        id: true,
+        productName: true,
+        brand: true,
+        artikelnummer: true,
+        groessenMengen: true,
+        price: true,
+        image: true,
+        type: true, // critical: preserve exact type from admin_store
+      },
     });
 
     if (!adminStore) {
@@ -393,8 +403,16 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Use and validate store type from admin_store (required for rady_insole vs milling_block)
-    const storeType = (adminStore.type ?? "rady_insole") as StoreType;
+    // Use store type exactly as stored in admin_store (never default — keep rady_insole vs milling_block as-is)
+    const rawType = adminStore.type;
+    if (rawType == null || rawType === undefined) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Admin store has no type set. It must have type rady_insole or milling_block.",
+      });
+    }
+    const storeType = rawType as StoreType;
     if (!VALID_STORE_TYPES_BUY.includes(storeType)) {
       return res.status(400).json({
         success: false,
