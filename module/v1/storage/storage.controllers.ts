@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient, StoreOrderOverviewStatus, StoreType } from "@prisma/client";
+import {
+  PrismaClient,
+  StoreOrderOverviewStatus,
+  StoreType,
+} from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
@@ -16,7 +20,7 @@ const prisma = new PrismaClient();
  */
 const calculateStatus = (
   groessenMengen: any,
-  mindestbestand: number
+  mindestbestand: number,
 ): string => {
   if (!groessenMengen || typeof groessenMengen !== "object") {
     return "Niedriger Bestand";
@@ -40,7 +44,7 @@ const calculateStatus = (
       const sizeMindest = Number(
         (sizeValue as any).mindestmenge !== undefined
           ? (sizeValue as any).mindestmenge
-          : mindestbestand
+          : mindestbestand,
       );
       threshold = isNaN(sizeMindest) ? mindestbestand : sizeMindest;
     }
@@ -73,7 +77,7 @@ const calculateStatus = (
  */
 const addWarningStatusToGroessenMengen = (
   groessenMengen: any,
-  mindestbestand: number
+  mindestbestand: number,
 ) => {
   if (!groessenMengen || typeof groessenMengen !== "object") {
     return groessenMengen;
@@ -136,7 +140,7 @@ const addStatusToStore = (store: any) => {
 
   const enrichedGroessenMengen = addWarningStatusToGroessenMengen(
     store.groessenMengen,
-    store.mindestbestand
+    store.mindestbestand,
   );
 
   return {
@@ -212,7 +216,11 @@ export const createStorage = async (req: Request, res: Response) => {
     }
 
     // Validate groessenMengen is an object
-    if (!groessenMengen || typeof groessenMengen !== "object" || Array.isArray(groessenMengen)) {
+    if (
+      !groessenMengen ||
+      typeof groessenMengen !== "object" ||
+      Array.isArray(groessenMengen)
+    ) {
       cleanupFile();
       return res.status(400).json({
         success: false,
@@ -231,7 +239,7 @@ export const createStorage = async (req: Request, res: Response) => {
       // "mindestbestand",
       "groessenMengen",
       "purchase_price",
-      "selling_price"
+      "selling_price",
     ].find((field) => !req.body[field]);
 
     if (missingField) {
@@ -313,9 +321,7 @@ export const buyStorage = async (req, res) => {
       price,
     } = req.body;
 
-    const missingField = ["admin_store_id"].find(
-      (field) => !req.body[field]
-    );
+    const missingField = ["admin_store_id"].find((field) => !req.body[field]);
 
     if (missingField) {
       return res.status(400).json({
@@ -339,10 +345,16 @@ export const buyStorage = async (req, res) => {
     }
 
     // Validate required fields from admin_store
-    if (!adminStore.productName || !adminStore.brand || !adminStore.artikelnummer || !adminStore.groessenMengen) {
+    if (
+      !adminStore.productName ||
+      !adminStore.brand ||
+      !adminStore.artikelnummer ||
+      !adminStore.groessenMengen
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
+        message:
+          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
       });
     }
 
@@ -350,11 +362,11 @@ export const buyStorage = async (req, res) => {
     // Admin format: {"35": {"length": 225, "quantity": 5}}
     // Stores format: {"35": {"length": 225, "quantity": 5, "mindestmenge": 0, "auto_order_limit": 0, "auto_order_quantity": 0}}
     let transformedGroessenMengen: any = {};
-    if (groessenMengen && typeof groessenMengen === 'object') {
+    if (groessenMengen && typeof groessenMengen === "object") {
       const sizes = groessenMengen as Record<string, any>;
       for (const sizeKey of Object.keys(sizes)) {
         const sizeData = sizes[sizeKey];
-        if (sizeData && typeof sizeData === 'object') {
+        if (sizeData && typeof sizeData === "object") {
           transformedGroessenMengen[sizeKey] = {
             length: sizeData.length || 0,
             quantity: sizeData.quantity || 0,
@@ -366,7 +378,7 @@ export const buyStorage = async (req, res) => {
           // Fallback if format is different
           transformedGroessenMengen[sizeKey] = {
             length: 0,
-            quantity: typeof sizeData === 'number' ? sizeData : 0,
+            quantity: typeof sizeData === "number" ? sizeData : 0,
             mindestmenge: 0,
             auto_order_limit: 0,
             auto_order_quantity: 0,
@@ -388,7 +400,6 @@ export const buyStorage = async (req, res) => {
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
-        
       },
     });
 
@@ -404,7 +415,7 @@ export const buyStorage = async (req, res) => {
         groessenMengen: adminStore.groessenMengen, // Keep original format in tracking
         admin_storeId: admin_store_id,
         price: price || 0,
-        image: adminStore.image
+        image: adminStore.image,
       },
     });
 
@@ -442,9 +453,7 @@ export const addStorage = async (req: Request, res: Response) => {
       groessenMengen,
     } = req.body;
 
-    const missingField = ["admin_store_id"].find(
-      (field) => !req.body[field]
-    );
+    const missingField = ["admin_store_id"].find((field) => !req.body[field]);
 
     if (missingField) {
       return res.status(400).json({
@@ -468,10 +477,16 @@ export const addStorage = async (req: Request, res: Response) => {
     }
 
     // Validate required fields from admin_store
-    if (!adminStore.productName || !adminStore.brand || !adminStore.artikelnummer || !adminStore.groessenMengen) {
+    if (
+      !adminStore.productName ||
+      !adminStore.brand ||
+      !adminStore.artikelnummer ||
+      !adminStore.groessenMengen
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
+        message:
+          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen)",
       });
     }
 
@@ -494,7 +509,11 @@ export const addStorage = async (req: Request, res: Response) => {
     }
 
     // Validate groessenMengen is an object
-    if (!parsedGroessenMengen || typeof parsedGroessenMengen !== "object" || Array.isArray(parsedGroessenMengen)) {
+    if (
+      !parsedGroessenMengen ||
+      typeof parsedGroessenMengen !== "object" ||
+      Array.isArray(parsedGroessenMengen)
+    ) {
       return res.status(400).json({
         success: false,
         message: "groessenMengen must be a valid JSON object (not an array)",
@@ -532,7 +551,8 @@ export const addStorage = async (req: Request, res: Response) => {
 
     if (existingStore) {
       // Add to existing store - merge quantities
-      const currentGroessenMengen = (existingStore.groessenMengen as Record<string, any>) || {};
+      const currentGroessenMengen =
+        (existingStore.groessenMengen as Record<string, any>) || {};
       const updatedGroessenMengen = { ...currentGroessenMengen };
       const mindestbestand = existingStore.mindestbestand || 0;
 
@@ -541,7 +561,9 @@ export const addStorage = async (req: Request, res: Response) => {
         const newSizeData = transformedGroessenMengen[sizeKey];
         if (updatedGroessenMengen[sizeKey]) {
           // Existing size - add quantity
-          const currentQuantity = Number(updatedGroessenMengen[sizeKey].quantity || 0);
+          const currentQuantity = Number(
+            updatedGroessenMengen[sizeKey].quantity || 0,
+          );
           updatedGroessenMengen[sizeKey] = {
             ...updatedGroessenMengen[sizeKey],
             quantity: currentQuantity + newSizeData.quantity,
@@ -626,15 +648,23 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
     const search = req.query.search as string;
+
+    const type = req.query.type as string;
+
     const whereCondition: any = {};
+
+    if (type) {
+      whereCondition.type = type as StoreType;
+    }
+
     if (search) {
       whereCondition.OR = [
         { produktname: { contains: search, mode: "insensitive" } },
         { hersteller: { contains: search, mode: "insensitive" } },
         { artikelnummer: { contains: search, mode: "insensitive" } },
-
       ];
     }
+
     const totalItems = await prisma.stores.count({
       where: { user: { id: userId }, ...whereCondition },
     });
@@ -651,16 +681,10 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     // Add calculated Status to all stores
     const storageWithStatus = addStatusToStores(allStorage);
 
-    const formattedStorage = storageWithStatus.map((item) => ({
-      ...item,
-      // Images are already S3 URLs, use directly
-      image: item.image || null,
-    }));
-
     res.status(200).json({
       success: true,
       message: "All storage fetched successfully",
-      data: formattedStorage,
+      data: storageWithStatus,
       pagination: {
         totalItems,
         totalPages,
@@ -720,7 +744,7 @@ export const updateStorage = async (req: Request, res: Response) => {
 
     // Remove undefined fields
     const updatedData = Object.fromEntries(
-      Object.entries(req.body).filter(([_, v]) => v !== undefined)
+      Object.entries(req.body).filter(([_, v]) => v !== undefined),
     );
 
     // Status = auto generated, never user updated
@@ -789,12 +813,12 @@ export const updateStorage = async (req: Request, res: Response) => {
 
           if (oldSize.length !== newSize.length) {
             changes.push(
-              `groessenMengen.${size}.length: ${oldSize.length} → ${newSize.length}`
+              `groessenMengen.${size}.length: ${oldSize.length} → ${newSize.length}`,
             );
           }
           if (oldSize.quantity !== newSize.quantity) {
             changes.push(
-              `groessenMengen.${size}.quantity: ${oldSize.quantity} → ${newSize.quantity}`
+              `groessenMengen.${size}.quantity: ${oldSize.quantity} → ${newSize.quantity}`,
             );
           }
         }
@@ -1151,12 +1175,12 @@ export const getStoragePerformer = async (req: Request, res: Response) => {
     // Calculate total revenue for percentage calculation
     const totalRevenue = Array.from(modelStats.values()).reduce(
       (sum, stats) => sum + stats.umsatz,
-      0
+      0,
     );
 
     // Find maximum verkaufe for progress bar calculation
     const verkaufeValues = Array.from(modelStats.values()).map(
-      (stats) => stats.verkaufe
+      (stats) => stats.verkaufe,
     );
     const maxVerkaufe =
       verkaufeValues.length > 0 ? Math.max(...verkaufeValues, 1) : 1; // Use 1 as minimum to avoid division by zero
@@ -1174,7 +1198,7 @@ export const getStoragePerformer = async (req: Request, res: Response) => {
           maxVerkaufe > 0
             ? Number(((stats.verkaufe / maxVerkaufe) * 100).toFixed(1))
             : 0, // Progress bar percentage (0-100)
-      })
+      }),
     );
 
     // Sort based on type
@@ -1385,8 +1409,8 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
               typeof sizeEntry === "object" && "quantity" in sizeEntry
                 ? Number(sizeEntry.quantity || 0)
                 : typeof sizeEntry === "number"
-                ? sizeEntry
-                : 0;
+                  ? sizeEntry
+                  : 0;
 
             const newQuantity = currentQuantity + order.auto_order_quantity;
             const mindestmenge =
@@ -1408,7 +1432,7 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
         // Recalculate overall Status
         const newStatus = calculateStatus(
           updatedGroessenMengen,
-          mindestbestand
+          mindestbestand,
         );
 
         // Update the store
