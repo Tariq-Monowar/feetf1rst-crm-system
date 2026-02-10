@@ -972,7 +972,7 @@ enum OrderStatus {
  * Store model---------------------------------------------------------
  * @samaty{
  * -এখানে অ্যাাডমিনের কাছেই সব স্টর থাকবে পার্টনাররা এখান থেকে স্টর কিনে নিবে
- * -কিনে নেওইয়ার সমইয় admin_store রিমভ হইয়ে যাবে তার থেকে ডাটা Stores এ ডুকবে
+ * -কিনে নেওইয়ার সমইয় admin_store রিমভ হইয়ে যাবে na. তার থেকে ডাটা Stores এ ডুকবে
  * -ট্রেক রাখার জন্য admin_store_tracking তৌরি করা হইয়েছে।
  * }
  * ====================================================================
@@ -996,9 +996,46 @@ model admin_store {
   artikelnummer String?
   eigenschaften String?
 
+  /*
+   * @rady_insole datatype
+   * {
+   * "35": {
+   * "length": 87,
+   * "quantity": 27,
+   * "mindestmenge": 70,
+   * "auto_order_limit": 92,
+   * "auto_order_quantity": 88,
+   * "warningStatus": "Niedriger Bestand"
+   * }
+   * 
+   *
+
+
+  * @milling_block datatype
+   * hear milling block data is 3 sizes 
+   যদি foot_length_mm নির্দিষ্ট Range A-এর মধ্যে থাকে (যেমন 200mm এর নিচে)
+   * → Block Size 1
+   যদি foot_length_mm 200mm – 250mm এর মধ্যে থাকে (Range B)
+   * → Block Size 2
+   যদি foot_length_mm 250mm এর বেশি হয়
+   * → Block Size 3
+   * 
+   * "1": {
+   fix foot length, 
+   * "quantity": 27,
+   * "mindestmenge": 70,
+   * "auto_order_limit": 92,
+   * "auto_order_quantity": 88,
+   * "warningStatus": "Niedriger Bestand"
+   * }
+  */
+
   groessenMengen Json?
 
+
   stores Stores[]
+
+  type StoreType @default(rady_insole)
 
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
@@ -1012,8 +1049,12 @@ model brand_store {
 
   groessenMengen Json?
 
+  type StoreType @default(rady_insole)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([brand, type])
 }
 
 model admin_store_tracking {
@@ -1046,6 +1087,7 @@ model admin_store_tracking {
 
   price Float?
   image String?
+  type  StoreType @default(rady_insole)
 
   parcessAt     DateTime     @default(now())
   adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
@@ -1123,7 +1165,7 @@ model Stores {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  storesHistory StoresHistory[] // History of stock changes
+  storesHistory         StoresHistory[] // History of stock changes
   versorgungen          Versorgungen[]
   customerOrders        customerOrders[]
   customerVersorgungens customer_versorgungen[]
@@ -1139,6 +1181,7 @@ enum StoreType {
   milling_block
   rady_insole
 }
+
 enum CreateStatus {
   by_self
   by_admin
@@ -1506,6 +1549,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1529,6 +1573,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

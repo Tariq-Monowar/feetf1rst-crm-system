@@ -1,33 +1,38 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, StoreType } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 const prisma = new PrismaClient();
 
 const parseJsonSafely = (input: any): any => {
-
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
+  if (typeof input === "object" && input !== null && !Array.isArray(input)) {
     return input;
   }
 
-  if (typeof input !== 'string') {
-    throw new Error('groessenMengen must be a string or object');
+  if (typeof input !== "string") {
+    throw new Error("groessenMengen must be a string or object");
   }
 
   let cleaned = input.trim();
 
-  cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+  cleaned = cleaned.replace(/,(\s*[}\]])/g, "$1");
 
   try {
     const parsed = JSON.parse(cleaned);
-    
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error('groessenMengen must be a valid JSON object');
+
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      throw new Error("groessenMengen must be a valid JSON object");
     }
-    
+
     return parsed;
   } catch (error: any) {
     throw new Error(`Invalid JSON format: ${error.message}`);
   }
 };
+
+const VALID_STORE_TYPES = ["rady_insole", "milling_block"] as const;
 
 export const createAdminStore = async (req, res) => {
   try {
@@ -39,6 +44,8 @@ export const createAdminStore = async (req, res) => {
       eigenschaften,
       groessenMengen,
     } = req.body;
+
+    const type = (req.query?.type as string) ?? "rady_insole";
 
     const missingField = [
       "price",
@@ -58,16 +65,21 @@ export const createAdminStore = async (req, res) => {
       });
     }
 
-    const image = req.file?.location || null;
-    if (!image) {
-      if (req.file?.location) {
-        deleteFileFromS3(req.file.location);
-      }
+    if (!type) {
       return res.status(400).json({
         success: false,
-        message: "Image is required",
+        message: "Type is required",
       });
     }
+
+    if (!VALID_STORE_TYPES.includes(type as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type",
+      });
+    }
+
+    const image = req.file?.location || null;
 
     let parsedGroessenMengen;
     try {
@@ -78,10 +90,13 @@ export const createAdminStore = async (req, res) => {
       }
       return res.status(400).json({
         success: false,
-        message: "Invalid groessenMengen format. It must be a valid JSON object",
+        message:
+          "Invalid groessenMengen format. It must be a valid JSON object",
         error: parseError.message,
       });
     }
+
+
 
     const adminStore = await prisma.admin_store.create({
       data: {
@@ -92,30 +107,24 @@ export const createAdminStore = async (req, res) => {
         artikelnummer,
         eigenschaften,
         groessenMengen: parsedGroessenMengen,
+        type: type as StoreType,
       },
     });
 
-    // Check if brand_store with this brand already exists
-    const existingBrandStore = await prisma.brand_store.findFirst({
-      where: { brand },
+    // Upsert brand_store by brand + type (one record per brand per type)
+    await prisma.brand_store.upsert({
+      where: {
+        brand_type: { brand, type: type as StoreType },
+      },
+      create: {
+        brand,
+        groessenMengen: parsedGroessenMengen,
+        type: type as StoreType,
+      },
+      update: {
+        groessenMengen: parsedGroessenMengen,
+      },
     });
-
-    // If brand exists, update it; otherwise create new one
-    if (existingBrandStore) {
-      await prisma.brand_store.update({
-        where: { id: existingBrandStore.id },
-        data: {
-          groessenMengen: parsedGroessenMengen,
-        },
-      });
-    } else {
-      await prisma.brand_store.create({
-        data: {
-          brand,
-          groessenMengen: parsedGroessenMengen,
-        },
-      });
-    }
 
     res.status(201).json({
       success: true,
@@ -194,7 +203,8 @@ export const updateAdminStore = async (req, res) => {
         }
         return res.status(400).json({
           success: false,
-          message: "Invalid groessenMengen format. It must be a valid JSON object",
+          message:
+            "Invalid groessenMengen format. It must be a valid JSON object",
           error: parseError.message,
         });
       }
@@ -239,47 +249,61 @@ export const updateAdminStore = async (req, res) => {
 };
 
 export const getAllAdminStore = async (req, res) => {
+  const ADMIN_STORE_TYPES = ["rady_insole", "milling_block"];
+
+  const ADMIN_STORE_SORT_FIELDS = [
+    "createdAt",
+    "updatedAt",
+    "price",
+    "brand",
+    "productName",
+    "artikelnummer",
+  ];
+
   try {
-    // Pagination
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const q = req.query;
+    const page = Math.max(1, parseInt(q.page) || 1);
+    const limit = Math.max(1, parseInt(q.limit) || 10);
     const skip = (page - 1) * limit;
+    const rawType = String(q.type || "").trim();
+    const type = !rawType || rawType === "null" ? "rady_insole" : rawType;
 
-    // Search query
-    const search = (req.query.search as string) || "";
-
-    // Sorting
-    const sortBy = (req.query.sortBy as string) || "createdAt";
-    const sortOrder = (req.query.sortOrder as string) || "desc";
-
-    // Build where clause for search
-    const where: any = {};
-
-    if (search) {
-      where.OR = [
-        { brand: { contains: search, mode: "insensitive" } },
-        { productName: { contains: search, mode: "insensitive" } },
-        { artikelnummer: { contains: search, mode: "insensitive" } },
-        { eigenschaften: { contains: search, mode: "insensitive" } },
-      ];
+    if (!["rady_insole", "milling_block"].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. It must be rady_insole or milling_block",
+      });
     }
 
-    // Validate sortBy field
-    const validSortFields = [
+    const search = String(q.search || "").trim();
+
+    const sortBy = [
       "createdAt",
       "updatedAt",
       "price",
       "brand",
       "productName",
       "artikelnummer",
-    ];
-    const finalSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
-    const finalSortOrder = sortOrder.toLowerCase() === "asc" ? "asc" : "desc";
+    ].includes(q.sortBy)
+      ? q.sortBy
+      : "createdAt";
+    const sortOrder =
+      String(q.sortOrder || "desc").toLowerCase() === "asc" ? "asc" : "desc";
 
-    // Get total count for pagination (optimized - only count)
+    const searchCondition = search
+      ? {
+          OR: ["brand", "productName", "artikelnummer", "eigenschaften"].map(
+            (field) => ({
+              [field]: { contains: search, mode: "insensitive" },
+            })
+          ),
+        }
+      : {};
+
+    const where = { type: type as StoreType, ...searchCondition };
+
     const totalItems = await prisma.admin_store.count({ where });
 
-    // If no items, return early
     if (totalItems === 0) {
       return res.status(200).json({
         success: true,
@@ -296,17 +320,12 @@ export const getAllAdminStore = async (req, res) => {
       });
     }
 
-    // Calculate total pages
     const totalPages = Math.ceil(totalItems / limit);
-
-    // Fetch admin stores with optimized query
     const adminStores = await prisma.admin_store.findMany({
       where,
       skip,
       take: limit,
-      orderBy: {
-        [finalSortBy]: finalSortOrder,
-      },
+      orderBy: { [sortBy]: sortOrder },
       select: {
         id: true,
         image: true,
@@ -318,28 +337,19 @@ export const getAllAdminStore = async (req, res) => {
         groessenMengen: true,
         createdAt: true,
         updatedAt: true,
-        _count: {
-          select: {
-            stores: true, // Count related stores
-          },
-        },
+        _count: { select: { stores: true } },
       },
     });
 
-    // Format response with image URLs (already S3 URLs)
-    const formattedStores = adminStores.map((store) => ({
-      ...store,
-      image: store.image || null,
-      storesCount: store._count.stores,
-    }));
-
-    // Remove _count from response
-    const cleanStores = formattedStores.map(({ _count, ...rest }) => rest);
+    const data = adminStores.map((store) => {
+      const { _count, image, ...rest } = store;
+      return { ...rest, image: image || null, storesCount: _count.stores };
+    });
 
     res.status(200).json({
       success: true,
       message: "Admin stores fetched successfully",
-      data: cleanStores,
+      data,
       pagination: {
         totalItems,
         totalPages,
@@ -349,12 +359,12 @@ export const getAllAdminStore = async (req, res) => {
         hasPrevPage: page > 1,
       },
     });
-  } catch (error: any) {
-    console.log(error);
+  } catch (err) {
+    console.log(err);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error.message,
+      error: err.message,
     });
   }
 };
@@ -390,7 +400,7 @@ export const getSingleAdminStore = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 export const deleteAdminStore = async (req, res) => {
   try {
@@ -459,7 +469,7 @@ export const trackStorage = async (req, res) => {
       take: limit,
       orderBy: { parcessAt: "desc" },
       include: {
-        partner:{
+        partner: {
           select: {
             name: true,
             email: true,
@@ -467,18 +477,20 @@ export const trackStorage = async (req, res) => {
             phone: true,
             busnessName: true,
           },
-        }
-      }
+        },
+      },
     });
 
     const formattedAdminStoreTracking = adminStoreTracking.map((item) => ({
       ...item,
       // Images are already S3 URLs, use directly
       image: item.image || null,
-      partner: item.partner ? {
-        ...item.partner,
-        image: item.partner.image || null,
-      } : null,
+      partner: item.partner
+        ? {
+            ...item.partner,
+            image: item.partner.image || null,
+          }
+        : null,
     }));
 
     res.status(200).json({
@@ -494,7 +506,6 @@ export const trackStorage = async (req, res) => {
         hasPrevPage: page > 1,
       },
     });
-
   } catch (error: any) {
     console.log(error);
     res.status(500).json({
@@ -503,25 +514,26 @@ export const trackStorage = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 export const getTrackStoragePrice = async (req, res) => {
   try {
-    
     const adminStoreTracking = await prisma.admin_store_tracking.findMany({
       select: {
         price: true,
       },
     });
 
-    const totalPrice = adminStoreTracking.reduce((acc, curr) => acc + curr.price, 0);
+    const totalPrice = adminStoreTracking.reduce(
+      (acc, curr) => acc + curr.price,
+      0
+    );
 
     res.status(200).json({
       success: true,
       message: "Admin store tracking price fetched successfully",
       data: totalPrice,
     });
-
   } catch (error: any) {
     console.log(error);
     res.status(500).json({
@@ -530,7 +542,7 @@ export const getTrackStoragePrice = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 export const searchBrandStore = async (req: any, res: any) => {
   try {
@@ -540,12 +552,14 @@ export const searchBrandStore = async (req: any, res: any) => {
     const skip = (page - 1) * limit;
 
     const search = (req.query.search as string) || "";
+    const type = (req.query.type as string)?.trim();
 
     const where: any = {};
     if (search) {
-      where.OR = [
-        { brand: { contains: search, mode: "insensitive" } },
-      ];
+      where.OR = [{ brand: { contains: search, mode: "insensitive" } }];
+    }
+    if (type && VALID_STORE_TYPES.includes(type as any)) {
+      where.type = type as StoreType;
     }
     const totalItems = await prisma.brand_store.count({ where });
     const totalPages = Math.ceil(totalItems / limit);
@@ -557,6 +571,7 @@ export const searchBrandStore = async (req: any, res: any) => {
       select: {
         id: true,
         brand: true,
+        type: true,
       },
     });
 
@@ -581,7 +596,7 @@ export const searchBrandStore = async (req: any, res: any) => {
       error: error.message,
     });
   }
-}
+};
 
 export const getSingleBrandStore = async (req, res) => {
   try {
@@ -592,6 +607,7 @@ export const getSingleBrandStore = async (req, res) => {
         id: true,
         brand: true,
         groessenMengen: true,
+        type: true,
       },
     });
     res.status(200).json({
@@ -607,7 +623,7 @@ export const getSingleBrandStore = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 export const updateBrandStore = async (req, res) => {
   try {
@@ -630,7 +646,7 @@ export const updateBrandStore = async (req, res) => {
       error: error.message,
     });
   }
-}
+};
 
 export const getAllBrandStore = async (req: any, res: any) => {
   try {
@@ -640,12 +656,15 @@ export const getAllBrandStore = async (req: any, res: any) => {
     const skip = (page - 1) * limit;
 
     const search = (req.query.search as string) || "";
+    const type = (req.query.type as string)?.trim() || "rady_insole";
 
     const where: any = {};
     if (search) {
-      where.OR = [
-        { brand: { contains: search, mode: "insensitive" } },
-      ];
+      where.OR = [{ brand: { contains: search, mode: "insensitive" } }];
+    }
+    // Filter by store type: ?type=rady_insole or ?type=milling_block
+    if (type && VALID_STORE_TYPES.includes(type as any)) {
+      where.type = type as StoreType;
     }
 
     const totalItems = await prisma.brand_store.count({ where });
@@ -660,6 +679,7 @@ export const getAllBrandStore = async (req: any, res: any) => {
         id: true,
         brand: true,
         groessenMengen: true,
+        type: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -686,7 +706,7 @@ export const getAllBrandStore = async (req: any, res: any) => {
       error: error.message,
     });
   }
-}
+};
 
 export const deleteBrandStore = async (req: any, res: any) => {
   try {
@@ -742,4 +762,4 @@ export const deleteBrandStore = async (req: any, res: any) => {
       error: error.message,
     });
   }
-}
+};

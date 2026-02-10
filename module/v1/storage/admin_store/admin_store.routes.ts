@@ -32,8 +32,11 @@ router.patch(
   upload.single("image"),
   updateAdminStore
 );
+
 router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleAdminStore);
 router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteAdminStore);
+
+
 router.get("/track-storage", verifyUser("ADMIN"), trackStorage);
 router.get("/track-price", verifyUser("ADMIN"), getTrackStoragePrice);
 
