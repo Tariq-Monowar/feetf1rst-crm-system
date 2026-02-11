@@ -1587,7 +1587,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
       success: true,
       data: {
         partner: {
-          name: order.partner.name || order.partner.busnessName || null,
+          name: order.partner.busnessName || null,
           // Image is already S3 URL, use directly
           image: order.partner.image || null,
         },
