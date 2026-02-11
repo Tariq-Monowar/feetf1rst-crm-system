@@ -65,7 +65,7 @@ const extractLengthValue = (value: any): number | null => {
 
 const determineSizeFromGroessenMengen = (
   groessenMengen: any,
-  targetLength: number
+  targetLength: number,
 ): string | null => {
   if (!groessenMengen || typeof groessenMengen !== "object") {
     return null;
@@ -75,7 +75,7 @@ const determineSizeFromGroessenMengen = (
   let smallestDiff = Infinity;
 
   for (const [sizeKey, sizeData] of Object.entries(
-    groessenMengen as Record<string, any>
+    groessenMengen as Record<string, any>,
   )) {
     const lengthValue = extractLengthValue(sizeData);
     if (lengthValue === null) {
@@ -287,7 +287,7 @@ export const getLast40DaysOrderStats = async (req: Request, res: Response) => {
 
 export const getLast30DaysOrderEinlagen = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const partnerId = req.user?.id;
@@ -318,7 +318,7 @@ export const getLast30DaysOrderEinlagen = async (
 
     const totalPrice = einlagen.reduce(
       (acc, order) => acc + order.totalPrice,
-      0
+      0,
     );
 
     res.status(200).json({
@@ -446,7 +446,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
     if (orderHistory.length > 0) {
       // Filter out records where statusFrom === statusTo (initial creation records)
       const actualStatusChanges = orderHistory.filter(
-        (record) => record.statusFrom !== record.statusTo
+        (record) => record.statusFrom !== record.statusTo,
       );
 
       // Determine initial status from first record
@@ -468,8 +468,8 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         order.employeeId
           ? "employee"
           : order.partner?.id
-          ? "partner"
-          : "system";
+            ? "partner"
+            : "system";
 
       // Process each status change
       for (let i = 0; i < actualStatusChanges.length; i++) {
@@ -495,8 +495,8 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         statusAssigneeType = record.employee?.id
           ? "employee"
           : record.partner?.id
-          ? "partner"
-          : "system";
+            ? "partner"
+            : "system";
       }
 
       // Track current status (the last status the order is in)
@@ -529,8 +529,8 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         assigneeType: order.employeeId
           ? "employee"
           : order.partner?.id
-          ? "partner"
-          : "system",
+            ? "partner"
+            : "system",
       });
     }
 
@@ -542,7 +542,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         duration: formatDuration(
           transition.endTime
             ? transition.endTime.getTime() - transition.startTime.getTime()
-            : new Date().getTime() - transition.startTime.getTime()
+            : new Date().getTime() - transition.startTime.getTime(),
         ),
         durationMs: transition.endTime
           ? transition.endTime.getTime() - transition.startTime.getTime()
@@ -552,7 +552,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         assignee: transition.assignee,
         assigneeId: transition.assigneeId,
         assigneeType: transition.assigneeType,
-      }))
+      })),
     );
 
     // Format change log entries
@@ -590,14 +590,14 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
         date: record.createdAt,
         user: record.employee?.employeeName || record.partner?.name || "System",
         action: `Status geändert: ${formatStatusName(
-          record.statusFrom
+          record.statusFrom,
         )} → ${formatStatusName(record.statusTo)}`,
         note:
           record.note ||
           `${
             record.employee?.employeeName || record.partner?.name || "System"
           } änderte Status: ${formatStatusName(
-            record.statusFrom
+            record.statusFrom,
           )} → ${formatStatusName(record.statusTo)}`,
         type: "status_change",
         details: {
@@ -611,7 +611,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
     const extractUserNameFromNote = (note: string | null): string => {
       if (!note) return "System";
       const match = note.match(
-        /^([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)\s+(änderte|changed|erstellte|created)/i
+        /^([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*)\s+(änderte|changed|erstellte|created)/i,
       );
       return match ? match[1] : "System";
     };
@@ -624,8 +624,8 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
           entry.type === "status_change" &&
           Math.abs(
             new Date(entry.date).getTime() -
-              new Date(record.createdAt || record.date || new Date()).getTime()
-          ) < 1000 // Within 1 second
+              new Date(record.createdAt || record.date || new Date()).getTime(),
+          ) < 1000, // Within 1 second
       );
 
       if (isDuplicate) return;
@@ -676,7 +676,7 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
 
     // Sort change log by date descending
     changeLog.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
     res.status(200).json({
@@ -930,7 +930,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
     const firstStatusHistory = statusChanges.find(
       (record) =>
         record.statusFrom === "Warten_auf_Versorgungsstart" &&
-        record.statusTo === "Warten_auf_Versorgungsstart"
+        record.statusTo === "Warten_auf_Versorgungsstart",
     );
 
     if (firstStatusHistory) {
@@ -947,12 +947,12 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       firstStepAssigneeType = firstStatusHistory.employee?.id
         ? "employee"
         : firstStatusHistory.partner?.id
-        ? "partner"
-        : "system";
+          ? "partner"
+          : "system";
     }
 
     const firstStepPeriod = timeline.find(
-      (period) => period.status === "Warten_auf_Versorgungsstart"
+      (period) => period.status === "Warten_auf_Versorgungsstart",
     );
     if (firstStepPeriod) {
       firstStepStartTime = firstStepPeriod.startTime;
@@ -975,7 +975,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
     const firstProductionQSEntry = statusChanges.find(
       (record) =>
         record.statusTo === "In_Fertigung" ||
-        record.statusTo === "Verpacken_Qualitätssicherung"
+        record.statusTo === "Verpacken_Qualitätssicherung",
     );
 
     if (firstProductionQSEntry) {
@@ -991,8 +991,8 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       productionQSAssigneeType = firstProductionQSEntry.employee?.id
         ? "employee"
         : firstProductionQSEntry.partner?.id
-        ? "partner"
-        : "system";
+          ? "partner"
+          : "system";
     }
 
     // Calculate total duration and find end time
@@ -1019,7 +1019,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       (period) =>
         (period.status === "In_Fertigung" ||
           period.status === "Verpacken_Qualitätssicherung") &&
-        period.endTime === null
+        period.endTime === null,
     );
     if (isStillInProductionQS) {
       productionQSEndTime = null;
@@ -1062,7 +1062,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
 
     // Process all history entries in chronological order
     const sortedHistory = [...allHistory].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
 
     for (const record of sortedHistory) {
@@ -1077,7 +1077,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           user: userName,
           action: "Zahlungsstatus geändert",
           note: `${formatPaymentStatus(
-            record.paymentFrom
+            record.paymentFrom,
           )} → ${formatPaymentStatus(record.paymentTo)}`,
           type: "payment_change",
           details: {
@@ -1095,10 +1095,10 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
             date: record.createdAt,
             user: userName,
             action: `${userName} Status geändert: ${formatStatusName(
-              record.statusFrom
+              record.statusFrom,
             )} → ${formatStatusName(record.statusTo)}`,
             note: `${formatStatusName(record.statusFrom)} → ${formatStatusName(
-              record.statusTo
+              record.statusTo,
             )}`,
             type: "status_change",
             details: {
@@ -1145,7 +1145,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
 
     // Sort by date descending (newest first for UI, matching the image)
     changeLog.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
     // ✅ STEP 3: Build response matching UI requirements
@@ -1250,7 +1250,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           currentPaymentStatus: formatPaymentStatus(order.bezahlt),
           totalEvents: changeLog.length,
           totalPaymentChanges: allHistory.filter(
-            (record) => record.isPrementChange
+            (record) => record.isPrementChange,
           ).length,
           hasBarcodeScan: hasBarcodeLabel || hasBarcodeCreatedAt,
         },
@@ -1341,7 +1341,7 @@ export const getSupplyInfo = async (req: Request, res: Response) => {
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
         const matchedSize = determineSizeFromGroessenMengen(
           store.groessenMengen,
-          largerFusslange
+          largerFusslange,
         );
 
         if (matchedSize) {
@@ -1396,6 +1396,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       select: {
         versorgung_note: true,
         überzug: true,
+        fertigstellungBis: true,
         customer: {
           select: {
             id: true,
@@ -1452,11 +1453,11 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     ) {
       const largerFusslange = Math.max(
         Number(customer.fusslange1) + 5,
-        Number(customer.fusslange2) + 5
+        Number(customer.fusslange2) + 5,
       );
       const matchedSize = determineSizeFromGroessenMengen(
         store.groessenMengen,
-        largerFusslange
+        largerFusslange,
       );
       if (matchedSize) {
         storeInfo = {
@@ -1484,6 +1485,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         versorgung: order.product?.versorgung ?? null,
         versorgung_note: order.versorgung_note ?? null,
         uberzug: order.überzug,
+        fertigstellungBis: order.fertigstellungBis,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
