@@ -25,33 +25,52 @@ import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
-router.post("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createCustomerRequirements);
-router.get("/customer-requirements", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getCustomerRequirements);
-
-router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createCustomers);
-
+router.post(
+  "/customer-requirements",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  createCustomerRequirements,
+);
 router.get(
-  "/einlagen-in-produktion", getEinlagenInProduktion
-)
+  "/customer-requirements",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getCustomerRequirements,
+);
+
+router.post(
+  "/",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  upload.none(),
+  createCustomers,
+);
+
+router.get("/einlagen-in-produktion", getEinlagenInProduktion);
 
 router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllCustomers);
 
-router.get("/search", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), searchCustomers);
-
-router.get("/filter-customers", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), filterCustomer);
-
-router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteCustomer);
-
-router.patch(
-  "/:id",
-  verifyUser("PARTNER", "EMPLOYEE"),
-  updateCustomer
+router.get(
+  "/search",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  searchCustomers,
 );
+
+router.get(
+  "/filter-customers",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  filterCustomer,
+);
+
+router.delete(
+  "/:id",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  deleteCustomer,
+);
+
+router.patch("/:id", verifyUser("PARTNER", "EMPLOYEE"), updateCustomer);
 
 router.patch(
   "/:id/special-fields",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  updateCustomerSpecialFields
+  updateCustomerSpecialFields,
 );
 
 // router.post(
@@ -82,7 +101,7 @@ router.post(
     { name: "picture_16", maxCount: 1 },
     { name: "csvFile", maxCount: 1 },
   ]),
-  addScreenerFile
+  addScreenerFile,
 );
 
 router.patch(
@@ -101,28 +120,34 @@ router.patch(
     { name: "picture_16", maxCount: 1 },
     { name: "csvFile", maxCount: 1 },
   ]),
-  updateScreenerFile
+  updateScreenerFile,
 );
 
 router.delete(
   "/delete-screener-file/:screenerId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  deleteScreenerFile
+  deleteScreenerFile,
 );
 
 router.get(
   "/screener-file/:screenerId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  getScreenerFileById
+  getScreenerFileById,
 );
 
-router.get("/history/:customerId", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getCustomerHistory);
+router.get(
+  "/history/:customerId",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getCustomerHistory,
+);
 
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getCustomerById);
 
 // get all Versorgungen by customer id which he buy
-router.get("/supply-status/:customerId", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllVersorgungenByCustomerId);
-
+router.get(
+  "/supply-status/:customerId",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAllVersorgungenByCustomerId,
+);
 
 export default router;
-
