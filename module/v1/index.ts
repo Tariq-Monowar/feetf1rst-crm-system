@@ -15,6 +15,8 @@ import employees from "./employees/employees.routes";
 import employeeAuth from "./employees/auth/employee.auth.routes";
 
 import customers from "./customers/customers.routes";
+import extra_info from "./customers/extra_info/extra_info.routes";
+
 import einlagenFinder from "./einlagenFinder/einlagenFinder.routes";
 import exercises from "./exercises/exercises.routes";
 import customerHistory from "./customers-history/customersHistory.routes";
@@ -57,6 +59,9 @@ const moduleRoutes = [
 
 
   { path: "/customers", route: customers },
+  { path: "/customers/extra-info", route: extra_info },
+
+
   { path: "/einlagen-finder", route: einlagenFinder },
   { path: "/exercises", route: exercises },
   { path: "/customers-history", route: customerHistory },
