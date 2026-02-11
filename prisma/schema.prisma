@@ -803,34 +803,13 @@ model customerOrders {
 
   orderNumber Int // Unique per partner, not globally
 
-  customerId String?
-  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-
-  partnerId String?
-  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull, name: "PartnerOrders")
-
-  versorgungId String? // Add this
-  Versorgungen Versorgungen? @relation(fields: [versorgungId], references: [id], onDelete: SetNull)
-
-  screenerId   String?
-  screenerFile screener_file? @relation(fields: [screenerId], references: [id], onDelete: SetNull)
-
   fußanalyse        Float?
   einlagenversorgung Float?
   totalPrice         Float
 
-  product   customerProduct? @relation(fields: [productId], references: [id])
-  productId String?          @unique
-
-  orderStatus  OrderStatus @default(Warten_auf_Versorgungsstart)
   // orderStatus  String?
   statusUpdate DateTime?
   invoice      String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  StoresHistory StoresHistory[] @relation("OrderStoresHistory")
 
   ausführliche_diagnose String?
   versorgung_laut_arzt   String?
@@ -841,15 +820,10 @@ model customerOrders {
   schuhmodell_wählen    String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
   kostenvoranschlag      Boolean? @default(false)
 
-  bezahlt paymnentStatus?
-
   discount Float?
 
   // Privet          String? // Bezahlt - string naw
   // bezahltInsurance       String? // Bezahlt - string naw
-
-  storeId String?
-  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   // Werkstattzettel (inline fields to avoid extra API)
   kundenName         String?
@@ -865,21 +839,49 @@ model customerOrders {
   fussanalysePreis        Float?
   einlagenversorgungPreis Float?
 
+  barcodeLabel     String?
+  barcodeCreatedAt DateTime?
+
+  bezahlt paymnentStatus?
+
+  orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
+  priority    Priority?   @default(Normal)
+  type        StoreType   @default(rady_insole)
+
+  //---------------------------------------------------------
+  productId String?          @unique
+  product   customerProduct? @relation(fields: [productId], references: [id])
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull, name: "PartnerOrders")
+
+  versorgungId String? // Add this
+  Versorgungen Versorgungen? @relation(fields: [versorgungId], references: [id], onDelete: SetNull)
+
+  screenerId   String?
+  screenerFile screener_file? @relation(fields: [screenerId], references: [id], onDelete: SetNull)
+
   // werkstattEmployeeId String?
   employeeId String?
   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  //make a relatio with employe
 
-  priority                Priority?               @default(Normal)
-  customerHistories       customerHistorie[]      @relation("OrderCustomerHistorie")
-  customerOrdersHistories customerOrdersHistory[]
-  customerVersorgungen    customer_versorgungen?  @relation(fields: [customer_versorgungenId], references: [id])
+  storeId String?
+  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
   customer_versorgungenId String?
+  customerVersorgungen    customer_versorgungen? @relation(fields: [customer_versorgungenId], references: [id])
 
-  barcodeLabel     String?
-  barcodeCreatedAt DateTime?
-  // KrankenkasseStatus String? @default("Krankenkasse_Ungenehmigt")
-  type StoreType @default(rady_insole)
+  //-----------------------------------------------------------------------------------
+  customerHistories       customerHistorie[]       @relation("OrderCustomerHistorie")
+  customerOrdersHistories customerOrdersHistory[]
+  StoresHistory           StoresHistory[]          @relation("OrderStoresHistory")
+  customerOrderInsurances customerOrderInsurance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
@@ -907,6 +909,34 @@ enum paymnentStatus {
 enum Priority {
   Dringend
   Normal
+}
+
+model customerOrderInsurance {
+  id String @id @default(uuid())
+
+  orderId String
+  order   customerOrders @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  price Float?
+
+  description Json?
+
+  vat_country String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([price])
+  @@index([description])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+enum vat_countrys {
+  Pending
+  Approved
+  Rejected
 }
 
 model customerOrdersHistory {
@@ -972,8 +1002,8 @@ enum OrderStatus {
 
   // Warten_auf_Versorgungsstart
   Warten_auf_Fraesvorgang //2
-  Fraesvorgang         //2        
-  Feinschliff   //2             
+  Fraesvorgang //2        
+  Feinschliff //2             
   // Qualitaetssicherung_Verpackung
   // Abholbereit_Versandt         
   // Ausgeführt                   
@@ -1007,7 +1037,7 @@ model admin_store {
   artikelnummer String?
   eigenschaften String?
 
-  /*
+  /**
    * @rady_insole datatype
    * {
    * "35": {
@@ -1018,31 +1048,25 @@ model admin_store {
    * "auto_order_quantity": 88,
    * "warningStatus": "Niedriger Bestand"
    * }
-   * 
-   *
-
-
-  * @milling_block datatype
-   * hear milling block data is 3 sizes 
-   যদি foot_length_mm নির্দিষ্ট Range A-এর মধ্যে থাকে (যেমন 200mm এর নিচে)
+   * @milling_block datatype
+   * hear milling block data is 3 sizes
+   * যদি foot_length_mm নির্দিষ্ট Range A-এর মধ্যে থাকে (যেমন 200mm এর নিচে)
    * → Block Size 1
-   যদি foot_length_mm 200mm – 250mm এর মধ্যে থাকে (Range B)
+   * যদি foot_length_mm 200mm – 250mm এর মধ্যে থাকে (Range B)
    * → Block Size 2
-   যদি foot_length_mm 250mm এর বেশি হয়
+   * যদি foot_length_mm 250mm এর বেশি হয়
    * → Block Size 3
-   * 
    * "1": {
-   fix foot length, 
+   * fix foot length,
    * "quantity": 27,
    * "mindestmenge": 70,
    * "auto_order_limit": 92,
    * "auto_order_quantity": 88,
    * "warningStatus": "Niedriger Bestand"
    * }
-  */
+   */
 
   groessenMengen Json?
-
 
   stores Stores[]
 
@@ -1561,6 +1585,20 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1584,6 +1622,20 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
