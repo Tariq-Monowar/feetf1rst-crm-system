@@ -1578,11 +1578,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
       completedAt = statusHistory?.createdAt || null;
     }
 
-    // Format partner address from hauptstandort array
-    const partnerAddress = order.partner.hauptstandort
-      ? order.partner.hauptstandort.join(", ")
-      : null;
-
     res.status(200).json({
       success: true,
       data: {
@@ -1602,6 +1597,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
         totalPrice: order.totalPrice,
+        todayDate: new Date().toISOString(),
       },
     });
   } catch (error: any) {
