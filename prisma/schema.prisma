@@ -1000,13 +1000,11 @@ enum OrderStatus {
   Abholbereit_Versandt //1,2
   Ausgeführt //1,2
 
-  // Warten_auf_Versorgungsstart
+  // milling_block flow
   Warten_auf_Fraesvorgang //2
-  Fraesvorgang //2        
-  Feinschliff //2             
-  // Qualitaetssicherung_Verpackung
-  // Abholbereit_Versandt         
-  // Ausgeführt                   
+  Fraesvorgang //2
+  Feinschliff //2
+  In_Modellierung //2
 }
 
 /**
