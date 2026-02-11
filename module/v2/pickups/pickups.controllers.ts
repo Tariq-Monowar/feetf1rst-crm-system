@@ -8,7 +8,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const cursor = req.query.cursor as string | undefined;
     const productType = req.query.productType as "insole" | "shoes" | undefined;
-    
+
     if (productType === "insole") {
       const mapPaymentStatus = (bezahlt: any): string => {
         if (!bezahlt) return "offen";
@@ -78,7 +78,6 @@ export const getAllPickup = async (req: Request, res: Response) => {
       const nextCursor = hasNextPage ? items[items.length - 1].id : null;
 
       const formattedData = items.map((order) => {
-
         return {
           id: order.id,
           productType: "insole",
@@ -91,7 +90,6 @@ export const getAllPickup = async (req: Request, res: Response) => {
             nachname: order.customer.nachname,
             customerNumber: order.customer.customerNumber,
           },
-       
         };
       });
 
@@ -105,7 +103,6 @@ export const getAllPickup = async (req: Request, res: Response) => {
           nextCursor,
         },
       });
-
     } else {
       if (!productType) {
         return res.status(400).json({
@@ -145,5 +142,28 @@ export const getAllPickup = async (req: Request, res: Response) => {
       message: "Internal server error",
       error: error.message,
     });
+  }
+};
+
+export const getPickupCalculation = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+
+    const calculation = await prisma.customerOrders.findMany({
+      where: { partnerId: partnerId },
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Pickup calculation fetched successfully",
+      data: calculation,
+    });
+  } catch (error: any) {
+    console.error("getPickupCalculation error:", error);
   }
 };

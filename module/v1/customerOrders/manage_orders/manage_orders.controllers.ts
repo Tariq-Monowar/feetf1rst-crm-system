@@ -167,11 +167,16 @@ export const updateMultipleOrderStatuses = async (
 
     // Validate order status
     const validOrderStatuses = new Set([
-      "Warten_auf_Versorgungsstart",
-      "In_Fertigung",
-      "Verpacken_Qualitätssicherung",
-      "Abholbereit_Versandt",
-      "Ausgeführt",
+      "Warten_auf_Versorgungsstart", //1, 2
+      "In_Fertigung", //1
+      "Verpacken_Qualitätssicherung", //1, 2
+      "Abholbereit_Versandt", //1,2
+      "Ausgeführt", //1,2
+
+      "Warten_auf_Fraesvorgang", //2
+      "Fraesvorgang", //2        
+      "Feinschliff" //2 
+
     ]);
 
     if (!validOrderStatuses.has(orderStatus)) {
