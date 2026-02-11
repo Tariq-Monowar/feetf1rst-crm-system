@@ -1371,6 +1371,8 @@ model massschuhe_order {
   status        massschuhe_order_status @default(Leistenerstellung)
   express       Boolean?                @default(false)
 
+  bezahlt paymnentStatus?
+
   //-------------------------------------------------
 
   //
@@ -1392,6 +1394,7 @@ model massschuhe_order {
   createdAt                DateTime                   @default(now())
   updatedAt                DateTime                   @updatedAt
   massschuheOrderHistories massschuhe_order_history[]
+  massschuheOrderInsurances massschuhe_order_insurance[]
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
   customShafts             custom_shafts[]
   adminOrderTransitions    admin_order_transitions[]
@@ -1414,6 +1417,28 @@ enum massschuhe_order_status {
   Bodenerstellung
 
   Geliefert
+}
+
+model massschuhe_order_insurance {
+  id String @id @default(uuid())
+
+  orderId String
+  order   massschuhe_order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  price Float?
+
+  description Json?
+
+  vat_country String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([price])
+  @@index([description])
+  @@index([createdAt])
+  @@index([updatedAt])
 }
 
 model massschuhe_order_history {

@@ -155,7 +155,90 @@ export const createMassschuheOrder = async (req, res) => {
       einlagenversorgung,
       customer_note,
       location,
+      bezahlt,
+      insurances,
     } = req.body;
+
+    const validPaymentStatuses = [
+      "Privat_Bezahlt",
+      "Privat_offen",
+      "Krankenkasse_Ungenehmigt",
+      "Krankenkasse_Genehmigt",
+    ];
+    if (bezahlt != null && bezahlt !== "" && !validPaymentStatuses.includes(bezahlt)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment status",
+        validStatuses: validPaymentStatuses,
+      });
+    }
+
+    let vat_country: string | null = null;
+    if (
+      bezahlt === "Krankenkasse_Genehmigt" ||
+      bezahlt === "Krankenkasse_Ungenehmigt"
+    ) {
+      if (insurances == null) {
+        return res.status(400).json({
+          success: false,
+          message: "insurances information is required when payment by insurance",
+        });
+      }
+      if (typeof insurances !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: "insurances must be an array or a single object",
+        });
+      }
+      const hasPriceOrDesc = (o: any) => "price" in o || "description" in o;
+      if (!Array.isArray(insurances)) {
+        if (!hasPriceOrDesc(insurances)) {
+          return res.status(400).json({
+            success: false,
+            message: "Each insurance must contain at least price or description",
+          });
+        }
+      } else {
+        for (let i = 0; i < insurances.length; i++) {
+          const item = insurances[i];
+          if (item == null || typeof item !== "object" || Array.isArray(item)) {
+            return res.status(400).json({
+              success: false,
+              message: `insurances[${i}] must be an object`,
+            });
+          }
+          if (!hasPriceOrDesc(item)) {
+            return res.status(400).json({
+              success: false,
+              message: `insurances[${i}] must contain at least price or description`,
+            });
+          }
+        }
+      }
+      const partner = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          accountInfos: { select: { vat_country: true } },
+        },
+      });
+      if (!partner) {
+        return res.status(400).json({
+          success: false,
+          message: "Partner not found",
+        });
+      }
+      const accountWithVat = partner.accountInfos?.find(
+        (a: any) => a.vat_country != null && a.vat_country !== ""
+      );
+      if (!accountWithVat?.vat_country) {
+        return res.status(400).json({
+          success: false,
+          message: "Please set the vat country in your account info",
+        });
+      }
+      vat_country = accountWithVat.vat_country;
+    }
 
     // Check if customer exists
     const customerExists = await prisma.customers.findUnique({
@@ -224,31 +307,62 @@ export const createMassschuheOrder = async (req, res) => {
       const orderNumber = await getNextOrderNumberForPartner(tx, userId);
 
       // Create order
+      const orderData: any = {
+        orderNumber,
+        arztliche_diagnose,
+        usführliche_diagnose,
+        rezeptnummer,
+        durchgeführt_von,
+        note,
+        albprobe_geplant: convertToBoolean(albprobe_geplant),
+        kostenvoranschlag: convertToBoolean(kostenvoranschlag),
+        userId,
+        employeeId,
+        customerId,
+        delivery_date,
+        telefon,
+        filiale,
+        kunde,
+        email,
+        button_text,
+        fußanalyse,
+        einlagenversorgung,
+        customer_note,
+        location,
+      };
+      if (bezahlt != null && bezahlt !== "") orderData.bezahlt = bezahlt;
       const newOrder = await tx.massschuhe_order.create({
-        data: {
-          orderNumber,
-          arztliche_diagnose,
-          usführliche_diagnose,
-          rezeptnummer,
-          durchgeführt_von,
-          note,
-          albprobe_geplant: convertToBoolean(albprobe_geplant),
-          kostenvoranschlag: convertToBoolean(kostenvoranschlag),
-          userId,
-          employeeId,
-          customerId,
-          delivery_date,
-          telefon,
-          filiale,
-          kunde,
-          email,
-          button_text,
-          fußanalyse,
-          einlagenversorgung,
-          customer_note,
-          location,
-        },
+        data: orderData,
       });
+
+      // Insurances: array or single object (when payment by insurance)
+      const list =
+        bezahlt === "Krankenkasse_Genehmigt" ||
+        bezahlt === "Krankenkasse_Ungenehmigt"
+          ? Array.isArray(insurances)
+            ? insurances
+            : insurances && typeof insurances === "object"
+              ? [insurances]
+              : []
+          : [];
+      for (const item of list) {
+        const price =
+          item.price != null && item.price !== ""
+            ? Number(item.price)
+            : null;
+        const description =
+          item.description != null && item.description !== ""
+            ? item.description
+            : null;
+        await tx.massschuhe_order_insurance.create({
+          data: {
+            orderId: newOrder.id,
+            price,
+            description,
+            vat_country,
+          },
+        });
+      }
 
       // Create customer history
       await tx.customerHistorie.create({
