@@ -66,7 +66,7 @@ export const getAllVersorgungen = async (req: Request, res: Response) => {
           price: rest.supplyStatus?.price ?? null,
           image: rest.supplyStatus?.image || null,
         },
-      })
+      }),
     );
     // groessenMengen
     const totalPages = Math.ceil(totalCount / limitNumber);
@@ -429,7 +429,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
       storeId,
     };
     const missingField = Object.entries(requiredFields).find(
-      ([key, value]) => !value
+      ([key, value]) => !value,
     )?.[0];
     if (missingField) {
       return res.status(400).json({
@@ -456,7 +456,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
       "SENKFUSS",
       "PLATTFUSS",
     ];
-    
+
     // Normalize diagnosis_status to array (empty array means no status)
     let normalizedDiagnosisStatus: string[] = [];
     if (diagnosis_status !== undefined && diagnosis_status !== null) {
@@ -465,11 +465,11 @@ export const createVersorgungen = async (req: Request, res: Response) => {
       } else if (typeof diagnosis_status === "string") {
         normalizedDiagnosisStatus = [diagnosis_status];
       }
-      
+
       // Validate all values in the array
       if (normalizedDiagnosisStatus.length > 0) {
         const invalidStatuses = normalizedDiagnosisStatus.filter(
-          (status) => !validDiagnosisStatuses.includes(status)
+          (status) => !validDiagnosisStatuses.includes(status),
         );
         if (invalidStatuses.length > 0) {
           return res.status(400).json({
@@ -584,7 +584,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
           }
         : null,
       store: newVersorgungen.store
-        ? newVersorgungen.store.groessenMengen ?? null
+        ? (newVersorgungen.store.groessenMengen ?? null)
         : null,
     };
 
@@ -739,17 +739,20 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
       ];
 
       let normalizedDiagnosisStatus: string[] = [];
-      if (rest.diagnosis_status !== null && rest.diagnosis_status !== undefined) {
+      if (
+        rest.diagnosis_status !== null &&
+        rest.diagnosis_status !== undefined
+      ) {
         if (Array.isArray(rest.diagnosis_status)) {
           normalizedDiagnosisStatus = rest.diagnosis_status.filter(Boolean);
         } else if (typeof rest.diagnosis_status === "string") {
           normalizedDiagnosisStatus = [rest.diagnosis_status];
         }
-        
+
         // Validate all values in the array
         if (normalizedDiagnosisStatus.length > 0) {
           const invalidStatuses = normalizedDiagnosisStatus.filter(
-            (status) => !validDiagnosisStatuses.includes(status)
+            (status) => !validDiagnosisStatuses.includes(status),
           );
           if (invalidStatuses.length > 0) {
             return res.status(400).json({
@@ -759,7 +762,7 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
           }
         }
       }
-      
+
       // Update the rest object with normalized array
       rest.diagnosis_status = normalizedDiagnosisStatus as any;
     }
@@ -1022,7 +1025,7 @@ export const deleteVersorgungen = async (req: Request, res: Response) => {
 
 export const getVersorgungenByDiagnosis = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { diagnosis_status } = req.params;
@@ -1062,7 +1065,7 @@ export const getVersorgungenByDiagnosis = async (
       return res.status(400).json({
         success: false,
         message: `Invalid diagnosis_status. Valid values are: ${validDiagnosisStatuses.join(
-          ", "
+          ", ",
         )}`,
       });
     }
@@ -1071,7 +1074,7 @@ export const getVersorgungenByDiagnosis = async (
     const whereClause: Prisma.VersorgungenWhereInput = {
       partnerId: partnerId, // Use partnerId instead of createdBy
     };
-    
+
     // If diagnosis_status filter is provided, check if array contains the value
     if (diagnosis_status) {
       whereClause.diagnosis_status = {
@@ -1307,7 +1310,8 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
 export const getSingleSupplyStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const supplyStatus = await prisma.supplyStatus.findUnique({
+
+    const data = await prisma.supplyStatus.findUnique({
       where: { id },
       select: {
         id: true,
@@ -1315,30 +1319,15 @@ export const getSingleSupplyStatus = async (req: Request, res: Response) => {
         description: true,
         price: true,
         image: true,
-        partner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
+        vatRate: true,
+        profitPercentage: true,
       },
     });
 
     res.status(200).json({
       success: true,
       message: "Supply status fetched successfully",
-      data: {
-        ...supplyStatus,
-        image: supplyStatus.image || null,
-        partner: supplyStatus.partner
-          ? {
-              ...supplyStatus.partner,
-              image: supplyStatus.partner.image || null,
-            }
-          : null,
-      },
+      data,
     });
   } catch (error) {
     console.error("Get Single Supply Status error:", error);
@@ -1352,10 +1341,19 @@ export const getSingleSupplyStatus = async (req: Request, res: Response) => {
 
 export const createSupplyStatus = async (req: Request, res: Response) => {
   try {
-    const { name, price, description } = req.body;
+    const {
+      name,
+      price,
+      description,
+      vatRate = 0,
+      profitPercentage = 0,
+    } = req.body;
     const imageS3Url = req.file?.location;
 
     const priceFloat = parseFloat(price);
+    const vatRateFloat = parseFloat(vatRate);
+    const profitPercentageFloat = parseFloat(profitPercentage);
+
     if (isNaN(priceFloat)) {
       return res.status(400).json({
         success: false,
@@ -1365,7 +1363,6 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
 
     const missingField = ["name", "price"].find((field) => !req.body[field]);
     if (missingField) {
-      // Cleanup uploaded image from S3 if validation fails (fire-and-forget, no await)
       if (req.file?.location) {
         deleteFileFromS3(req.file.location);
       }
@@ -1382,6 +1379,8 @@ export const createSupplyStatus = async (req: Request, res: Response) => {
         price: priceFloat,
         image: imageS3Url || null,
         description: description || null,
+        vatRate: vatRateFloat,
+        profitPercentage: profitPercentageFloat,
         partner: {
           connect: { id: partnerId },
         },
@@ -1414,7 +1413,7 @@ export const updateSupplyStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user.id;
-    const { name, price, description } = req.body;
+    const { name, price, description, vatRate, profitPercentage } = req.body;
 
     const imageS3Url = req.file?.location;
 
@@ -1447,6 +1446,13 @@ export const updateSupplyStatus = async (req: Request, res: Response) => {
       if (existing.image && existing.image.startsWith("http")) {
         deleteFileFromS3(existing.image);
       }
+    }
+
+    if (vatRate !== undefined) {
+      updateData.vatRate = parseFloat(vatRate);
+    }
+    if (profitPercentage !== undefined) {
+      updateData.profitPercentage = parseFloat(profitPercentage);
     }
 
     // Update and respond

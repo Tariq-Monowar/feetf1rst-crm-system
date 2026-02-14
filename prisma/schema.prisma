@@ -383,13 +383,13 @@ model Versorgungen {
   updatedAt DateTime @updatedAt
 
   partnerId String?
-  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   storeId String?
-  store   Stores? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   supplyStatusId String?
-  supplyStatus   supplyStatus? @relation(fields: [supplyStatusId], references: [id], onDelete: Cascade)
+  supplyStatus   supplyStatus? @relation(fields: [supplyStatusId], references: [id], onDelete: SetNull)
   // massschuheOrders massschuhe_order[]
 
   customerOrders customerOrders[]
@@ -399,13 +399,24 @@ model Versorgungen {
 }
 
 model supplyStatus {
-  id          String   @id @default(uuid())
-  name        String
+  id String @id @default(uuid())
+
+  name        String?
   description String?
-  price       Float
-  image       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  // Final customer price (VAT included)
+  price Float?
+
+  // VAT rate (e.g. 20 for 20%) government VAT
+  vatRate Float @default(0)
+
+  // Your margin percentage (software commission) (not VAT)
+  profitPercentage Float @default(0)
+
+  image String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -416,7 +427,6 @@ model supplyStatus {
   @@index([partnerId])
   @@index([createdAt])
   @@index([name])
-  @@index([price])
   @@index([image])
   @@index([name, price, image])
   @@map("supply_status")
@@ -842,6 +852,8 @@ model customerOrders {
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
 
+  cashNites String?
+
   bezahlt paymnentStatus?
 
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
@@ -895,7 +907,7 @@ model customerOrders {
 
 enum paymnentStatus {
   Privat_Bezahlt //cash paymnant success
-  Privat_offen
+  Privat_offen //cash paymnant pending
 
   Krankenkasse_Ungenehmigt
   Krankenkasse_Genehmigt
@@ -1372,7 +1384,7 @@ model massschuhe_order {
   bezahlt paymnentStatus?
 
   //-------------------------------------------------
-
+  cashNites     String?
   //
   isByPartner_1 Boolean? @default(false)
   isByPartner_2 Boolean? @default(false)
@@ -1389,13 +1401,13 @@ model massschuhe_order {
   customerId String?
   customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  createdAt                DateTime                   @default(now())
-  updatedAt                DateTime                   @updatedAt
-  massschuheOrderHistories massschuhe_order_history[]
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+  massschuheOrderHistories  massschuhe_order_history[]
   massschuheOrderInsurances massschuhe_order_insurance[]
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
-  customShafts             custom_shafts[]
-  adminOrderTransitions    admin_order_transitions[]
+  customShafts              custom_shafts[]
+  adminOrderTransitions     admin_order_transitions[]
 
   isPanding       Boolean?         @default(false)
   courierContacts CourierContact[]
@@ -1622,6 +1634,11 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1645,6 +1662,11 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
