@@ -1397,6 +1397,8 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         versorgung_note: true,
         überzug: true,
         fertigstellungBis: true,
+        createdAt: true,
+        ausführliche_diagnose: true,
         customer: {
           select: {
             id: true,
@@ -1486,6 +1488,8 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         versorgung_note: order.versorgung_note ?? null,
         uberzug: order.überzug,
         fertigstellungBis: order.fertigstellungBis,
+        createdAt: order.createdAt,
+        ausführliche_diagnose: order.ausführliche_diagnose,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
