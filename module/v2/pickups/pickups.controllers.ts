@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export const getPickupByOrderId = async (req: Request, res: Response) => {
@@ -278,22 +278,55 @@ export const getPickupCalculation = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
 
-    const calculation = await prisma.customerOrders.findMany({
-      where: { partnerId: partnerId },
-      select: {
-        id: true,
-        orderNumber: true,
-        createdAt: true,
-      },
-    });
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    // Single raw query — 1 round-trip, 1 table scan (uses partnerId index)
+    const [row] = await prisma.$queryRaw<any>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt') AS ready_to_pickup,
+        COUNT(*) FILTER (WHERE "fertigstellungBis" >= ${startOfToday} AND "fertigstellungBis" <= ${endOfToday}) AS pickups_today,
+        COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt' AND "fertigstellungBis" IS NOT NULL AND "fertigstellungBis" < ${startOfToday}) AS overdue_pickups,
+        COUNT(*) FILTER (WHERE "bezahlt" = 'Privat_offen') AS unpaid_count,
+        COALESCE(SUM("totalPrice") FILTER (WHERE "bezahlt" = 'Privat_offen'), 0) AS unpaid_amount
+      FROM "customerOrders"
+      WHERE "partnerId" = ${partnerId}
+    `);
+
+    if (!row) {
+      return res.status(200).json({
+        success: true,
+        message: "Pickup calculation fetched successfully",
+        data: {
+          readyToPickup: 0,
+          pickupsToday: 0,
+          overduePickups: 0,
+          unpaidPayments: { count: 0, totalAmount: 0 },
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: "Pickup calculation fetched successfully",
-      data: calculation,
+      data: {
+        readyToPickup: Number(row.ready_to_pickup),
+        pickupsToday: Number(row.pickups_today),
+        overduePickups: Number(row.overdue_pickups),
+        unpaidPayments: {
+          count: Number(row.unpaid_count),
+          totalAmount: Number(row.unpaid_amount) || 0,
+        },
+      },
     });
   } catch (error: any) {
     console.error("getPickupCalculation error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
   }
 };
 
@@ -301,7 +334,6 @@ export const createPickupNote = async (req: Request, res: Response) => {
   try {
     const { orderId, note } = req.body;
     const type = req.query.type as "insole" | "shoes";
-
 
     if (!type) {
       return res.status(400).json({

@@ -898,6 +898,7 @@ model customerOrders {
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
   @@index([partnerId])
+  @@index([partnerId, orderStatus, fertigstellungBis]) // getPickupCalculation: single-scan raw query
   @@index([partnerId, orderNumber]) // createOrder: getNextOrderNumberForPartner
   @@index([createdAt])
   @@index([totalPrice])
