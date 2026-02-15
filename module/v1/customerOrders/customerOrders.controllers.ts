@@ -1082,7 +1082,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const orderNumber = String(req.query.orderNumber || "").trim();
     const customerName = String(req.query.customerName || "").trim();
 
-    const where: any = { type };
+    const where: any = { type, orderCategory: { not: "sonstiges" } };
 
     if (req.query.customerId) {
       where.customerId = req.query.customerId;
