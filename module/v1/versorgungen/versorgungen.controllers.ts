@@ -1267,6 +1267,8 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
         description: true,
         price: true,
         image: true,
+        vatRate: true,
+        profitPercentage: true,
       },
     });
 
