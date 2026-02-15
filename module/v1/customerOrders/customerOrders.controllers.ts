@@ -216,6 +216,7 @@ export const createOrder = async (req: Request, res: Response) => {
       discount,
       quantity = 1,
       insurances,
+      insoleStandards,
     } = req.body;
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -325,6 +326,40 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
       vat_country = accountWithVat.vat_country;
+    }
+
+    // insoleStandards: optional array of { name, left?, right? } (like customerOrderInsurance pattern)
+    let normalizedInsoleStandards: { name: string; left: number; right: number }[] = [];
+    if (insoleStandards != null) {
+      if (!Array.isArray(insoleStandards)) {
+        return res.status(400).json({
+          success: false,
+          message: "insoleStandards must be an array",
+        });
+      }
+      for (let i = 0; i < insoleStandards.length; i++) {
+        const item = insoleStandards[i];
+        if (item == null || typeof item !== "object" || Array.isArray(item)) {
+          return res.status(400).json({
+            success: false,
+            message: `insoleStandards[${i}] must be an object with name, left, right`,
+          });
+        }
+        const name = item.name != null && String(item.name).trim() !== "" ? String(item.name).trim() : null;
+        if (name == null) {
+          return res.status(400).json({
+            success: false,
+            message: `insoleStandards[${i}].name is required`,
+          });
+        }
+        const left = item.left != null && item.left !== "" ? Number(item.left) : 0;
+        const right = item.right != null && item.right !== "" ? Number(item.right) : 0;
+        normalizedInsoleStandards.push({
+          name,
+          left: Number.isNaN(left) ? 0 : left,
+          right: Number.isNaN(right) ? 0 : right,
+        });
+      }
     }
 
     // STEP 2: Load screener, customer, versorgung in parallel (single round-trip)
@@ -479,6 +514,9 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
       orderData.type = store?.type ?? "rady_insole";
+      if (normalizedInsoleStandards.length > 0) {
+        orderData.insoleStandards = { create: normalizedInsoleStandards };
+      }
 
       const newOrder = await tx.customerOrders.create({
         data: orderData,
@@ -1142,13 +1180,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       where: { id },
       include: {
         Versorgungen: true,
-        store: {
-          select: {
-            id: true,
-            produktname: true,
-            groessenMengen: true,
-          },
-        },
+        store: true,
         customer: {
           select: {
             id: true,
@@ -1160,7 +1192,6 @@ export const getOrderById = async (req: Request, res: Response) => {
             wohnort: true,
             geburtsdatum: true,
             gender: true,
-
             fusslange1: true,
             fusslange2: true,
             fussbreite1: true,
@@ -1179,6 +1210,7 @@ export const getOrderById = async (req: Request, res: Response) => {
               select: {
                 id: true,
                 createdAt: true,
+                updatedAt: true,
               },
             },
           },
@@ -1210,6 +1242,25 @@ export const getOrderById = async (req: Request, res: Response) => {
           },
         },
         product: true,
+        employee: {
+          select: {
+            id: true,
+            accountName: true,
+            employeeName: true,
+            email: true,
+            jobPosition: true,
+            image: true,
+            role: true,
+            financialAccess: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        screenerFile: true,
+        insoleStandards: true,
+        customerOrderInsurances: true,
+        ordersFeedbacks: true,
+        customerVersorgungen: true,
       },
     })) as any;
 
@@ -1308,10 +1359,9 @@ export const getOrderById = async (req: Request, res: Response) => {
     const productNearestSize = findNearestProductSize(largerFusslange);
     const nearestSize =
       storeNearestSize.size !== null ? storeNearestSize : productNearestSize;
-    console.log("============================", nearestSize);
+
     const formattedOrder = {
       ...order,
-      // Invoice is already S3 URL, use directly
       invoice: order.invoice || null,
       customer: order.customer
         ? {
@@ -1325,7 +1375,6 @@ export const getOrderById = async (req: Request, res: Response) => {
       partner: order.partner
         ? {
             ...order.partner,
-            // Image is already S3 URL, use directly
             image: order.partner.image || null,
             hauptstandort: order.partner.workshopNote?.sameAsBusiness
               ? order.partner.hauptstandort[0]
@@ -1345,6 +1394,12 @@ export const getOrderById = async (req: Request, res: Response) => {
           }
         : null,
       store: order.store ?? null,
+      employee: order.employee ?? null,
+      screenerFile: order.screenerFile ?? null,
+      insoleStandards: order.insoleStandards ?? [],
+      customerOrderInsurances: order.customerOrderInsurances ?? [],
+      ordersFeedbacks: order.ordersFeedbacks ?? [],
+      customerVersorgungen: order.customerVersorgungen ?? null,
     };
 
     res.status(200).json({

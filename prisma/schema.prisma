@@ -892,9 +892,10 @@ model customerOrders {
   StoresHistory           StoresHistory[]          @relation("OrderStoresHistory")
   customerOrderInsurances customerOrderInsurance[]
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
   ordersFeedbacks ordersFeedback[]
+  insoleStandards insole_standard[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
@@ -992,9 +993,9 @@ model ordersFeedback {
 
   feedbackFor FeedbackFor? @default(insole)
 
-  react      FeedbackReact?
-  note String?
-  image      String?
+  react FeedbackReact?
+  note  String?
+  image String?
 
   createdAt DateTime @default(now())
 }
@@ -1047,6 +1048,19 @@ enum OrderStatus {
   Fraesvorgang //2
   Feinschliff //2
   In_Modellierung //2
+}
+
+model insole_standard {
+  id String @id @default(uuid())
+
+  name  String?
+  left  Float   @default(0)
+  right Float   @default(0)
+
+  customerOrdersId String
+  customerOrders   customerOrders @relation(fields: [customerOrdersId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 }
 
 /**
@@ -1676,6 +1690,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1699,6 +1715,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
