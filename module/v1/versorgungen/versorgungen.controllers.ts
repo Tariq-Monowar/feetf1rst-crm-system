@@ -1323,6 +1323,7 @@ export const getSingleSupplyStatus = async (req: Request, res: Response) => {
         image: true,
         vatRate: true,
         profitPercentage: true,
+        
       },
     });
 
