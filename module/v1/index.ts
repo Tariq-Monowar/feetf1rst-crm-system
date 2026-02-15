@@ -9,7 +9,9 @@ import partner from "./partners/partners.routes";
 import suggestions from "./suggestions/suggestions.routes";
 import message from "./messages/messages.routes";
 import appointment from "./appointment/appointment.routes";
+
 import versorgungen from "./versorgungen/versorgungen.routes";
+import privet_supply from "./versorgungen/privet_supply/privet_supply.routes";
 
 import employees from "./employees/employees.routes";
 import employeeAuth from "./employees/auth/employee.auth.routes";
@@ -52,7 +54,9 @@ const moduleRoutes = [
   { path: "/suggestions", route: suggestions },
   { path: "/message", route: message },
   { path: "/appointment", route: appointment },
+
   { path: "/versorgungen", route: versorgungen },
+  { path: "/privet-supply", route: privet_supply },
 
   { path: "/employees", route: employees },
   { path: "/employees/auth", route: employeeAuth },

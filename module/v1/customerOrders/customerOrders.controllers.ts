@@ -4,12 +4,12 @@ import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
-// Removed getImageUrl - images are now S3 URLs
 import path from "path";
 import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../utils/emailService.utils";
+import redis from "../../../config/redis.config";
 
 const prisma = new PrismaClient();
 
@@ -187,8 +187,13 @@ const updateSizeQuantity = (sizeData: any, newQty: number): any => {
 };
 
 export const createOrder = async (req: Request, res: Response) => {
+  const bad = (code: number, message: string, extra?: object) =>
+    res.status(code).json({ success: false, message, ...extra });
+
   try {
     const partnerId = req.user.id;
+    const privetSupply = req.query.key;
+    const body = req.body;
     const {
       customerId,
       versorgungId,
@@ -217,143 +222,77 @@ export const createOrder = async (req: Request, res: Response) => {
       quantity = 1,
       insurances,
       insoleStandards,
-    } = req.body;
+    } = body;
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // STEP 1: Validate required fields
-    // ─────────────────────────────────────────────────────────────────────────
-    console.log("insurances", insurances);
-    const requiredFields = [
-      "customerId",
-      "versorgungId",
-      "screenerId",
-      "bezahlt",
-    ];
-    for (const field of requiredFields) {
-      if (!req.body[field]) {
-        return res.status(400).json({
-          success: false,
-          message: `${field} is required`,
-        });
-      }
-    }
+    const required = privetSupply
+      ? ["customerId", "screenerId", "bezahlt"]
+      : ["customerId", "versorgungId", "screenerId", "bezahlt"];
+    for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
-    const validPaymentStatuses = [
+    const okStatus = [
       "Privat_Bezahlt",
       "Privat_offen",
       "Krankenkasse_Ungenehmigt",
       "Krankenkasse_Genehmigt",
     ];
-    if (!validPaymentStatuses.includes(bezahlt)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment status",
-        validStatuses: validPaymentStatuses,
-      });
-    }
+    if (!okStatus.includes(bezahlt))
+      return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
-    let vat_country;
-
+    let vat_country: string | undefined;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
       bezahlt === "Krankenkasse_Ungenehmigt"
     ) {
-
-      if(!insurances || insurances == null){
-        return res.status(400).json({
-          success: false,
-          message: "insurances information is required when payment by insurance",
-        });
+      if (!insurances)
+        return bad(
+          400,
+          "insurances information is required when payment by insurance",
+        );
+      if (typeof insurances !== "object")
+        return bad(400, "insurances must be an array or a single object");
+      const hasPriceOrDesc = (o: any) => "price" in o || "description" in o;
+      const list = Array.isArray(insurances) ? insurances : [insurances];
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return bad(400, `insurances[${i}] must be an object`);
+        if (!hasPriceOrDesc(item))
+          return bad(
+            400,
+            `insurances[${i}] must contain at least price or description`,
+          );
       }
-
-      // Insurances optional; if sent, must be array or single object with at least price or description (vat_country comes from partner account, not from body)
-      if (insurances != null) {
-        if (typeof insurances !== "object") {
-          return res.status(400).json({
-            success: false,
-            message: "insurances must be an array or a single object",
-          });
-        }
-        const hasPriceOrDesc = (o: any) => "price" in o || "description" in o;
-        if (!Array.isArray(insurances)) {
-          if (!hasPriceOrDesc(insurances)) {
-            return res.status(400).json({
-              success: false,
-              message: "Each insurance must contain at least price or description",
-            });
-          }
-        } else {
-          for (let i = 0; i < insurances.length; i++) {
-            const item = insurances[i];
-            if (item == null || typeof item !== "object" || Array.isArray(item)) {
-              return res.status(400).json({
-                success: false,
-                message: `insurances[${i}] must be an object`,
-              });
-            }
-            if (!hasPriceOrDesc(item)) {
-              return res.status(400).json({
-                success: false,
-                message: `insurances[${i}] must contain at least price or description`,
-              });
-            }
-          }
-        }
-      }
-
       const partner = await prisma.user.findUnique({
         where: { id: partnerId },
-        select: {
-          id: true,
-          accountInfos: {
-            select: { vat_country: true },
-          },
-        },
+        select: { accountInfos: { select: { vat_country: true } } },
       });
-      if (!partner) {
-        return res.status(400).json({
-          success: false,
-          message: "Partner not found",
-        });
-      }
-      const accountWithVat = partner.accountInfos?.find(
-        (a) => a.vat_country != null && a.vat_country !== ""
-      );
-      if (!accountWithVat?.vat_country) {
-        return res.status(400).json({
-          success: false,
-          message: "Please set the vat country in your account info",
-        });
-      }
-      vat_country = accountWithVat.vat_country;
+      if (!partner) return bad(400, "Partner not found");
+      const acc = partner.accountInfos?.find((a: any) => a.vat_country);
+      if (!acc?.vat_country)
+        return bad(400, "Please set the vat country in your account info");
+      vat_country = acc.vat_country;
     }
 
-    // insoleStandards: optional array of { name, left?, right? } (like customerOrderInsurance pattern)
-    let normalizedInsoleStandards: { name: string; left: number; right: number }[] = [];
+    let normalizedInsoleStandards: any[] = [];
     if (insoleStandards != null) {
-      if (!Array.isArray(insoleStandards)) {
-        return res.status(400).json({
-          success: false,
-          message: "insoleStandards must be an array",
-        });
-      }
+      if (!Array.isArray(insoleStandards))
+        return bad(400, "insoleStandards must be an array");
       for (let i = 0; i < insoleStandards.length; i++) {
         const item = insoleStandards[i];
-        if (item == null || typeof item !== "object" || Array.isArray(item)) {
-          return res.status(400).json({
-            success: false,
-            message: `insoleStandards[${i}] must be an object with name, left, right`,
-          });
-        }
-        const name = item.name != null && String(item.name).trim() !== "" ? String(item.name).trim() : null;
-        if (name == null) {
-          return res.status(400).json({
-            success: false,
-            message: `insoleStandards[${i}].name is required`,
-          });
-        }
-        const left = item.left != null && item.left !== "" ? Number(item.left) : 0;
-        const right = item.right != null && item.right !== "" ? Number(item.right) : 0;
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return bad(
+            400,
+            `insoleStandards[${i}] must be an object with name, left, right`,
+          );
+        const name =
+          item.name != null && String(item.name).trim()
+            ? String(item.name).trim()
+            : null;
+        if (!name) return bad(400, `insoleStandards[${i}].name is required`);
+        const left =
+          item.left != null && item.left !== "" ? Number(item.left) : 0;
+        const right =
+          item.right != null && item.right !== "" ? Number(item.right) : 0;
         normalizedInsoleStandards.push({
           name,
           left: Number.isNaN(left) ? 0 : left,
@@ -362,57 +301,103 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // STEP 2: Load screener, customer, versorgung in parallel (single round-trip)
-    const [screenerFile, customer, versorgung] = await Promise.all([
-      prisma.screener_file.findUnique({
-        where: { id: screenerId },
-        select: { id: true },
-      }),
-      prisma.customers.findUnique({
-        where: { id: customerId },
-        select: { fusslange1: true, fusslange2: true },
-      }),
-      prisma.versorgungen.findUnique({
-        where: { id: versorgungId },
-        select: {
-          id: true,
-          name: true,
-          rohlingHersteller: true,
-          artikelHersteller: true,
-          versorgung: true,
-          material: true,
-          diagnosis_status: true,
-          storeId: true,
-        },
-      }),
-    ]);
+    const vSelect = { id: true, name: true, rohlingHersteller: true, artikelHersteller: true, versorgung: true, material: true, diagnosis_status: true, storeId: true };
 
-    if (!screenerFile) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Screener file not found" });
+    const [screenerFile, customer, rawShadowOrVersorgung] = await Promise.all([
+      prisma.screener_file.findUnique({ where: { id: screenerId }, select: { id: true } }),
+      prisma.customers.findUnique({ where: { id: customerId }, select: { fusslange1: true, fusslange2: true } }),
+      privetSupply ? redis.get(privetSupply) : prisma.versorgungen.findUnique({ where: { id: versorgungId }, select: vSelect }),
+    ]);
+    if (!screenerFile) return bad(404, "Screener file not found");
+    if (!customer) return bad(404, "Customer not found");
+
+    let versorgung: any;
+    let effectiveVersorgungId: string | null;
+
+    if (privetSupply) {
+      const raw = rawShadowOrVersorgung as string | null;
+      if (!raw)
+        return bad(
+          400,
+          "Shadow supply not found or expired. Create a new private supply and try again.",
+        );
+      let shadow: any;
+      try {
+        shadow = JSON.parse(raw);
+      } catch {
+        return bad(400, "Invalid shadow supply data");
+      }
+      if (shadow.partnerId !== partnerId)
+        return bad(403, "Not authorized to use this shadow supply");
+      if (shadow.customerId !== customerId)
+        return bad(
+          400,
+          "Shadow supply customer does not match order customerId",
+        );
+
+      if (shadow.storeId) {
+        const storeFromDb = await prisma.stores.findUnique({
+          where: { id: shadow.storeId },
+          select: { id: true, groessenMengen: true, type: true },
+        });
+        if (!storeFromDb)
+          return bad(404, "Store not found for this private supply");
+        const gm = storeFromDb.groessenMengen;
+        if (!gm || typeof gm !== "object" || !Object.keys(gm).length)
+          return bad(
+            400,
+            "Store has no sizes configured (groessenMengen). Add sizes to the store first.",
+          );
+        if (customer.fusslange1 && customer.fusslange2) {
+          const footMm = Math.max(
+            Number(customer.fusslange1),
+            Number(customer.fusslange2),
+          );
+          const sizes = gm as Record<string, any>;
+          const sizeKey =
+            storeFromDb.type === "milling_block"
+              ? determineBlockSizeFromGroessenMengen(sizes, footMm)
+              : determineSizeFromGroessenMengen(sizes, footMm + 5);
+          if (!sizeKey)
+            return bad(
+              400,
+              "No matching size in store for this customer's foot length. Add a suitable size or choose another store.",
+            );
+        }
+      }
+
+      const createData: any = {
+        name: shadow.name,
+        rohlingHersteller: shadow.rohlingHersteller ?? "",
+        artikelHersteller: shadow.artikelHersteller ?? "",
+        versorgung: shadow.versorgung,
+        material: Array.isArray(shadow.material) ? shadow.material : [],
+        diagnosis_status: Array.isArray(shadow.diagnosis_status)
+          ? shadow.diagnosis_status
+          : [],
+        supplyType: "private",
+      };
+      if (shadow.partnerId)
+        createData.partner = { connect: { id: shadow.partnerId } };
+      if (shadow.storeId)
+        createData.store = { connect: { id: shadow.storeId } };
+      if (shadow.supplyStatusId)
+        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
+      versorgung = await prisma.versorgungen.create({ data: createData, select: vSelect });
+    } else {
+      versorgung = rawShadowOrVersorgung;
+      if (!versorgung) return bad(404, "Versorgung not found");
     }
-    if (!customer) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Customer not found" });
-    }
-    if (!versorgung) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Versorgung not found" });
-    }
+    effectiveVersorgungId = versorgung.id;
 
     if (!customer.fusslange1 || !customer.fusslange2) {
-      return res.status(400).json({
-        success: false,
-        message:
-          customer.fusslange1 && customer.fusslange2
-            ? "Customer fusslange1 and fusslange2 are not found"
-            : customer.fusslange1
-              ? "Customer fusslange1 is required"
-              : "Customer fusslange2 is required",
-      });
+      const msg =
+        !customer.fusslange1 && !customer.fusslange2
+          ? "Customer fusslange1 and fusslange2 are not found"
+          : !customer.fusslange1
+            ? "Customer fusslange1 is required"
+            : "Customer fusslange2 is required";
+      return bad(400, msg);
     }
 
     // STEP 3: Price = (foot analysis + insole) × quantity, then apply discount
@@ -432,42 +417,26 @@ export const createOrder = async (req: Request, res: Response) => {
     // rady_insole: reserve by closest length (longest foot + 5 mm). milling_block: reserve by block (1/2/3) from foot length range.
     const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
 
-    // STEP 4: Create order and related records in one transaction
+    // STEP 4: Create order and related records in one transaction (timeout 20s to avoid "Transaction already closed")
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
 
-      const customerProduct = await tx.customerProduct.create({
-        data: {
-          name: versorgung.name,
-          rohlingHersteller: versorgung.rohlingHersteller,
-          artikelHersteller: versorgung.artikelHersteller,
-          versorgung: versorgung.versorgung,
-          material: serializeMaterial(versorgung.material),
-          langenempfehlung: {},
-          status: "Alltagseinlagen",
-          diagnosis_status: versorgung.diagnosis_status,
-        },
-      });
-
-      const [orderNumber, defaultEmployee, store] = await Promise.all([
+      const [customerProduct, orderNumber, defaultEmployee, store] = await Promise.all([
+        tx.customerProduct.create({
+          data: {
+            name: versorgung.name,
+            rohlingHersteller: versorgung.rohlingHersteller,
+            artikelHersteller: versorgung.artikelHersteller,
+            versorgung: versorgung.versorgung,
+            material: serializeMaterial(versorgung.material),
+            langenempfehlung: {},
+            status: "Alltagseinlagen",
+            diagnosis_status: versorgung.diagnosis_status,
+          },
+        }),
         getNextOrderNumberForPartner(tx, partnerId),
-        werkstattEmployeeId
-          ? Promise.resolve(null)
-          : tx.employees.findFirst({
-              where: { partnerId },
-              select: { id: true },
-            }),
-        versorgung.storeId
-          ? tx.stores.findUnique({
-              where: { id: versorgung.storeId },
-              select: {
-                id: true,
-                groessenMengen: true,
-                userId: true,
-                type: true,
-              },
-            })
-          : Promise.resolve(null),
+        werkstattEmployeeId ? null : tx.employees.findFirst({ where: { partnerId }, select: { id: true } }),
+        versorgung.storeId ? tx.stores.findUnique({ where: { id: versorgung.storeId }, select: { id: true, groessenMengen: true, userId: true, type: true } }) : null,
       ]);
       const finalEmployeeId =
         werkstattEmployeeId ?? defaultEmployee?.id ?? null;
@@ -480,7 +449,6 @@ export const createOrder = async (req: Request, res: Response) => {
         product: { connect: { id: customerProduct.id } },
         customer: { connect: { id: customerId } },
         partner: { connect: { id: partnerId } },
-        Versorgungen: { connect: { id: versorgungId } },
         screenerFile: { connect: { id: screenerId } },
         statusUpdate: new Date(),
         ausführliche_diagnose,
@@ -504,6 +472,8 @@ export const createOrder = async (req: Request, res: Response) => {
         versorgung: werkstattVersorgung ?? null,
         quantity: orderQuantity,
       };
+      if (effectiveVersorgungId)
+        orderData.Versorgungen = { connect: { id: effectiveVersorgungId } };
       if (versorgung.storeId)
         orderData.store = { connect: { id: versorgung.storeId } };
       if (finalEmployeeId)
@@ -572,115 +542,82 @@ export const createOrder = async (req: Request, res: Response) => {
         sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
         matchedSizeKey = sizeKey;
 
-        await tx.stores.update({
-          where: { id: store.id },
-          data: { groessenMengen: sizes },
-        });
-        await tx.storesHistory.create({
-          data: {
-            storeId: store.id,
-            changeType: "sales",
-            quantity: currentQty > 0 ? 1 : 0,
-            newStock: newQty,
-            reason: isMillingBlock
-              ? `Order block ${sizeKey}`
-              : `Order size ${sizeKey}`,
-            partnerId: store.userId,
-            customerId,
-            orderId: newOrder.id,
-            status: "SELL_OUT",
-          } as any,
-        });
+        await Promise.all([
+          tx.stores.update({ where: { id: store.id }, data: { groessenMengen: sizes } }),
+          tx.storesHistory.create({
+            data: {
+              storeId: store.id,
+              changeType: "sales",
+              quantity: currentQty > 0 ? 1 : 0,
+              newStock: newQty,
+              reason: isMillingBlock ? `Order block ${sizeKey}` : `Order size ${sizeKey}`,
+              partnerId: store.userId,
+              customerId,
+              orderId: newOrder.id,
+              status: "SELL_OUT",
+            } as any,
+          }),
+        ]);
       }
 
-      await tx.customerHistorie.create({
-        data: {
-          customerId,
-          category: "Bestellungen",
-          eventId: newOrder.id,
-          note: "",
-          system_note: "Einlagenbestellung erstellt",
-          paymentIs: totalPrice.toString(),
-        } as any,
-      });
-      await tx.customerOrdersHistory.create({
-        data: {
-          orderId: newOrder.id,
-          statusFrom: "Warten_auf_Versorgungsstart",
-          statusTo: "Warten_auf_Versorgungsstart",
-          partnerId,
-          employeeId: newOrder.employeeId ?? null,
-          note: null,
-        } as any,
-      });
+      const fallbackVat = bezahlt === "Krankenkasse_Genehmigt" || bezahlt === "Krankenkasse_Ungenehmigt" ? vat_country : null;
+      const list = Array.isArray(insurances) ? insurances : insurances && typeof insurances === "object" ? [insurances] : [];
 
-      // Insurances: array or single object
-      const list = Array.isArray(insurances)
-        ? insurances
-        : insurances && typeof insurances === "object"
-          ? [insurances]
-          : [];
-
-      const fallbackVat =
-        bezahlt === "Krankenkasse_Genehmigt" ||
-        bezahlt === "Krankenkasse_Ungenehmigt"
-          ? vat_country
-          : null;
-
-      for (const item of list) {
-        const price = item.price != null && item.price !== "" ? Number(item.price) : null;
-        const description =
-          item.description != null && item.description !== ""
-            ? item.description
-            : null;
-        // vat_country only from partner account (fallbackVat), never from insurances body
-        await tx.customerOrderInsurance.create({
-          data: {
-            orderId: newOrder.id,
-            price,
-            description,
-            vat_country: fallbackVat,
-          },
-        });
-      }
+      await Promise.all([
+        tx.customerHistorie.create({
+          data: { customerId, category: "Bestellungen", eventId: newOrder.id, note: "", system_note: "Einlagenbestellung erstellt", paymentIs: totalPrice.toString() } as any,
+        }),
+        tx.customerOrdersHistory.create({
+          data: { orderId: newOrder.id, statusFrom: "Warten_auf_Versorgungsstart", statusTo: "Warten_auf_Versorgungsstart", partnerId, employeeId: newOrder.employeeId ?? null, note: null } as any,
+        }),
+        ...list.map((item: any) =>
+          tx.customerOrderInsurance.create({
+            data: {
+              orderId: newOrder.id,
+              price: item.price != null && item.price !== "" ? Number(item.price) : null,
+              description: item.description != null && item.description !== "" ? item.description : null,
+              vat_country: fallbackVat,
+            },
+          }),
+        ),
+      ]);
 
       return { ...newOrder, matchedSizeKey };
-    });
+    }, { timeout: 20000 });
+
+    if (privetSupply) redis.del(privetSupply).catch(() => {});
 
     return res.status(201).json({
       success: true,
       message: "Order created successfully",
       orderId: order.id,
       matchedSize: order.matchedSizeKey,
+      supplyType: privetSupply ? "private" : "public",
     });
-  } catch (error: any) {
-    if (error?.message === "NO_MATCHED_SIZE_IN_STORE") {
+  } catch (err: any) {
+    if (err?.message === "NO_MATCHED_SIZE_IN_STORE")
       return res.status(400).json({
         success: false,
         message:
           "Unable to determine nearest size from groessenMengen for this store",
       });
-    }
-    if (error?.message === "SIZE_OUT_OF_TOLERANCE") {
+    if (err?.message === "SIZE_OUT_OF_TOLERANCE")
       return res.status(400).json({
         success: false,
-        message: `Keine passende Größe im Lager. Erforderliche Länge: ${error.requiredLength}mm. Nächstkleinere Größe: ${error.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere Größe: ${error.nearestUpperSize?.length ?? "–"}mm.`,
+        message: `Keine passende Größe im Lager. Erforderliche Länge: ${err.requiredLength}mm. Nächstkleinere: ${err.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere: ${err.nearestUpperSize?.length ?? "–"}mm.`,
       });
-    }
-    if (error?.message === "INSUFFICIENT_STOCK") {
-      const label = error.isMillingBlock ? "Block" : "Größe";
+    if (err?.message === "INSUFFICIENT_STOCK")
       return res.status(400).json({
         success: false,
-        message: `${label} ${error.sizeKey} ist nicht auf Lager (Menge: 0). Bestellung nicht möglich.`,
+        message: `${err.isMillingBlock ? "Block" : "Größe"} ${err.sizeKey} ist nicht auf Lager (Menge: 0). Bestellung nicht möglich.`,
         warning: "Insufficient stock",
-        sizeKey: error.sizeKey,
+        sizeKey: err.sizeKey,
       });
-    }
-    console.error("Create Order Error:", error);
+    console.error("Create Order Error:", err);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error?.message,
+      error: err?.message,
     });
   }
 };
@@ -1162,13 +1099,11 @@ export const getAllOrders = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get All Orders Error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Something went wrong",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };
 

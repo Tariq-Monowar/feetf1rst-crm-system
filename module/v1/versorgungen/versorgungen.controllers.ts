@@ -20,6 +20,7 @@ export const getAllVersorgungen = async (req: Request, res: Response) => {
     }
     const filters: Prisma.VersorgungenWhereInput = {
       partnerId: req.user.id,
+      supplyType: "public",
     };
 
     if (status) {
@@ -108,300 +109,6 @@ const normalizeMaterialInput = (input: unknown): string[] => {
 
   return [];
 };
-
-// export const createVersorgungen = async (req: Request, res: Response) => {
-//   try {
-//     const {
-//       name,
-//       rohlingHersteller,
-//       artikelHersteller,
-//       versorgung,
-//       material,
-//       langenempfehlung,
-//       supplyStatusId,
-//       diagnosis_status,
-//       storeId,
-//     } = req.body;
-
-//     const userId = req.user.id;
-
-//     const missingField = [
-//       "name",
-//       "rohlingHersteller",
-//       "artikelHersteller",
-//       "versorgung",
-//       "material",
-//       "supplyStatusId",
-//       "storeId",
-//     ].find((field) => !req.body[field]);
-
-//     if (missingField) {
-//       return res.status(400).json({
-//         success: false,
-//         message: `${missingField} is required!`,
-//       });
-//     }
-
-//     // // Validate the status
-//     // const validStatuses = [
-//     //   "Alltagseinlagen",
-//     //   "Sporteinlagen",
-//     //   "Businesseinlagen",
-//     // ];
-//     // if (!validStatuses.includes(status)) {
-//     //   return res.status(400).json({
-//     //     success: false,
-//     //     message: `Invalid status. Valid values are: ${validStatuses.join(
-//     //       ", "
-//     //     )}`,
-//     //   });
-//     // }
-
-//     // Validate diagnosis_status if provided
-//     if (diagnosis_status) {
-//       const validDiagnosisStatuses = [
-//         "HAMMERZEHEN_KRALLENZEHEN",
-//         "MORTON_NEUROM",
-//         "FUSSARTHROSE",
-//         "STRESSFRAKTUREN_IM_FUSS",
-//         "DIABETISCHES_FUSSSYNDROM",
-//         "HOHLFUSS",
-//         "KNICKFUSS",
-//         "KNICK_SENKFUSS",
-//         "HALLUX_VALGUS",
-//         "HALLUX_RIGIDUS",
-//         "PLANTARFASZIITIS",
-//         "FERSENSPORN",
-//         "SPREIZFUSS",
-//         "SENKFUSS",
-//         "PLATTFUSS",
-//       ];
-
-//       if (!validDiagnosisStatuses.includes(diagnosis_status)) {
-//         return res.status(400).json({
-//           success: false,
-//           message: `Invalid diagnosis_status. Valid values are: ${validDiagnosisStatuses.join(
-//             ", "
-//           )}`,
-//         });
-//       }
-//     }
-
-//     const normalizedMaterial = normalizeMaterialInput(material);
-
-//     if (normalizedMaterial.length === 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "material must contain at least one value",
-//       });
-//     }
-
-//     const versorgungenData: Prisma.VersorgungenCreateInput = {
-//       name,
-//       rohlingHersteller,
-//       artikelHersteller,
-//       versorgung,
-//       material: normalizedMaterial,
-//       langenempfehlung: langenempfehlung ?? Prisma.JsonNull,
-//       supplyStatus: supplyStatusId
-//         ? {
-//             connect: {
-//               id: supplyStatusId,
-//             },
-//           }
-//         : undefined,
-//       diagnosis_status: diagnosis_status || null,
-//       createdBy: req.user.id,
-//       store: storeId
-//         ? {
-//             connect: {
-//               id: storeId,
-//             },
-//           }
-//         : undefined,
-//     };
-
-//     const newVersorgungen = await prisma.versorgungen.create({
-//       data: versorgungenData,
-//       select: {
-//         id: true,
-//         name: true,
-//         rohlingHersteller: true,
-//         artikelHersteller: true,
-//         versorgung: true,
-//         material: true,
-//         langenempfehlung: true,
-//         // status: true,
-//         diagnosis_status: true,
-//         createdAt: true,
-//         updatedAt: true,
-//         storeId: true,
-//         supplyStatus: true,
-//         store: {
-//           select: {
-//             groessenMengen: true,
-//           },
-//         },
-//       },
-//     });
-
-//     const { store: newVersorgungenStore, supplyStatus: newVersorgungenSupplyStatus, ...newVersorgungenRest } =
-//       newVersorgungen;
-//     const formattedResponse = {
-//       ...newVersorgungenRest,
-//       groessenMengen: newVersorgungenStore?.groessenMengen ?? null,
-//       supplyStatus: newVersorgungenSupplyStatus ?? null,
-//     };
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Versorgungen created successfully",
-//       data: formattedResponse,
-//     });
-//   } catch (error) {
-//     console.error("Create Versorgungen error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: error.message ? error.message : "Something went wrong",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// export const createVersorgungen = async (req: Request, res: Response) => {
-//   try {
-//     const {
-//       name,
-//       rohlingHersteller,
-//       artikelHersteller,
-//       versorgung,
-//       material,
-//       langenempfehlung,
-//       supplyStatusId,
-//       diagnosis_status,
-//       storeId,
-//     } = req.body;
-
-//     // Required fields validation
-//     const requiredFields = {
-//       name,
-//       rohlingHersteller,
-//       artikelHersteller,
-//       versorgung,
-//       material,
-//       supplyStatusId,
-//       storeId,
-//     };
-
-//     const missingField = Object.entries(requiredFields)
-//       .find(([key, value]) => !value)?.[0];
-
-//     if (missingField) {
-//       return res.status(400).json({
-//         success: false,
-//         message: `${missingField} is required!`,
-//       });
-//     }
-
-//     // Diagnosis status validation
-//     const validDiagnosisStatuses = [
-//       "HAMMERZEHEN_KRALLENZEHEN",
-//       "MORTON_NEUROM",
-//       "FUSSARTHROSE",
-//       "STRESSFRAKTUREN_IM_FUSS",
-//       "DIABETISCHES_FUSSSYNDROM",
-//       "HOHLFUSS",
-//       "KNICKFUSS",
-//       "KNICK_SENKFUSS",
-//       "HALLUX_VALGUS",
-//       "HALLUX_RIGIDUS",
-//       "PLANTARFASZIITIS",
-//       "FERSENSPORN",
-//       "SPREIZFUSS",
-//       "SENKFUSS",
-//       "PLATTFUSS",
-//     ];
-
-//     if (diagnosis_status && !validDiagnosisStatuses.includes(diagnosis_status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: `Invalid diagnosis_status. Valid values are: ${validDiagnosisStatuses.join(", ")}`,
-//       });
-//     }
-
-//     // Material normalization and validation
-//     const normalizedMaterial = normalizeMaterialInput(material);
-//     if (normalizedMaterial.length === 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "material must contain at least one value",
-//       });
-//     }
-
-//     // Create Versorgungen
-//     const newVersorgungen = await prisma.versorgungen.create({
-//       data: {
-//         name,
-//         rohlingHersteller,
-//         artikelHersteller,
-//         versorgung,
-//         material: normalizedMaterial,
-//         langenempfehlung: langenempfehlung ?? Prisma.JsonNull,
-//         diagnosis_status: diagnosis_status || null,
-//         createdBy: req.user.id,
-//         supplyStatus: {
-//           connect: { id: supplyStatusId }
-//         },
-//         store: {
-//           connect: { id: storeId }
-//         },
-//       },
-//       select: {
-//         id: true,
-//         name: true,
-//         rohlingHersteller: true,
-//         artikelHersteller: true,
-//         versorgung: true,
-//         material: true,
-//         langenempfehlung: true,
-//         diagnosis_status: true,
-//         createdAt: true,
-//         updatedAt: true,
-//         storeId: true,
-//         supplyStatus: true,
-//         store: {
-//           select: {
-//             groessenMengen: true,
-//           },
-//         },
-//       },
-//     });
-
-//     // Format response
-//     const response = {
-//       ...newVersorgungen,
-//       groessenMengen: newVersorgungen.store?.groessenMengen ?? null,
-//     };
-
-//     // Remove nested store from response since we extracted groessenMengen
-//     delete response.store;
-
-//     res.status(201).json({
-//       success: true,
-//       message: "Versorgungen created successfully",
-//       data: response,
-//     });
-
-//   } catch (error) {
-//     console.error("Create Versorgungen error:", error);
-
-//     res.status(500).json({
-//       success: false,
-//       message: error.message || "Something went wrong",
-//       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-//     });
-//   }
-// };
 
 export const createVersorgungen = async (req: Request, res: Response) => {
   try {
@@ -533,7 +240,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
       });
     }
 
-    //create versorgungen
+    //create versorgungen (public only; this API is not for private)
     const newVersorgungen = await prisma.versorgungen.create({
       data: {
         name,
@@ -541,7 +248,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
         artikelHersteller,
         versorgung,
         material: normalizedMaterial,
-
+        supplyType: "public",
         diagnosis_status: normalizedDiagnosisStatus as any,
         partner: {
           connect: { id: partnerId },
@@ -603,116 +310,19 @@ export const createVersorgungen = async (req: Request, res: Response) => {
   }
 };
 
-// export const patchVersorgungen = async (req: Request, res: Response) => {
-//   try {
-//     const { id } = req.params;
-//     const partnerId = req.user.id;
-
-//     const existingVersorgungen = await prisma.versorgungen.findFirst({
-//       where: { id, partnerId: partnerId },
-//     });
-
-//     if (!existingVersorgungen) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Versorgungen not found",
-//       });
-//     }
-
-//     const { storeId, material: materialInput, ...rest } = req.body;
-
-//     const normalizedMaterial =
-//       materialInput !== undefined
-//         ? normalizeMaterialInput(materialInput)
-//         : undefined;
-
-//     if (materialInput !== undefined && normalizedMaterial?.length === 0) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "material must contain at least one value when provided",
-//       });
-//     }
-
-//     const updatedVersorgungenData: Prisma.VersorgungenUpdateInput = {
-//       ...rest,
-//       ...(normalizedMaterial !== undefined
-//         ? { material: normalizedMaterial }
-//         : {}),
-//       updatedBy: req.user.id,
-//       store:
-//         storeId !== undefined
-//           ? storeId
-//             ? {
-//                 connect: {
-//                   id: storeId,
-//                 },
-//               }
-//             : {
-//                 disconnect: true,
-//               }
-//           : undefined,
-//     };
-
-//     const updatedVersorgungen = await prisma.versorgungen.update({
-//       where: { id },
-//       data: updatedVersorgungenData,
-//       include: {
-//         store: {
-//           select: {
-//             groessenMengen: true,
-//           },
-//         },
-//       },
-//     });
-
-// // firmat output like create
-
-// const formattedVersorgungen = {
-//   ...updatedVersorgungen,
-//   supplyStatus: updatedVersorgungen.supplyStatusId
-//     ? {
-//         ...updatedVersorgungen.supplyStatus,
-//         image: updatedVersorgungen.supplyStatus.image
-//           ? getImageUrl(`/uploads/${updatedVersorgungen.supplyStatus.image}`)
-//           : null,
-//       }
-//     : null,
-//   store: updatedVersorgungen.store
-//     ? updatedVersorgungen.store.groessenMengen ?? null
-//     : null,
-// };
-
-//     // res.status(200).json({
-//     //   success: true,
-//     //   message: "Versorgungen updated successfully",
-//     //   data: {
-//     //     ...updatedVersorgungenRest,
-//     //     store: updatedVersorgungenStore?.groessenMengen ?? null,
-//     //   },
-//     // });
-//   } catch (error) {
-//     console.error("Patch Versorgungen error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Something went wrong",
-//       error: error.message,
-//     });
-//   }
-// };
-
 export const patchVersorgungen = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user.id;
 
     const existing = await prisma.versorgungen.findFirst({
-      where: { id, partnerId },
+      where: { id, partnerId, supplyType: "public" },
     });
 
     if (!existing) {
       return res.status(404).json({
         success: false,
-        message: "Versorgungen not found",
+        message: "Versorgungen not found or not public",
       });
     }
 
@@ -837,6 +447,7 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
     }
 
     updateData.updatedBy = req.user.id;
+    updateData.supplyType = "public"; // this API is only for public; keep public on update
 
     // Update + include store & supplyStatus
     const updated = await prisma.versorgungen.update({
@@ -895,20 +506,20 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
 export const deleteVersorgungen = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { partnerId } = req.user?.id;
+    const partnerId = req.user?.id;
 
     const existing = await prisma.versorgungen.findFirst({
-      where: { id },
+      where: { id, partnerId, supplyType: "public" },
     });
 
     if (!existing) {
       return res.status(404).json({
         success: false,
-        message: "Versorgungen not found",
+        message: "Versorgungen not found or not public",
       });
     }
 
-    let needId = await prisma.versorgungen.delete({
+    const needId = await prisma.versorgungen.delete({
       where: { id },
     });
 
@@ -928,100 +539,6 @@ export const deleteVersorgungen = async (req: Request, res: Response) => {
     });
   }
 };
-
-// export const getVersorgungenByDiagnosis = async (
-//   req: Request,
-//   res: Response
-// ) => {
-//   try {
-//     const { diagnosis_status } = req.params;
-//     const { page = 1, limit = 10, status } = req.query;
-//     const partnerId = req.user.id;
-
-//     const pageNumber = parseInt(page as string, 10);
-//     const limitNumber = parseInt(limit as string, 10);
-
-//     if (isNaN(pageNumber) || isNaN(limitNumber)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid type page or limit",
-//       });
-//     }
-
-//     // Validate diagnosis_status
-//     const validDiagnosisStatuses = [
-//       "HAMMERZEHEN_KRALLENZEHEN",
-//       "MORTON_NEUROM",
-//       "FUSSARTHROSE",
-//       "STRESSFRAKTUREN_IM_FUSS",
-//       "DIABETISCHES_FUSSSYNDROM",
-//       "HOHLFUSS",
-//       "KNICKFUSS",
-//       "KNICK_SENKFUSS",
-//       "HALLUX_VALGUS",
-//       "HALLUX_RIGIDUS",
-//       "PLANTARFASZIITIS",
-//       "FERSENSPORN",
-//       "SPREIZFUSS",
-//       "SENKFUSS",
-//       "PLATTFUSS",
-//     ];
-
-//     if (!validDiagnosisStatuses.includes(diagnosis_status)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: `Invalid diagnosis_status. Valid values are: ${validDiagnosisStatuses.join(
-//           ", "
-//         )}`,
-//       });
-//     }
-
-//     const filters: any = {
-//       diagnosis_status: diagnosis_status,
-//     };
-
-//     if (status) {
-//       filters.status = status;
-//     }
-
-//     const totalCount = await prisma.versorgungen.count({
-//       where: filters,
-//     });
-
-//     //restectade partner id
-//     const versorgungenList = await prisma.versorgungen.findMany({
-//       where: { ...filters, createdBy: partnerId },
-//       skip: (pageNumber - 1) * limitNumber,
-//       take: limitNumber,
-//       orderBy: {
-//         createdAt: "desc",
-//       },
-
-//     });
-
-//     const totalPages = Math.ceil(totalCount / limitNumber);
-
-//     res.status(200).json({
-//       success: true,
-//       message: `Versorgungen for ${diagnosis_status} fetched successfully`,
-//       data: versorgungenList,
-//       pagination: {
-//         totalItems: totalCount,
-//         totalPages,
-//         currentPage: pageNumber,
-//         itemsPerPage: limitNumber,
-//       },
-//       diagnosis_status: diagnosis_status,
-//     });
-//   } catch (error) {
-//     console.error("Get Versorgungen by Diagnosis error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Something went wrong",
-//       error: error.message,
-//     });
-//   }
-// };
 
 export const getVersorgungenByDiagnosis = async (
   req: Request,
@@ -1070,9 +587,10 @@ export const getVersorgungenByDiagnosis = async (
       });
     }
 
-    // Build the filter query - diagnosis_status is now an array
+    // Build the filter query - only public; this API is not for private
     const whereClause: Prisma.VersorgungenWhereInput = {
-      partnerId: partnerId, // Use partnerId instead of createdBy
+      partnerId,
+      supplyType: "public",
     };
 
     // If diagnosis_status filter is provided, check if array contains the value
@@ -1176,9 +694,10 @@ export const getVersorgungenByDiagnosis = async (
 export const getSingleVersorgungen = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const partnerId = req.user.id;
 
-    const versorgungen = await prisma.versorgungen.findUnique({
-      where: { id },
+    const versorgungen = await prisma.versorgungen.findFirst({
+      where: { id, partnerId, supplyType: "public" },
       include: {
         supplyStatus: {
           select: {

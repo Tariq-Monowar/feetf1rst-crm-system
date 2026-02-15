@@ -231,7 +231,7 @@ export const getOrderFeedback = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error?.message || "Unknown error",
+      error: error?.message,
     });
   }
 };
