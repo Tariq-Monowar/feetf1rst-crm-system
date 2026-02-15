@@ -5,6 +5,7 @@ import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
 import path from "path";
+
 import {
   sendPdfToEmail,
   sendInvoiceEmail,
@@ -192,7 +193,6 @@ export const createOrder = async (req: Request, res: Response) => {
 
   try {
     const partnerId = req.user.id;
-    const privetSupply = req.query.key;
     const body = req.body;
     const {
       customerId,
@@ -222,7 +222,9 @@ export const createOrder = async (req: Request, res: Response) => {
       quantity = 1,
       insurances,
       insoleStandards,
+      key,
     } = body;
+    const privetSupply = key;
 
     const required = privetSupply
       ? ["customerId", "screenerId", "bezahlt"]
@@ -301,12 +303,32 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    const vSelect = { id: true, name: true, rohlingHersteller: true, artikelHersteller: true, versorgung: true, material: true, diagnosis_status: true, storeId: true };
+    const vSelect = {
+      id: true,
+      name: true,
+      rohlingHersteller: true,
+      artikelHersteller: true,
+      versorgung: true,
+      material: true,
+      diagnosis_status: true,
+      storeId: true,
+    };
 
     const [screenerFile, customer, rawShadowOrVersorgung] = await Promise.all([
-      prisma.screener_file.findUnique({ where: { id: screenerId }, select: { id: true } }),
-      prisma.customers.findUnique({ where: { id: customerId }, select: { fusslange1: true, fusslange2: true } }),
-      privetSupply ? redis.get(privetSupply) : prisma.versorgungen.findUnique({ where: { id: versorgungId }, select: vSelect }),
+      prisma.screener_file.findUnique({
+        where: { id: screenerId },
+        select: { id: true },
+      }),
+      prisma.customers.findUnique({
+        where: { id: customerId },
+        select: { fusslange1: true, fusslange2: true },
+      }),
+      privetSupply
+        ? redis.get(privetSupply)
+        : prisma.versorgungen.findUnique({
+            where: { id: versorgungId },
+            select: vSelect,
+          }),
     ]);
     if (!screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
@@ -383,7 +405,10 @@ export const createOrder = async (req: Request, res: Response) => {
         createData.store = { connect: { id: shadow.storeId } };
       if (shadow.supplyStatusId)
         createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
-      versorgung = await prisma.versorgungen.create({ data: createData, select: vSelect });
+      versorgung = await prisma.versorgungen.create({
+        data: createData,
+        select: vSelect,
+      });
     } else {
       versorgung = rawShadowOrVersorgung;
       if (!versorgung) return bad(404, "Versorgung not found");
@@ -421,23 +446,39 @@ export const createOrder = async (req: Request, res: Response) => {
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
 
-      const [customerProduct, orderNumber, defaultEmployee, store] = await Promise.all([
-        tx.customerProduct.create({
-          data: {
-            name: versorgung.name,
-            rohlingHersteller: versorgung.rohlingHersteller,
-            artikelHersteller: versorgung.artikelHersteller,
-            versorgung: versorgung.versorgung,
-            material: serializeMaterial(versorgung.material),
-            langenempfehlung: {},
-            status: "Alltagseinlagen",
-            diagnosis_status: versorgung.diagnosis_status,
-          },
-        }),
-        getNextOrderNumberForPartner(tx, partnerId),
-        werkstattEmployeeId ? null : tx.employees.findFirst({ where: { partnerId }, select: { id: true } }),
-        versorgung.storeId ? tx.stores.findUnique({ where: { id: versorgung.storeId }, select: { id: true, groessenMengen: true, userId: true, type: true } }) : null,
-      ]);
+      const [customerProduct, orderNumber, defaultEmployee, store] =
+        await Promise.all([
+          tx.customerProduct.create({
+            data: {
+              name: versorgung.name,
+              rohlingHersteller: versorgung.rohlingHersteller,
+              artikelHersteller: versorgung.artikelHersteller,
+              versorgung: versorgung.versorgung,
+              material: serializeMaterial(versorgung.material),
+              langenempfehlung: {},
+              status: "Alltagseinlagen",
+              diagnosis_status: versorgung.diagnosis_status,
+            },
+          }),
+          getNextOrderNumberForPartner(tx, partnerId),
+          werkstattEmployeeId
+            ? null
+            : tx.employees.findFirst({
+                where: { partnerId },
+                select: { id: true },
+              }),
+          versorgung.storeId
+            ? tx.stores.findUnique({
+                where: { id: versorgung.storeId },
+                select: {
+                  id: true,
+                  groessenMengen: true,
+                  userId: true,
+                  type: true,
+                },
+              })
+            : null,
+        ]);
       const finalEmployeeId =
         werkstattEmployeeId ?? defaultEmployee?.id ?? null;
 
@@ -494,7 +535,14 @@ export const createOrder = async (req: Request, res: Response) => {
       });
 
       // Validate store stock and compute matchedSizeKey; actual store update runs in background after response
-      let storeUpdatePayload: { storeId: string; sizeKey: string; orderId: string; customerId: string; partnerId: string; isMillingBlock: boolean } | null = null;
+      let storeUpdatePayload: {
+        storeId: string;
+        sizeKey: string;
+        orderId: string;
+        customerId: string;
+        partnerId: string;
+        isMillingBlock: boolean;
+      } | null = null;
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
         const sizes = { ...(store.groessenMengen as Record<string, any>) };
         const isMillingBlock = store.type === "milling_block";
@@ -508,7 +556,10 @@ export const createOrder = async (req: Request, res: Response) => {
           if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
           const lengthMm = extractLengthValue(sizes[sizeKey]);
           const tolerance = 10;
-          if (lengthMm == null || Math.abs(targetLengthRady - lengthMm) > tolerance) {
+          if (
+            lengthMm == null ||
+            Math.abs(targetLengthRady - lengthMm) > tolerance
+          ) {
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
             err.requiredLength = targetLengthRady;
             let lowerLen: number | null = null;
@@ -516,11 +567,15 @@ export const createOrder = async (req: Request, res: Response) => {
             for (const [, data] of Object.entries(sizes)) {
               const L = extractLengthValue(data);
               if (L == null) continue;
-              if (L < targetLengthRady && (lowerLen == null || L > lowerLen)) lowerLen = L;
-              if (L > targetLengthRady && (upperLen == null || L < upperLen)) upperLen = L;
+              if (L < targetLengthRady && (lowerLen == null || L > lowerLen))
+                lowerLen = L;
+              if (L > targetLengthRady && (upperLen == null || L < upperLen))
+                upperLen = L;
             }
-            err.nearestLowerSize = lowerLen != null ? { length: lowerLen } : null;
-            err.nearestUpperSize = upperLen != null ? { length: upperLen } : null;
+            err.nearestLowerSize =
+              lowerLen != null ? { length: lowerLen } : null;
+            err.nearestUpperSize =
+              upperLen != null ? { length: upperLen } : null;
             throw err;
           }
         }
@@ -533,25 +588,60 @@ export const createOrder = async (req: Request, res: Response) => {
           throw err;
         }
         matchedSizeKey = sizeKey;
-        storeUpdatePayload = { storeId: store.id, sizeKey, orderId: newOrder.id, customerId, partnerId: store.userId, isMillingBlock };
+        storeUpdatePayload = {
+          storeId: store.id,
+          sizeKey,
+          orderId: newOrder.id,
+          customerId,
+          partnerId: store.userId,
+          isMillingBlock,
+        };
       }
 
-      const fallbackVat = bezahlt === "Krankenkasse_Genehmigt" || bezahlt === "Krankenkasse_Ungenehmigt" ? vat_country : null;
-      const list = Array.isArray(insurances) ? insurances : insurances && typeof insurances === "object" ? [insurances] : [];
+      const fallbackVat =
+        bezahlt === "Krankenkasse_Genehmigt" ||
+        bezahlt === "Krankenkasse_Ungenehmigt"
+          ? vat_country
+          : null;
+      const list = Array.isArray(insurances)
+        ? insurances
+        : insurances && typeof insurances === "object"
+          ? [insurances]
+          : [];
 
       await Promise.all([
         tx.customerHistorie.create({
-          data: { customerId, category: "Bestellungen", eventId: newOrder.id, note: "", system_note: "Einlagenbestellung erstellt", paymentIs: totalPrice.toString() } as any,
+          data: {
+            customerId,
+            category: "Bestellungen",
+            eventId: newOrder.id,
+            note: "",
+            system_note: "Einlagenbestellung erstellt",
+            paymentIs: totalPrice.toString(),
+          } as any,
         }),
         tx.customerOrdersHistory.create({
-          data: { orderId: newOrder.id, statusFrom: "Warten_auf_Versorgungsstart", statusTo: "Warten_auf_Versorgungsstart", partnerId, employeeId: newOrder.employeeId ?? null, note: null } as any,
+          data: {
+            orderId: newOrder.id,
+            statusFrom: "Warten_auf_Versorgungsstart",
+            statusTo: "Warten_auf_Versorgungsstart",
+            partnerId,
+            employeeId: newOrder.employeeId ?? null,
+            note: null,
+          } as any,
         }),
         ...list.map((item: any) =>
           tx.customerOrderInsurance.create({
             data: {
               orderId: newOrder.id,
-              price: item.price != null && item.price !== "" ? Number(item.price) : null,
-              description: item.description != null && item.description !== "" ? item.description : null,
+              price:
+                item.price != null && item.price !== ""
+                  ? Number(item.price)
+                  : null,
+              description:
+                item.description != null && item.description !== ""
+                  ? item.description
+                  : null,
               vat_country: fallbackVat,
             },
           }),
@@ -565,24 +655,59 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Reduce store quantity in background so response is sent first
     if (order.storeUpdatePayload) {
-      const { storeId, sizeKey, orderId, customerId, partnerId, isMillingBlock } = order.storeUpdatePayload;
+      const {
+        storeId,
+        sizeKey,
+        orderId,
+        customerId,
+        partnerId,
+        isMillingBlock,
+      } = order.storeUpdatePayload;
       setImmediate(() => {
-        prisma.$transaction(async (tx) => {
-          const store = await tx.stores.findUnique({ where: { id: storeId }, select: { id: true, groessenMengen: true, userId: true } });
-          if (!store?.groessenMengen || typeof store.groessenMengen !== "object") return;
-          const sizes = { ...(store.groessenMengen as Record<string, any>) };
-          const currentQty = getQuantity(sizes[sizeKey]);
-          if (currentQty < 1) {
-            console.warn(`[createOrder] Store ${storeId} size ${sizeKey} already 0, skip decrement for order ${orderId}`);
-            return;
-          }
-          const newQty = currentQty - 1;
-          sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
-          await tx.stores.update({ where: { id: storeId }, data: { groessenMengen: sizes } });
-          await tx.storesHistory.create({
-            data: { storeId, changeType: "sales", quantity: currentQty > 0 ? 1 : 0, newStock: newQty, reason: isMillingBlock ? `Order block ${sizeKey}` : `Order size ${sizeKey}`, partnerId, customerId, orderId, status: "SELL_OUT" } as any,
-          });
-        }).catch((e) => console.error("[createOrder] Background store update failed:", e));
+        prisma
+          .$transaction(async (tx) => {
+            const store = await tx.stores.findUnique({
+              where: { id: storeId },
+              select: { id: true, groessenMengen: true, userId: true },
+            });
+            if (
+              !store?.groessenMengen ||
+              typeof store.groessenMengen !== "object"
+            )
+              return;
+            const sizes = { ...(store.groessenMengen as Record<string, any>) };
+            const currentQty = getQuantity(sizes[sizeKey]);
+            if (currentQty < 1) {
+              console.warn(
+                `[createOrder] Store ${storeId} size ${sizeKey} already 0, skip decrement for order ${orderId}`,
+              );
+              return;
+            }
+            const newQty = currentQty - 1;
+            sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
+            await tx.stores.update({
+              where: { id: storeId },
+              data: { groessenMengen: sizes },
+            });
+            await tx.storesHistory.create({
+              data: {
+                storeId,
+                changeType: "sales",
+                quantity: currentQty > 0 ? 1 : 0,
+                newStock: newQty,
+                reason: isMillingBlock
+                  ? `Order block ${sizeKey}`
+                  : `Order size ${sizeKey}`,
+                partnerId,
+                customerId,
+                orderId,
+                status: "SELL_OUT",
+              } as any,
+            });
+          })
+          .catch((e) =>
+            console.error("[createOrder] Background store update failed:", e),
+          );
       });
     }
 
