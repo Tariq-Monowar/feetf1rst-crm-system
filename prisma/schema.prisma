@@ -936,6 +936,7 @@ model customerOrderInsurance {
 
   description Json?
 
+
   vat_country String?
 
   createdAt DateTime @default(now())
