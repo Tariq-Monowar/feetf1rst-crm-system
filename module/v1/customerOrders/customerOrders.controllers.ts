@@ -493,7 +493,8 @@ export const createOrder = async (req: Request, res: Response) => {
         select: { id: true, employeeId: true },
       });
 
-      // Reserve one unit from store: rady_insole by length, milling_block by foot-length range (block 1/2/3)
+      // Validate store stock and compute matchedSizeKey; actual store update runs in background after response
+      let storeUpdatePayload: { storeId: string; sizeKey: string; orderId: string; customerId: string; partnerId: string; isMillingBlock: boolean } | null = null;
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
         const sizes = { ...(store.groessenMengen as Record<string, any>) };
         const isMillingBlock = store.type === "milling_block";
@@ -507,10 +508,7 @@ export const createOrder = async (req: Request, res: Response) => {
           if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
           const lengthMm = extractLengthValue(sizes[sizeKey]);
           const tolerance = 10;
-          if (
-            lengthMm == null ||
-            Math.abs(targetLengthRady - lengthMm) > tolerance
-          ) {
+          if (lengthMm == null || Math.abs(targetLengthRady - lengthMm) > tolerance) {
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
             err.requiredLength = targetLengthRady;
             let lowerLen: number | null = null;
@@ -518,15 +516,11 @@ export const createOrder = async (req: Request, res: Response) => {
             for (const [, data] of Object.entries(sizes)) {
               const L = extractLengthValue(data);
               if (L == null) continue;
-              if (L < targetLengthRady && (lowerLen == null || L > lowerLen))
-                lowerLen = L;
-              if (L > targetLengthRady && (upperLen == null || L < upperLen))
-                upperLen = L;
+              if (L < targetLengthRady && (lowerLen == null || L > lowerLen)) lowerLen = L;
+              if (L > targetLengthRady && (upperLen == null || L < upperLen)) upperLen = L;
             }
-            err.nearestLowerSize =
-              lowerLen != null ? { length: lowerLen } : null;
-            err.nearestUpperSize =
-              upperLen != null ? { length: upperLen } : null;
+            err.nearestLowerSize = lowerLen != null ? { length: lowerLen } : null;
+            err.nearestUpperSize = upperLen != null ? { length: upperLen } : null;
             throw err;
           }
         }
@@ -538,26 +532,8 @@ export const createOrder = async (req: Request, res: Response) => {
           err.isMillingBlock = isMillingBlock;
           throw err;
         }
-        const newQty = currentQty - 1;
-        sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
         matchedSizeKey = sizeKey;
-
-        await Promise.all([
-          tx.stores.update({ where: { id: store.id }, data: { groessenMengen: sizes } }),
-          tx.storesHistory.create({
-            data: {
-              storeId: store.id,
-              changeType: "sales",
-              quantity: currentQty > 0 ? 1 : 0,
-              newStock: newQty,
-              reason: isMillingBlock ? `Order block ${sizeKey}` : `Order size ${sizeKey}`,
-              partnerId: store.userId,
-              customerId,
-              orderId: newOrder.id,
-              status: "SELL_OUT",
-            } as any,
-          }),
-        ]);
+        storeUpdatePayload = { storeId: store.id, sizeKey, orderId: newOrder.id, customerId, partnerId: store.userId, isMillingBlock };
       }
 
       const fallbackVat = bezahlt === "Krankenkasse_Genehmigt" || bezahlt === "Krankenkasse_Ungenehmigt" ? vat_country : null;
@@ -582,10 +558,33 @@ export const createOrder = async (req: Request, res: Response) => {
         ),
       ]);
 
-      return { ...newOrder, matchedSizeKey };
-    }, { timeout: 20000 });
+      return { ...newOrder, matchedSizeKey, storeUpdatePayload };
+    });
 
     if (privetSupply) redis.del(privetSupply).catch(() => {});
+
+    // Reduce store quantity in background so response is sent first
+    if (order.storeUpdatePayload) {
+      const { storeId, sizeKey, orderId, customerId, partnerId, isMillingBlock } = order.storeUpdatePayload;
+      setImmediate(() => {
+        prisma.$transaction(async (tx) => {
+          const store = await tx.stores.findUnique({ where: { id: storeId }, select: { id: true, groessenMengen: true, userId: true } });
+          if (!store?.groessenMengen || typeof store.groessenMengen !== "object") return;
+          const sizes = { ...(store.groessenMengen as Record<string, any>) };
+          const currentQty = getQuantity(sizes[sizeKey]);
+          if (currentQty < 1) {
+            console.warn(`[createOrder] Store ${storeId} size ${sizeKey} already 0, skip decrement for order ${orderId}`);
+            return;
+          }
+          const newQty = currentQty - 1;
+          sizes[sizeKey] = updateSizeQuantity(sizes[sizeKey], newQty);
+          await tx.stores.update({ where: { id: storeId }, data: { groessenMengen: sizes } });
+          await tx.storesHistory.create({
+            data: { storeId, changeType: "sales", quantity: currentQty > 0 ? 1 : 0, newStock: newQty, reason: isMillingBlock ? `Order block ${sizeKey}` : `Order size ${sizeKey}`, partnerId, customerId, orderId, status: "SELL_OUT" } as any,
+          });
+        }).catch((e) => console.error("[createOrder] Background store update failed:", e));
+      });
+    }
 
     return res.status(201).json({
       success: true,
