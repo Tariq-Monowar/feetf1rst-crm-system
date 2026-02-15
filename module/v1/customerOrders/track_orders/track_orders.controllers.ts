@@ -1532,7 +1532,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         geschaeftsstandort: true,
         barcodeCreatedAt: true,
         createdAt: true,
-        updatedAt: true,
         wohnort: true,
         totalPrice: true,
         customer: {
@@ -1601,9 +1600,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         partnerAddress: order.geschaeftsstandort,
         wohnort: order.wohnort,
         createdAt: order.createdAt,
-        updatedAt: order.updatedAt,
         totalPrice: order.totalPrice,
-        todayDate: new Date().toISOString(),
       },
     });
   } catch (error: any) {

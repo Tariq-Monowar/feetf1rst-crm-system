@@ -17,7 +17,6 @@ router.get(
 );
 
 
-
 // GET: Get employee feature access (partner only)
 router.get(
   "/:employeeId",

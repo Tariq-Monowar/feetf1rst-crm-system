@@ -15,6 +15,7 @@ import news from './news/news.routes'
 import feetf1rst_shop from './feetf1rst_shop/feetf1rst_shop.routes'
 import auth from './auth/auth.routes'
 import stock_material from './storage/stock_material/stock_material.routes'
+import order_feedback from './order_feedback/order_feedback.routes'
 
 const router = express.Router();
 
@@ -34,6 +35,7 @@ const moduleRoutes = [
   { path: '/feetf1rst-shop', route: feetf1rst_shop},
   { path: '/auth', route: auth},
   { path: '/stock-material', route: stock_material},
+  { path: '/order-feedback', route: order_feedback},
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

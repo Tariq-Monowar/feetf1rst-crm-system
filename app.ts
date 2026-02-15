@@ -6,10 +6,11 @@ import http from "http";
 import v1 from "./module/v1/index";
 import v2 from "./module/v2/index";
 import path from "path";
+import { searchLocation } from "./utils/location";
 
 const app = express();
 
-const server = http.createServer(app);
+ 
 
 export const allowedOrigins = [
   "https://ideas-volumes-continually-danny.trycloudflare.com",
@@ -68,7 +69,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/", v1);
 app.use("/v2", v2);
-
+app.use("/location", searchLocation);
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.status(404).json({
     message: `404 route not found`,

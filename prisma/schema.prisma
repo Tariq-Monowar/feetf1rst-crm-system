@@ -892,8 +892,9 @@ model customerOrders {
   StoresHistory           StoresHistory[]          @relation("OrderStoresHistory")
   customerOrderInsurances customerOrderInsurance[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  ordersFeedbacks ordersFeedback[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
@@ -978,6 +979,34 @@ model customerOrdersHistory {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ordersFeedback {
+  id String @id @default(uuid())
+
+  orderId String?
+  order   customerOrders? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  massschuheOrderId String?
+  massschuheOrder   massschuhe_order? @relation(fields: [massschuheOrderId], references: [id], onDelete: SetNull)
+
+  feedbackFor FeedbackFor? @default(insole)
+
+  react      FeedbackReact?
+  note String?
+  image      String?
+
+  createdAt DateTime @default(now())
+}
+
+enum FeedbackFor {
+  insole
+  shoes
+}
+
+enum FeedbackReact {
+  Like
+  Dislike
 }
 
 model customerProduct {
@@ -1413,6 +1442,7 @@ model massschuhe_order {
   isPanding       Boolean?         @default(false)
   courierContacts CourierContact[]
   customModels    custom_models[]
+  ordersFeedbacks ordersFeedback[]
 
   @@unique([userId, orderNumber]) // Unique per partner
   @@index([createdAt])
@@ -1640,6 +1670,12 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1663,6 +1699,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
