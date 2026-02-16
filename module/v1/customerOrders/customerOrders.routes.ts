@@ -9,8 +9,8 @@ import {
   deleteOrder,
   getOrdersByCustomerId,
   getEinlagenInProduktion,
-  getPreviousOrders
- 
+  getPreviousOrders,
+  getSinglePreviousOrder,
 } from "./customerOrders.controllers";
 import upload from "../../../config/multer.config";
  
@@ -25,7 +25,6 @@ router.get(
 router.post("/create", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
 router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllOrders);
 router.get("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getOrderById);
-
 
 router.get(
   "/customer/:customerId",
@@ -42,7 +41,6 @@ router.delete(
 router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteOrder);
 
 router.get("/previous-orders/:customerId", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getPreviousOrders);
-
-
+router.get("/previous-orders/:customerId/:orderId", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getSinglePreviousOrder);
 
 export default router;
