@@ -297,7 +297,18 @@ export const partnershipWelcomeEmail = (
                           <p style="margin: 0; font-size: 14px; color: #2c3e50;">${displayMainLocation}</p>
                         </td>
                       </tr>
+                      <tr>
+                        <td style="background-color: #f5f5f5; padding: 12px 20px; border: 1px solid #e0e0e0; width: 30%;">
+                          <p style="margin: 0; font-size: 14px; font-weight: 600; color: #2c3e50;">Link:</p>
+                        </td>
+                        <td style="padding: 12px 20px; border: 1px solid #e0e0e0;">
+                          <p style="margin: 0; font-size: 14px; color: #2c3e50;"><a href="https://feetf1rst.tech/login" style="color: #2980b9; text-decoration: none;">https://feetf1rst.tech/login</a></p>
+                        </td>
+                      </tr>
                     </table>
+                    <p style="color: #2c3e50; font-size: 14px; line-height: 21px; margin: 12px 0 0;">
+                      Nach der Aktivierung können Sie sich jederzeit hier anmelden.
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -337,6 +348,9 @@ export const partnershipWelcomeEmail = (
                     <h3 style="color: #2c3e50; font-size: 16px; font-weight: 600; margin: 0 0 15px; text-transform: uppercase;">Ihr nächster Schritt</h3>
                     <p style="color: #2c3e50; font-size: 15px; line-height: 24px; margin: 0;">
                       Setzen Sie Ihr Passwort über den Button oben, melden Sie sich anschließend an und richten Sie Ihr Profil ein. Bei Fragen begleiten wir Sie gerne persönlich.
+                    </p>
+                    <p style="color: #2c3e50; font-size: 15px; line-height: 24px; margin: 15px 0 0;">
+                      Nach der Aktivierung können Sie sich jederzeit hier anmelden: <a href="https://feetf1rst.tech/login" style="color: #2980b9; text-decoration: none;">https://feetf1rst.tech/login</a>
                     </p>
                   </td>
                 </tr>

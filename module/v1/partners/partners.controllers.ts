@@ -150,11 +150,16 @@ export const createPartnership = async (req: Request, res: Response) => {
       partnership.storeLocations?.[0]?.address ?? undefined
     );
 
+    const loginUrl = "https://feetf1rst.tech/login";
     res.status(201).json({
       success: true,
       message: "Partnership created successfully",
       data: partnership,
       link,
+      loginUrl,
+      loginNote:
+        "Nach der Aktivierung können Sie sich jederzeit hier anmelden: " +
+        loginUrl,
     });
   } catch (error) {
     console.error("Partnership creation error:", error);
