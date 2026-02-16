@@ -461,3 +461,333 @@ export const createPickupNote = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getPickupPrice = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const type = req.query.type as "insole" | "shoes";
+    const partnerId = req.user.id;
+
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        message: "Type is required",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
+    if (type !== "insole" && type !== "shoes") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product type",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    if (type === "insole") {
+      const order = await prisma.customerOrders.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          totalPrice: true,
+          orderNumber: true,
+          Versorgungen: {
+            select: {
+              supplyStatus: {
+                select: {
+                  price: true,
+                  vatRate: true,
+                  profitPercentage: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      const data = {
+        orderNumber: `#${order.orderNumber}`,
+        totalPrice: order.Versorgungen?.supplyStatus?.price ?? 0,
+        vatRate: order.Versorgungen?.supplyStatus?.vatRate ?? 0,
+        profitPercentage:
+          order.Versorgungen?.supplyStatus?.profitPercentage ?? 0,
+      };
+
+      return res.status(200).json({
+        success: true,
+        message: "Product price fetched successfully",
+        data,
+      });
+    }
+
+    if (type === "shoes") {
+      return res.status(200).json({
+        success: true,
+        message: "not implemented yet",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: "Invalid product type",
+      validTypes: "may be in the future",
+    });
+  } catch (error: any) {
+    console.error("getPickupPrice error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
+
+export const posReceipt = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const type = req.query.type as "insole" | "shoes";
+
+    const partnerId = req.user.id;
+
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        message: "Type is required",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
+    if (type !== "insole" && type !== "shoes") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product type",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    if (type === "insole") {
+      const order = await prisma.customerOrders.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          id: true,
+          orderNumber: true,
+
+          totalPrice: true,
+          quantity: true,
+
+          geschaeftsstandort: true,
+
+          employee: {
+            select: {
+              employeeName: true,
+            },
+          },
+
+          customer: {
+            select: {
+              vorname: true,
+              nachname: true,
+              email: true,
+              telefon: true,
+            },
+          },
+          Versorgungen: {
+            select: {
+              supplyStatus: {
+                select: {
+                  name: true,
+                  vatRate: true,
+                  profitPercentage: true,
+                },
+              },
+            },
+          },
+          partner: {
+            select: {
+              busnessName: true,
+              phone: true,
+              accountInfos: {
+                select: {
+                  vat_number: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          message: "Order ID is required",
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        message: "POS receipt fetched successfully",
+        data: order,
+      });
+    }
+    if (type === "shoes") {
+      return res.status(200).json({
+        success: true,
+        message: "not implemented yet",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: "Invalid product type",
+      validTypes: ["insole", "shoes"],
+    });
+  } catch (error: any) {
+    console.error("posReceipt error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
+
+export const handcashPayment = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const partnerId = req.user.id;
+    const type = req.query.type as "insole" | "shoes";
+    const pickup = req.query.pickup as string | undefined;
+
+    if (!type) {
+      res.status(400).json({
+        success: false,
+        message: "Type is required",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
+    if (type !== "insole" && type !== "shoes") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid product type",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    if (type === "insole") {
+      const order = await prisma.customerOrders.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          id: true,
+          orderNumber: true,
+          orderStatus: true,
+          bezahlt: true,
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      if (
+        order.bezahlt === "Krankenkasse_Genehmigt" ||
+        order.bezahlt === "Krankenkasse_Ungenehmigt"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "it's insurance payment",
+        });
+      }
+
+      if (order.bezahlt === "Privat_Bezahlt") {
+        return res.status(400).json({
+          success: false,
+          message: "Order already paid",
+        });
+      }
+
+      const updatedOrder = await prisma.customerOrders.update({
+        where: { id: orderId },
+        data: { bezahlt: "Privat_Bezahlt" },
+        select: {
+          id: true,
+          orderNumber: true,
+          bezahlt: true,
+        },
+      });
+
+      if (pickup === "true") {
+        if (order.orderStatus !== "Abholbereit_Versandt") {
+          await prisma.customerOrders.update({
+            where: { id: orderId },
+            data: { orderStatus: "Ausgeführt" },
+          });
+        }
+      }
+
+      await prisma.customerOrdersHistory.create({
+        data: {
+          orderId,
+          statusFrom: order.orderStatus,
+          statusTo: order.orderStatus,
+          paymentFrom: order.bezahlt ?? "Privat_offen",
+          paymentTo: "Privat_Bezahlt",
+          isPrementChange: true,
+          partnerId,
+          employeeId: req.user.id,
+          note: "Order paid successfully",
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Order paid successfully",
+        data: updatedOrder,
+      });
+    }
+    if (type === "shoes") {
+      return res.status(200).json({
+        success: true,
+        message: "not implemented yet",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: "Invalid product type",
+      validTypes: ["insole", "shoes"],
+    });
+  } catch (error) {
+    console.error("handcashPayment error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
