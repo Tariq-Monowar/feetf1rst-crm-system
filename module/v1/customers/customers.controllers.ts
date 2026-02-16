@@ -2663,6 +2663,28 @@ export const filterCustomer = async (req: Request, res: Response) => {
           }
         : null;
 
+    // Helper: treat customer billingType or fallback to latest order bezahlt as "insurance" or "private"
+    const isInsurancePayment = (billingType: string | null, latestOrderBezahlt: string | null) => {
+      const source = billingType ?? latestOrderBezahlt ?? "";
+      const lower = String(source).toLowerCase();
+      return (
+        source === "Krankenkasse_Ungenehmigt" ||
+        source === "Krankenkasse_Genehmigt" ||
+        lower === "insurance" ||
+        lower.includes("krankenkasse")
+      );
+    };
+    const isPrivatePayment = (billingType: string | null, latestOrderBezahlt: string | null) => {
+      const source = billingType ?? latestOrderBezahlt ?? "";
+      const lower = String(source).toLowerCase();
+      return (
+        source === "Privat_Bezahlt" ||
+        source === "Privat_offen" ||
+        lower === "private" ||
+        lower.includes("privat")
+      );
+    };
+
     // Map customers to response data
     let responseData = customers.map((customer) => {
       const completedOrdersCount = customer.customerOrders.filter((order) =>
@@ -2672,7 +2694,8 @@ export const filterCustomer = async (req: Request, res: Response) => {
       const latestOrder = customer.customerOrders[0] || null;
       const latestScreener = formatScreener(customer.screenerFile[0]);
       const latestMassschuheOrder = customer.massschuheOrders?.[0] || null;
-      const billingType = latestOrder?.bezahlt || null;
+      // Use customer's own billingType first; fallback to latest order's bezahlt for display
+      const billingType = customer.billingType ?? latestOrder?.bezahlt ?? null;
 
       return {
         id: customer.id,
@@ -2689,29 +2712,26 @@ export const filterCustomer = async (req: Request, res: Response) => {
         latestScreener,
         latestMassschuheOrder,
         billingType,
-        // Keep customerOrders for filtering logic (will be removed before response if needed)
+        // Keep for payment filter (customer-level billingType, fallback to latest order)
+        _customerBillingType: customer.billingType,
         _customerOrders: customer.customerOrders,
       };
     });
 
-    // Filter by payment type based on latest order's payment status
+    // Filter by payment type: use customer's billingType first, fallback to latest order's bezahlt
     if (normalizedPaymnentType) {
       if (normalizedPaymnentType === "insurance") {
-        // Insurance: Only include customers whose latest order has insurance payment
-        responseData = responseData.filter((customer) => {
-          const latestOrderBezahlt = customer.latestOrder?.bezahlt;
-          return (
-            latestOrderBezahlt === "Krankenkasse_Ungenehmigt" ||
-            latestOrderBezahlt === "Krankenkasse_Genehmigt"
+        responseData = responseData.filter((customer: any) => {
+          return isInsurancePayment(
+            customer._customerBillingType ?? null,
+            customer.latestOrder?.bezahlt ?? null
           );
         });
       } else if (normalizedPaymnentType === "private") {
-        // Private: Only include customers whose latest order has private payment
-        responseData = responseData.filter((customer) => {
-          const latestOrderBezahlt = customer.latestOrder?.bezahlt;
-          return (
-            latestOrderBezahlt === "Privat_Bezahlt" ||
-            latestOrderBezahlt === "Privat_offen"
+        responseData = responseData.filter((customer: any) => {
+          return isPrivatePayment(
+            customer._customerBillingType ?? null,
+            customer.latestOrder?.bezahlt ?? null
           );
         });
       }
@@ -2760,9 +2780,9 @@ export const filterCustomer = async (req: Request, res: Response) => {
       responseData = responseData.slice(startIndex, endIndex);
     }
 
-    // Remove internal _customerOrders field before sending response
+    // Remove internal fields before sending response
     responseData = responseData.map((customer: any) => {
-      const { _customerOrders, ...rest } = customer;
+      const { _customerOrders, _customerBillingType, ...rest } = customer;
       return rest;
     });
 
