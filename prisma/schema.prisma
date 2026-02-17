@@ -848,7 +848,11 @@ model customerOrders {
   wohnort            String?
   telefon            String?
   email              String?
+
   geschaeftsstandort Json? // { title: string, description?: string }
+  pickUpLocation Json? // { title: string, description?: string }
+  addonPrices Float? @default(0) // { title: string, description?: string }
+  
   mitarbeiter        String?
   fertigstellungBis  DateTime? // pickup date
   versorgung         String?
@@ -860,6 +864,7 @@ model customerOrders {
   barcodeCreatedAt DateTime?
 
   cashNites String?
+  orderNotes String?
 
   bezahlt paymnentStatus?
 

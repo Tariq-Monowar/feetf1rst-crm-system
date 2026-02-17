@@ -222,13 +222,16 @@ export const createOrder = async (req: Request, res: Response) => {
       quantity = 1,
       insurances,
       insoleStandards,
+      orderNotes,
+      pickUpLocation,
+      addonPrices = 0,
       key,
     } = body;
     const privetSupply = key;
 
     const required = privetSupply
-      ? ["customerId", "screenerId", "bezahlt"]
-      : ["customerId", "versorgungId", "screenerId", "bezahlt"];
+      ? ["customerId", "screenerId", "bezahlt", "geschaeftsstandort"]
+      : ["customerId", "versorgungId", "screenerId", "bezahlt", "geschaeftsstandort"];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
     const okStatus = [
@@ -515,6 +518,21 @@ export const createOrder = async (req: Request, res: Response) => {
           : null,
         versorgung: werkstattVersorgung ?? null,
         quantity: orderQuantity,
+        orderNotes:
+          orderNotes != null && String(orderNotes).trim() !== ""
+            ? String(orderNotes).trim()
+            : null,
+        // pickUpLocation from req.body when sent; otherwise use geschaeftsstandort (same shape)
+        pickUpLocation:
+          pickUpLocation != null && typeof pickUpLocation === "object" && !Array.isArray(pickUpLocation)
+            ? pickUpLocation
+            : geschaeftsstandort != null && typeof geschaeftsstandort === "object" && !Array.isArray(geschaeftsstandort)
+              ? geschaeftsstandort
+              : null,
+        addonPrices:
+          addonPrices != null && addonPrices !== ""
+            ? (Number(addonPrices) || 0)
+            : 0,
       };
       if (effectiveVersorgungId)
         orderData.Versorgungen = { connect: { id: effectiveVersorgungId } };
