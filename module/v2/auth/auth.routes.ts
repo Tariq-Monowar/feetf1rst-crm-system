@@ -1,19 +1,22 @@
 import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import {
-    setSecretPassword
+    setSecretPassword,
+    systemLogin
 } from "./auth.controllers";
 
 const router = express.Router();
 
+
 /*
-* update secret password for partner
-* @route POST /auth/update-secret-password
+* STEP 1: System login
+* @route POST /auth/system-login
 * @access PARTNER
-* @description Update secret password for partner it's less sequire
-* @body { secretPassword: string }
+* @description System login for partner it's less secure than the normal login
+* @body { email: string, password: string }
 */
-router.post("/update-secret-password", verifyUser("PARTNER"), setSecretPassword);
+router.post("/system-login", systemLogin);
+
 
 export default router;
  

@@ -150,4 +150,6 @@ router.get(
   getAllVersorgungenByCustomerId,
 );
 
+
+
 export default router;

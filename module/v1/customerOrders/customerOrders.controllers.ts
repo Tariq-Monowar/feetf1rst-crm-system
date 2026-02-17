@@ -1095,10 +1095,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const skip = (page - 1) * limit;
 
     const type = String(req.query.type || "rady_insole").trim();
-    if (type !== "rady_insole" && type !== "milling_block") {
+    if (type !== "rady_insole" && type !== "milling_block" && type !== "sonstiges") {
       return res.status(400).json({
         success: false,
-        message: "Invalid type. Use rady_insole or milling_block",
+        message: "Invalid type. Use rady_insole, milling_block, or sonstiges",
       });
     }
 
@@ -1108,7 +1108,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const orderNumber = String(req.query.orderNumber || "").trim();
     const customerName = String(req.query.customerName || "").trim();
 
-    const where: any = { type, orderCategory: { not: "sonstiges" } };
+    const where: any =
+      type === "sonstiges"
+        ? { orderCategory: "sonstiges" }
+        : { type, orderCategory: { not: "sonstiges" } };
 
     if (req.query.customerId) {
       where.customerId = req.query.customerId;
@@ -1195,6 +1198,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
           fertigstellungBis: true,
           geschaeftsstandort: true,
           auftragsDatum: true,
+          versorgung_note: true,
+          orderCategory: true,
+          service_name: true,
+          sonstiges_category: true,
           customer: {
             select: {
               id: true,
