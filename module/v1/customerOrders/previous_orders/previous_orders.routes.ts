@@ -5,6 +5,7 @@ import upload from "../../../../config/multer.config";
 import {
   getPreviousOrders,
   getSinglePreviousOrder,
+  getLatestPreviousOrder,
 } from "./previous_orders.controllers";
 
 const router = express.Router();
@@ -13,6 +14,11 @@ router.get(
   "/get-all/:customerId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getPreviousOrders,
+);
+router.get(
+  "/get-latest/:customerId",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getLatestPreviousOrder,
 );
 router.get(
   "/get-single/:customerId/:orderId",

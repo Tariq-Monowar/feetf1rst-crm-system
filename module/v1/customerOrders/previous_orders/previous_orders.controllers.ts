@@ -329,6 +329,208 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
       });
     }
   };
+
+/**
+ * Get latest (most recent) previous order for a customer. Same data shape as get-all with limit=1, no limit/cursor needed.
+ * GET /get-latest/:customerId?productType=insole|shoes|sonstiges
+ */
+export const getLatestPreviousOrder = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const productType =
+      (req.query.productType as string)?.toLowerCase() || "insole";
+    const userId = req.user?.id;
+    const userRole = req.user?.role;
+
+    if (!customerId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Customer ID is required" });
+    }
+    if (productType !== "insole" && productType !== "shoes" && productType !== "sonstiges") {
+      return res.status(400).json({
+        success: false,
+        message: "productType must be 'insole', 'shoes', or 'sonstiges'",
+      });
+    }
+
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+    if (!customer) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+    }
+
+    const limit = 1;
+
+    if (productType === "shoes") {
+      const whereShoes: any = { customerId };
+      if (userRole !== "ADMIN" && userId) whereShoes.userId = userId;
+      const shoesOrders = await prisma.massschuhe_order.findMany({
+        where: whereShoes,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          orderNumber: true,
+          createdAt: true,
+          arztliche_diagnose: true,
+          usführliche_diagnose: true,
+          rezeptnummer: true,
+          durchgeführt_von: true,
+          note: true,
+          albprobe_geplant: true,
+          kostenvoranschlag: true,
+          delivery_date: true,
+          telefon: true,
+          filiale: true,
+          kunde: true,
+          email: true,
+          button_text: true,
+          fußanalyse: true,
+          einlagenversorgung: true,
+          customer_note: true,
+          location: true,
+          employeeId: true,
+          customerId: true,
+        },
+      });
+      const datum = (d: Date) =>
+        d ? new Date(d).toISOString().slice(0, 10) : "";
+      const data = shoesOrders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        arztliche_diagnose: o.arztliche_diagnose ?? "",
+        button_text: o.button_text ?? "Bestellung speichern",
+        customerId: o.customerId ?? "",
+        customer_note: o.customer_note ?? "",
+        datumAuftrag: datum(o.createdAt),
+        delivery_date: o.delivery_date ?? "",
+        durchgeführt_von: o.durchgeführt_von ?? "",
+        einlagenversorgung: o.einlagenversorgung ?? 0,
+        email: o.email ?? "",
+        employeeId: o.employeeId ?? "",
+        fertigstellungBis: o.delivery_date ?? "",
+        filiale: o.filiale ?? {},
+        fußanalyse: o.fußanalyse ?? 0,
+        halbprobe_geplant: o.albprobe_geplant ?? false,
+        kostenvoranschlag: o.kostenvoranschlag ?? false,
+        kunde: o.kunde ?? "",
+        location: o.location ?? "",
+        note: o.note ?? "",
+        orderNote: "",
+        paymentType: "privat",
+        quantity: 1,
+        rezeptnummer: o.rezeptnummer ?? "",
+        statusBezahlt: false,
+        telefon: o.telefon ?? "",
+        usführliche_diagnose: o.usführliche_diagnose ?? "",
+      }));
+      return res.status(200).json({
+        success: true,
+        message: "Latest previous order fetched successfully",
+        data,
+        hasMore: false,
+      });
+    }
+
+    if (productType === "insole") {
+      const whereInsole: any = { customerId, orderCategory: "insole" };
+      if (userRole !== "ADMIN" && userId) whereInsole.partnerId = userId;
+      const orders = await prisma.customerOrders.findMany({
+        where: whereInsole,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        select: previousOrdersSelect,
+      });
+      const toDateStr = (d: Date | null) =>
+        d ? new Date(d).toISOString().slice(0, 10) : "";
+      const data = orders.map((o: any) => ({
+        ...o,
+        auftragsDatum: o.auftragsDatum ? toDateStr(o.auftragsDatum) : null,
+        fertigstellungBis: o.fertigstellungBis ? toDateStr(o.fertigstellungBis) : null,
+        insoleStandards: (o.insoleStandards || []).map((s: any) => ({
+          name: s.name ?? "",
+          left: s.left ?? 0,
+          right: s.right ?? 0,
+          isFavorite: s.isFavorite ?? false,
+        })),
+      }));
+      return res.status(200).json({
+        success: true,
+        message: "Latest previous order fetched successfully",
+        data,
+        hasMore: false,
+      });
+    }
+
+    // Sonstiges
+    const whereSonstiges: any = { customerId, orderCategory: "sonstiges" };
+    if (userRole !== "ADMIN" && userId) whereSonstiges.partnerId = userId;
+    const sonstigesOrders = await prisma.customerOrders.findMany({
+      where: whereSonstiges,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        service_name: true,
+        sonstiges_category: true,
+        net_price: true,
+        vatRate: true,
+        quantity: true,
+        versorgung_note: true,
+        discount: true,
+        employeeId: true,
+        totalPrice: true,
+        customerId: true,
+        wohnort: true,
+        auftragsDatum: true,
+        geschaeftsstandort: true,
+        fertigstellungBis: true,
+        bezahlt: true,
+      },
+    });
+    const toDateStrSonstiges = (d: Date | null) =>
+      d ? new Date(d).toISOString().slice(0, 10) : "";
+    const data = sonstigesOrders.map((o: any) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      service_name: o.service_name ?? "",
+      sonstiges_category: o.sonstiges_category ?? "",
+      net_price: o.net_price ?? null,
+      vatRate: o.vatRate ?? null,
+      quantity: o.quantity ?? 1,
+      versorgung_note: o.versorgung_note ?? "",
+      discount: o.discount ?? null,
+      employeeId: o.employeeId ?? "",
+      total_price: o.totalPrice ?? 0,
+      customerId: o.customerId ?? "",
+      wohnort: o.wohnort ?? "",
+      auftragsDatum: o.auftragsDatum ? toDateStrSonstiges(o.auftragsDatum) : "",
+      geschaeftsstandort: o.geschaeftsstandort ?? null,
+      fertigstellungBis: o.fertigstellungBis ? toDateStrSonstiges(o.fertigstellungBis) : "",
+      bezahlt: o.bezahlt ?? null,
+    }));
+    return res.status(200).json({
+      success: true,
+      message: "Latest previous order fetched successfully",
+      data,
+      hasMore: false,
+    });
+  } catch (error: any) {
+    console.error("Get Latest Previous Order Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching latest order",
+      error: error?.message ?? "Unknown error",
+    });
+  }
+};
   
   /**
    * Get a single previous order by ID (same pre-fill shape as getPreviousOrders).
