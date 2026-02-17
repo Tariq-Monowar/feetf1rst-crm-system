@@ -295,10 +295,13 @@ export const createOrder = async (req: Request, res: Response) => {
           item.left != null && item.left !== "" ? Number(item.left) : 0;
         const right =
           item.right != null && item.right !== "" ? Number(item.right) : 0;
+        const isFavorite =
+          item.isFavorite === true || item.isFavorite === "true" || item.isFavorite === 1;
         normalizedInsoleStandards.push({
           name,
           left: Number.isNaN(left) ? 0 : left,
           right: Number.isNaN(right) ? 0 : right,
+          isFavorite: !!isFavorite,
         });
       }
     }
@@ -1823,7 +1826,7 @@ const previousOrdersSelect = {
   orderCategory: true,
   type: true,
   insoleStandards: {
-    select: { name: true, left: true, right: true },
+    select: { name: true, left: true, right: true, isFavorite: true },
   },
   Versorgungen: {
     select: {
@@ -2007,6 +2010,7 @@ export const getPreviousOrders = async (req: Request, res: Response) => {
           name: s.name ?? "",
           left: s.left ?? 0,
           right: s.right ?? 0,
+          isFavorite: s.isFavorite ?? false,
         })),
       }));
 
@@ -2236,6 +2240,7 @@ export const getSinglePreviousOrder = async (req: Request, res: Response) => {
           name: s.name ?? "",
           left: s.left ?? 0,
           right: s.right ?? 0,
+          isFavorite: s.isFavorite ?? false,
         })),
       };
       return res.status(200).json({

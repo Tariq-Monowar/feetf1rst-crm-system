@@ -1079,9 +1079,10 @@ enum OrderStatus {
 model insole_standard {
   id String @id @default(uuid())
 
-  name  String?
-  left  Float   @default(0)
-  right Float   @default(0)
+  isFavorite Boolean @default(false)
+  name      String?
+  left      Float   @default(0)
+  right     Float   @default(0)
 
   customerOrdersId String
   customerOrders   customerOrders @relation(fields: [customerOrdersId], references: [id], onDelete: Cascade)
@@ -1721,6 +1722,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1744,6 +1746,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
