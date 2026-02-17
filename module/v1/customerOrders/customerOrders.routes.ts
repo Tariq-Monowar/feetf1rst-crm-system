@@ -40,7 +40,4 @@ router.delete(
 
 router.delete("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), deleteOrder);
 
-router.get("/previous-orders/:customerId", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getPreviousOrders);
-router.get("/previous-orders/:customerId/:orderId", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getSinglePreviousOrder);
-
 export default router;

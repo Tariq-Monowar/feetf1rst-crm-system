@@ -843,19 +843,19 @@ model customerOrders {
   // bezahltInsurance       String? // Bezahlt - string naw
 
   // Werkstattzettel (inline fields to avoid extra API)
-  kundenName         String?
-  auftragsDatum      DateTime?
-  wohnort            String?
-  telefon            String?
-  email              String?
+  kundenName    String?
+  auftragsDatum DateTime?
+  wohnort       String?
+  telefon       String?
+  email         String?
 
   geschaeftsstandort Json? // { title: string, description?: string }
-  pickUpLocation Json? // { title: string, description?: string }
-  addonPrices Float? @default(0) // { title: string, description?: string }
-  
-  mitarbeiter        String?
-  fertigstellungBis  DateTime? // pickup date
-  versorgung         String?
+  pickUpLocation     Json? // { title: string, description?: string }
+  addonPrices        Float? @default(0) // { title: string, description?: string }
+
+  mitarbeiter       String?
+  fertigstellungBis DateTime? // pickup date
+  versorgung        String?
 
   fussanalysePreis        Float?
   einlagenversorgungPreis Float?
@@ -863,10 +863,11 @@ model customerOrders {
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
 
-  cashNites String?
+  cashNites  String?
   orderNotes String?
 
-  bezahlt paymnentStatus?
+  bezahlt             paymnentStatus?
+  insuranceTotalPrice Float?          @default(0)
 
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
   priority    Priority?   @default(Normal)
@@ -963,8 +964,7 @@ model customerOrderInsurance {
   orderId String
   order   customerOrders @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  price Float?
-
+  price       Float?
   description Json?
 
   vat_country String?
@@ -1085,9 +1085,9 @@ model insole_standard {
   id String @id @default(uuid())
 
   isFavorite Boolean @default(false)
-  name      String?
-  left      Float   @default(0)
-  right     Float   @default(0)
+  name       String?
+  left       Float   @default(0)
+  right      Float   @default(0)
 
   customerOrdersId String
   customerOrders   customerOrders @relation(fields: [customerOrdersId], references: [id], onDelete: Cascade)
@@ -1728,6 +1728,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1751,6 +1752,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
