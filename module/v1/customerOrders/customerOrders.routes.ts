@@ -9,8 +9,6 @@ import {
   deleteOrder,
   getOrdersByCustomerId,
   getEinlagenInProduktion,
-  getPreviousOrders,
-  getSinglePreviousOrder,
 } from "./customerOrders.controllers";
 import upload from "../../../config/multer.config";
  
