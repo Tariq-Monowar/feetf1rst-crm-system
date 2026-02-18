@@ -78,6 +78,7 @@ model User {
   employeeFeatureAccess       employee_feature_access[]
   feetf1RstShopInterests      feetf1rst_shop_interests[]
   stockMaterials              stock_material[]
+  shoeOrders                  shoe_order[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -581,6 +582,7 @@ model customers {
   courierContacts          CourierContact[]
   customModels             custom_models[]
   adminOrderTransitions    admin_order_transitions[]
+  shoeOrders               shoe_order[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([vorname, nachname])
@@ -1423,6 +1425,8 @@ model Bestellubersicht {
  * Q. how to order a shooe a customer?
  * A. every spapic partner has her own customer database. every customer has spapic insole and foot analysis and shoe.
  */
+
+//  ================= V1========================
 model massschuhe_order {
   id String @id @default(uuid())
 
@@ -1560,6 +1564,36 @@ model massschuhe_order_history {
   @@index([partnerId])
   @@index([employeeId])
   @@index([customerId])
+}
+
+//  ===================== V2 ======================
+model shoe_order {
+  id String @id @default(uuid())
+
+  orderNumber Int?
+  priority    Priority? @default(Normal)
+  quantity    Int?
+
+  busness_location Json? // { title: string, description?: string }
+  payment_status   paymnentStatus?
+
+  //Ärztliche Diagnose (1st fields)
+  medical_diagnosis String?
+  // Versorgung laut Arzt (2nd fields)
+  care_according_to_doctor String?
+  // 3rd fields
+  total_price Float?
+  // 4th fields
+
+  // -- RELATIONS
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 //---------------------------------------------------------------------------
@@ -1729,6 +1763,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1752,6 +1788,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2415,3 +2453,23 @@ model feetf1rst_shop_interests {
   @@index([partnerId])
   @@index([feetf1rst_shop_id])
 }
+
+//vat
+model government_vat {
+  id String @id @default(uuid())
+  
+  country vat_country?
+  rate Float?
+  description String?
+
+  createdAt DateTime @default(now())
+}
+
+enum vat_country {
+  Deutschland
+  Österreich
+  Italien
+  Schweiz
+  Frankreich
+  Niederlande
+} 
