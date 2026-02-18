@@ -230,9 +230,10 @@ export const createOrder = async (req: Request, res: Response) => {
     } = body;
     const privetSupply = key;
 
+    // screenerId is optional when customer has foot data (fusslange1, fusslange2)
     const required = privetSupply
-      ? ["customerId", "screenerId", "bezahlt", "geschaeftsstandort"]
-      : ["customerId", "versorgungId", "screenerId", "bezahlt", "geschaeftsstandort"];
+      ? ["customerId", "bezahlt", "geschaeftsstandort"]
+      : ["customerId", "versorgungId", "bezahlt", "geschaeftsstandort"];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
     const okStatus = [
@@ -322,13 +323,24 @@ export const createOrder = async (req: Request, res: Response) => {
     };
 
     const [screenerFile, customer, rawShadowOrVersorgung] = await Promise.all([
-      prisma.screener_file.findUnique({
-        where: { id: screenerId },
-        select: { id: true },
-      }),
+      screenerId
+        ? prisma.screener_file.findUnique({
+            where: { id: screenerId },
+            select: { id: true },
+          })
+        : null,
       prisma.customers.findUnique({
         where: { id: customerId },
-        select: { fusslange1: true, fusslange2: true },
+        select: {
+          fusslange1: true,
+          fusslange2: true,
+          fussbreite1: true,
+          fussbreite2: true,
+          kugelumfang1: true,
+          kugelumfang2: true,
+          rist1: true,
+          rist2: true,
+        },
       }),
       privetSupply
         ? redis.get(privetSupply)
@@ -337,8 +349,19 @@ export const createOrder = async (req: Request, res: Response) => {
             select: vSelect,
           }),
     ]);
-    if (!screenerFile) return bad(404, "Screener file not found");
+    if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
+    // When no screenerId, customer must have foot data to create order
+    if (!screenerId) {
+      const hasFootData =
+        (customer.fusslange1 != null && String(customer.fusslange1).trim() !== "") &&
+        (customer.fusslange2 != null && String(customer.fusslange2).trim() !== "");
+      if (!hasFootData)
+        return bad(
+          400,
+          "Either provide screenerId or ensure customer has fusslange1 and fusslange2",
+        );
+    }
 
     let versorgung: any;
     let effectiveVersorgungId: string | null;
@@ -497,7 +520,7 @@ export const createOrder = async (req: Request, res: Response) => {
         product: { connect: { id: customerProduct.id } },
         customer: { connect: { id: customerId } },
         partner: { connect: { id: partnerId } },
-        screenerFile: { connect: { id: screenerId } },
+        ...(screenerId && { screenerFile: { connect: { id: screenerId } } }),
         statusUpdate: new Date(),
         ausführliche_diagnose,
         versorgung_laut_arzt,

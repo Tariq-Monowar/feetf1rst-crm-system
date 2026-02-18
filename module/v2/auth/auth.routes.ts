@@ -42,7 +42,7 @@ router.get("/profile-selection", verifyUser("ANY"), findAllProfiles);
 * @description Login partner
 * @body { email: string, password: string }
 */
-router.post("/logic-login/:id", verifyUser("PARTNER"), localLogin);
+router.post("/logical-login/:id", verifyUser("PARTNER"), localLogin);
 
 
 

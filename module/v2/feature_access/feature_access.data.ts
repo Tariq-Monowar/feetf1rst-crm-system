@@ -240,4 +240,10 @@ export const featureAccessData = [
     path: "/dashboard/einnahmen",
     nested: [],
   },
+  {
+    title: "Statistiken",
+    action: true,
+    path: "/dashboard/statistiken",
+    nested: [],
+  },
 ];

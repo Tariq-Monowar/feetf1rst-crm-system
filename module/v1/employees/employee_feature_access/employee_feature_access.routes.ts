@@ -7,7 +7,7 @@ import {
   manageEmployeeFeatureAccess,
 } from "./employee_feature_access.controllers";
 
-const router = express.Router();
+const  router = express.Router();
 
 // GET: Get partner's available features (what features partner can assign)
 router.get(

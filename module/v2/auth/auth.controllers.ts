@@ -192,8 +192,52 @@ export const localLogin = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const query = req.query;
-    
 
+    //valid quart /EMPLOYEE /PARTNER /ADMIN
+    if (query.role !== "EMPLOYEE" && query.role !== "PARTNER") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+        data: ["EMPLOYEE", "PARTNER"],
+      });
+    }
+
+    let data: any = {};
+    if (query.role === "EMPLOYEE") {
+      const employee = await prisma.employees.findUnique({
+        where: { id },
+      });
+      data = employee;
+    }
+
+    if (query.role === "PARTNER") {
+      const partner = await prisma.user.findUnique({
+        where: { id },
+      });
+      data = partner;
+    }
+    // {
+    //   "id": "af6c016e-5736-4cca-9b33-dc32dd10204e",
+    //   "employeeId": "d24c17dc-07a1-4386-8bb5-f90a2cb136a4",
+    //   "email": "samiulbasirfahim.rxen@gmail.com",
+    //   "role": "EMPLOYEE",
+    //   "iat": 1771414546
+    // }
+    const payload = {
+      id: data.id,
+      employeeId: query.role === "EMPLOYEE" ? data.employeeId : null,
+      email: data.email,
+      role: query.role,
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET as string);
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      data,
+      token,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
