@@ -30,6 +30,7 @@ const defaultFeatureAccessData = {
   kasse_and_abholungen: true,
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
+  statistiken: true,
 };
 
 const FEATURE_KEYS = Object.keys(
@@ -147,6 +148,7 @@ const getOrCreateFeatureAccess = async (partnerId: string) => {
     "kasse_and_abholungen",
     "finanzen_and_kasse",
     "einnahmen_and_rechnungen",
+    "statistiken",
   ];
 
   const missingFields = newFields.filter(
@@ -337,6 +339,11 @@ function convertToJSONFormat(featureAccess: any) {
       field: "einnahmen_and_rechnungen",
       title: "Einnahmen & Rechnungen",
       path: "/dashboard/einnahmen",
+    },
+    {
+      field: "statistiken",
+      title: "Statistiken",
+      path: "/dashboard/statistiken",
     },
   ];
 

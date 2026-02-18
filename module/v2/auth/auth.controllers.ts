@@ -10,6 +10,13 @@ export const setSecretPassword = async (req: Request, res: Response) => {
     const { id } = req.user;
     const { secretPassword } = req.body;
 
+    if (!secretPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Secret password is required",
+      });
+    }
+
     const partner = await prisma.user.findUnique({
       where: {
         id,
@@ -19,6 +26,7 @@ export const setSecretPassword = async (req: Request, res: Response) => {
         secretPassword: true,
       },
     });
+
     if (!partner) {
       return res.status(404).json({
         success: false,
@@ -31,13 +39,15 @@ export const setSecretPassword = async (req: Request, res: Response) => {
         message: "Partner not found",
       });
     }
+    // make hash of secretPassword
+    const hashedSecretPassword = await bcrypt.hash(secretPassword, 10);
 
     await prisma.user.update({
       where: {
         id,
       },
       data: {
-        secretPassword,
+        secretPassword: hashedSecretPassword,
       },
     });
 
@@ -80,6 +90,7 @@ export const systemLogin = async (req: Request, res: Response) => {
         id: true,
         email: true,
         password: true,
+        role: true,
       },
     });
 
@@ -98,18 +109,91 @@ export const systemLogin = async (req: Request, res: Response) => {
         message: "Invalid password",
       });
     }
-
     const token = jwt.sign(
-      { id: partner.id, email: partner.email },
-      process.env.JWT_SECRET,
+      { id: partner.id, email: partner.email, role: partner.role },
+      process.env.JWT_SECRET as string,
     );
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
-      data: partner,
       token,
     });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message || "Unknown error",
+    });
+  }
+};
+
+export const findAllProfiles = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user;
+
+    const profiles = await prisma.user.findMany({
+      where: {
+        id,
+      },
+      select: {
+        id: true,
+        image: true,
+        role: true,
+        busnessName: true,
+        employees: {
+          select: {
+            id: true,
+            employeeName: true,
+            image: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    console.log(profiles);
+
+    // Flat list: partner|employee|employee|partner|employee|...
+    const data = profiles.flatMap((profile) => [
+      {
+        id: profile.id,
+        image: profile.image,
+        role: "partner",
+        busnessName: profile.busnessName,
+        employeeName: null,
+      },
+      ...profile.employees.map((employee) => ({
+        id: employee.id,
+        image: employee.image,
+        role: "employee",
+        busnessName: profile.busnessName,
+        employeeName: employee.employeeName,
+      })),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Profiles found",
+      data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message || "Unknown error",
+    });
+  }
+};
+
+export const localLogin = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const query = req.query;
+    
+
   } catch (error) {
     res.status(500).json({
       success: false,

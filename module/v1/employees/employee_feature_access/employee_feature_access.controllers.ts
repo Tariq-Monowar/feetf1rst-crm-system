@@ -29,6 +29,7 @@ const defaultEmployeeFeatureAccessData = {
   kasse_and_abholungen: true,
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
+  statistiken: true,
 };
 
 const validateEmployee = async (employeeId: string, partnerId: string) => {
@@ -67,6 +68,7 @@ const defaultPartnerFeatureAccessData = {
   kasse_and_abholungen: true,
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
+  statistiken: true,
 };
 
 const FEATURE_KEYS = Object.keys(
@@ -271,6 +273,11 @@ const convertToJSONFormat = (featureAccess: any) => {
       field: "einnahmen_and_rechnungen",
       title: "Einnahmen & Rechnungen",
       path: "/dashboard/einnahmen",
+    },
+    {
+      field: "statistiken",
+      title: "Statistiken",
+      path: "/dashboard/statistiken",
     },
   ];
 

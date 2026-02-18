@@ -1578,11 +1578,11 @@ model shoe_order {
   payment_status   paymnentStatus?
 
   //Ärztliche Diagnose (1st fields)
-  medical_diagnosis String?
+  medical_diagnosis        String?
   // Versorgung laut Arzt (2nd fields)
   care_according_to_doctor String?
   // 3rd fields
-  total_price Float?
+  total_price              Float?
   // 4th fields
 
   // -- RELATIONS
@@ -1765,6 +1765,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1788,6 +1789,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -2130,6 +2132,7 @@ model FeatureAccess {
   kasse_and_abholungen       Boolean @default(true)
   finanzen_and_kasse         Boolean @default(true)
   einnahmen_and_rechnungen   Boolean @default(true)
+  statistiken                Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2179,6 +2182,7 @@ model employee_feature_access {
   kasse_and_abholungen       Boolean @default(false)
   finanzen_and_kasse         Boolean @default(false)
   einnahmen_and_rechnungen   Boolean @default(false)
+  statistiken                Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2457,9 +2461,9 @@ model feetf1rst_shop_interests {
 //vat
 model government_vat {
   id String @id @default(uuid())
-  
-  country vat_country?
-  rate Float?
+
+  country     vat_country?
+  rate        Float?
   description String?
 
   createdAt DateTime @default(now())
@@ -2472,4 +2476,4 @@ enum vat_country {
   Schweiz
   Frankreich
   Niederlande
-} 
+}
