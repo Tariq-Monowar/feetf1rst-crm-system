@@ -24,7 +24,8 @@
     "all_data:milling_block": "ts-node scripts/all_data-stores.ts milling_block",
     "all_data:update:rady_insole": "ts-node scripts/all_data-stores.ts update rady_insole",
     "all_data:update:milling_block": "ts-node scripts/all_data-stores.ts update milling_block",
-    "all:employees": "ts-node scripts/all-employees.ts"
+    "all:employees": "ts-node scripts/all-employees.ts",
+    "clean:leave-application": "ts-node scripts/clean-leave-application.ts"
   },
   "keywords": [],
   "author": "",

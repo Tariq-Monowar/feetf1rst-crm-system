@@ -17,6 +17,7 @@ import auth from "./auth/auth.routes";
 import stock_material from "./storage/stock_material/stock_material.routes";
 import order_feedback from "./order_feedback/order_feedback.routes";
 import government_vat from "./government_vat/government_vat.routes";
+import leave_application from "./leave_application/leave_application.routes";
 
 const router = express.Router();
 
@@ -38,6 +39,7 @@ const moduleRoutes = [
   { path: "/stock-material", route: stock_material },
   { path: "/order-feedback", route: order_feedback },
   { path: "/government-vat", route: government_vat },
+  { path: "/leave-application", route: leave_application },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

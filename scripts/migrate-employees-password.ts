@@ -37,7 +37,7 @@ async function migrateEmployeesPassword() {
 
     let updated = 0;
     for (const emp of needingHash) {
-      const hashedPassword = await bcrypt.hash(emp.password!, 10);
+      const hashedPassword = await bcrypt.hash(emp.password!, 8);
       await prisma.employees.update({
         where: { id: emp.id },
         data: { password: hashedPassword },
