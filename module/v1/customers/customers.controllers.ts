@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -494,27 +494,6 @@ export const getAllCustomers = async (req: Request, res: Response) => {
       }),
     ]);
 
-    // const customersWithImages = customers.map((c) => ({
-    //   ...c,
-    //   screenerFile: c.screenerFile.map((screener) => ({
-    //     id: screener.id,
-    //     customerId: screener.customerId,
-    //     picture_10: screener.picture_10 || null,
-    //     picture_23: screener.picture_23 || null,
-    //     paint_24: screener.paint_24 || null,
-    //     paint_23: screener.paint_23 || null,
-    //     picture_11: screener.picture_11 || null,
-    //     picture_24: screener.picture_24 || null,
-    //     threed_model_left: screener.threed_model_left || null,
-    //     threed_model_right: screener.threed_model_right || null,
-    //     picture_17: screener.picture_17 || null,
-    //     picture_16: screener.picture_16 || null,
-    //     csvFile: screener.csvFile || null,
-    //     createdAt: screener.createdAt,
-    //     updatedAt: screener.updatedAt,
-    //   })),
-    // }));
-
     res.status(200).json({
       success: true,
       message: "Customers fetched successfully",
@@ -525,6 +504,62 @@ export const getAllCustomers = async (req: Request, res: Response) => {
         currentPage: page,
         itemsPerPage: limit,
       },
+    });
+  } catch (error: any) {
+    console.error("Get All Customers error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const _cursor_getAllCustomers = async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 50);
+    const cursor = req.query.cursor as string | undefined;
+    const search = (req.query.search as string) || "";
+
+    const partnerId = req.user?.id;
+
+    const whereCondition: any = {};
+    if (search) {
+      whereCondition.OR = [
+        { vorname: { contains: search, mode: "insensitive" } },
+        { nachname: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    const customers = await prisma.customers.findMany({
+      where: {
+        ...whereCondition,
+        partnerId: partnerId,
+      },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        customerNumber: true,
+        vorname: true,
+        nachname: true,
+        wohnort: true,
+        createdAt: true,
+      },
+    });
+
+    const hasMore = customers.length > limit;
+    const data = hasMore ? customers.slice(0, limit) : customers;
+    // const nextCursor = hasMore ? data[data.length - 1].id : null;
+
+    res.status(200).json({
+      success: true,
+      message: "Customers fetched successfully",
+      data,
+      // nextCursor,
+      hasMore,
     });
   } catch (error: any) {
     console.error("Get All Customers error:", error);
@@ -1370,92 +1405,60 @@ export const searchCustomers = async (req: Request, res: Response) => {
       geburtsdatum,
       customerNumber,
       limit = 10,
-      page = 1,
     } = req.query;
 
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    const limitNumber = Math.min(
-      Math.max(parseInt(limit as string) || 10, 1),
-      100
-    );
-    const pageNumber = Math.max(parseInt(page as string) || 1, 1);
-    const skip = (pageNumber - 1) * limitNumber;
+    const limitNumber = 10; // fixed limit only
 
-    // Build search conditions array
-    const searchConditions: any[] = [];
+    // Build raw SQL WHERE fragments
+    const whereParts: ReturnType<typeof Prisma.sql>[] = [];
 
-    // Always filter by user (except ADMIN can see all)
     if (userRole !== "ADMIN") {
-      searchConditions.push({ partnerId: userId });
+      whereParts.push(Prisma.sql`"partnerId" = ${userId}`);
     }
 
-    // Handle general search across multiple fields
     if (search && typeof search === "string") {
       const searchQuery = search.trim();
       if (searchQuery) {
-        searchConditions.push({
-          OR: [
-            { vorname: { contains: searchQuery, mode: "insensitive" } },
-            { nachname: { contains: searchQuery, mode: "insensitive" } },
-            { email: { contains: searchQuery, mode: "insensitive" } },
-            { telefon: { contains: searchQuery, mode: "insensitive" } },
-            { wohnort: { contains: searchQuery, mode: "insensitive" } },
-          ],
-        });
+        const p = `%${searchQuery}%`;
+        whereParts.push(
+          Prisma.sql`(vorname ILIKE ${p} OR nachname ILIKE ${p} OR email ILIKE ${p} OR telefon ILIKE ${p} OR wohnort ILIKE ${p})`
+        );
       }
     } else {
-      // Specific field searches (only if no general search)
       if (name && typeof name === "string") {
         const nameQuery = name.trim();
         if (nameQuery) {
           const nameParts = nameQuery.split(/\s+/).filter(Boolean);
           if (nameParts.length > 1) {
-            searchConditions.push({
-              AND: [
-                { vorname: { contains: nameParts[0], mode: "insensitive" } },
-                {
-                  nachname: {
-                    contains: nameParts.slice(1).join(" "),
-                    mode: "insensitive",
-                  },
-                },
-              ],
-            });
+            whereParts.push(
+              Prisma.sql`(vorname ILIKE ${`%${nameParts[0]}%`} AND nachname ILIKE ${`%${nameParts.slice(1).join(" ")}%`})`
+            );
           } else {
-            searchConditions.push({
-              OR: [
-                { vorname: { contains: nameQuery, mode: "insensitive" } },
-                { nachname: { contains: nameQuery, mode: "insensitive" } },
-              ],
-            });
+            whereParts.push(
+              Prisma.sql`(vorname ILIKE ${`%${nameQuery}%`} OR nachname ILIKE ${`%${nameQuery}%`})`
+            );
           }
         }
       }
 
       if (email && typeof email === "string" && email.trim()) {
-        searchConditions.push({
-          email: { contains: email.trim(), mode: "insensitive" },
-        });
+        whereParts.push(Prisma.sql`email ILIKE ${`%${email.trim()}%`}`);
       }
 
       if (phone && typeof phone === "string" && phone.trim()) {
-        searchConditions.push({
-          telefon: { contains: phone.trim(), mode: "insensitive" },
-        });
+        whereParts.push(Prisma.sql`telefon ILIKE ${`%${phone.trim()}%`}`);
       }
 
       if (location && typeof location === "string" && location.trim()) {
-        searchConditions.push({
-          wohnort: { contains: location.trim(), mode: "insensitive" },
-        });
+        whereParts.push(Prisma.sql`wohnort ILIKE ${`%${location.trim()}%`}`);
       }
     }
 
-    // Exact matches (always applied)
     if (id && typeof id === "string" && id.trim()) {
-      searchConditions.push({ id: id.trim() });
+      whereParts.push(Prisma.sql`id = ${id.trim()}`);
     }
 
     if (
@@ -1463,53 +1466,54 @@ export const searchCustomers = async (req: Request, res: Response) => {
       typeof geburtsdatum === "string" &&
       geburtsdatum.trim()
     ) {
-      searchConditions.push({ geburtsdatum: geburtsdatum.trim() });
+      whereParts.push(Prisma.sql`geburtsdatum = ${geburtsdatum.trim()}`);
     }
 
     if (customerNumber) {
       const num = Number(customerNumber);
       if (Number.isFinite(num)) {
-        searchConditions.push({ customerNumber: num });
+        whereParts.push(Prisma.sql`"customerNumber" = ${num}`);
       }
     }
 
-    // Build final where condition
-    const whereConditions =
-      searchConditions.length > 0
-        ? { AND: searchConditions }
-        : userRole !== "ADMIN"
-        ? { partnerId: userId }
-        : {};
+    const whereClause = Prisma.join(whereParts, " AND ");
 
-    // Execute queries in parallel
-    const [total, customers] = await prisma.$transaction([
-      prisma.customers.count({ where: whereConditions }),
-      prisma.customers.findMany({
-        where: whereConditions,
-        select: {
-          id: true,
-          vorname: true,
-          nachname: true,
-          email: true,
-          telefon: true,
-          wohnort: true,
-          customerNumber: true,
-          geburtsdatum: true,
-          createdAt: true,
-        },
-        take: limitNumber,
-        skip,
-        orderBy: [{ vorname: "asc" }, { nachname: "asc" }],
-      }),
-    ]);
+    const customers = await prisma.$queryRaw<
+      {
+        id: string;
+        vorname: string | null;
+        nachname: string | null;
+        email: string | null;
+        telefon: string | null;
+        wohnort: string | null;
+        customerNumber: number;
+        geburtsdatum: string | null;
+        createdAt: Date;
+      }[]
+    >(
+      whereParts.length > 0
+        ? Prisma.sql`
+          SELECT id, vorname, nachname, email, telefon, wohnort, "customerNumber", geburtsdatum, "createdAt"
+          FROM customers
+          WHERE ${whereClause}
+          ORDER BY vorname ASC NULLS LAST, nachname ASC NULLS LAST
+          LIMIT ${limitNumber}
+        `
+        : Prisma.sql`
+          SELECT id, vorname, nachname, email, telefon, wohnort, "customerNumber", geburtsdatum, "createdAt"
+          FROM customers
+          ORDER BY vorname ASC NULLS LAST, nachname ASC NULLS LAST
+          LIMIT ${limitNumber}
+        `
+    );
 
     res.status(200).json({
       success: true,
       message: "Customer search results",
       data: {
-        totalResults: total,
-        totalPages: Math.ceil(total / limitNumber),
-        currentPage: pageNumber,
+        totalResults: customers.length,
+        totalPages: 1,
+        currentPage: 1,
         customers: customers.map((customer) => ({
           id: customer.id,
           name: `${customer.vorname || ""} ${customer.nachname || ""}`.trim(),

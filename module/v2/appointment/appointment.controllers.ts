@@ -1046,41 +1046,38 @@ export const getMyAppointments = async (req: Request, res: Response) => {
       OR: searchConditions,
     };
 
-    const [appointments, totalCount] = await Promise.all([
-      prisma.appointment.findMany({
-        where: whereCondition,
-        skip,
-        take: limit,
-        orderBy: {
-          createdAt: "desc",
-        },
-        include: {
-          appointmentEmployees: {
-            include: {
-              employee: {
-                select: {
-                  id: true,
-                  employeeName: true,
-                  email: true,
-                },
+    const appointments = await prisma.appointment.findMany({
+      where: whereCondition,
+      skip,
+      take: limit + 1,
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        appointmentEmployees: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                email: true,
               },
             },
           },
         },
-      }),
-      prisma.appointment.count({
-        where: whereCondition,
-      }),
-    ]);
+      },
+    });
+
+    const hasMore = appointments.length > limit;
+    const data = hasMore ? appointments.slice(0, limit) : appointments;
 
     res.status(200).json({
       success: true,
-      data: appointments.map(formatAppointmentResponse),
+      data: data.map(formatAppointmentResponse),
       pagination: {
-        total: totalCount,
         page,
         limit,
-        totalPages: Math.ceil(totalCount / limit),
+        hasMore,
       },
     });
   } catch (error) {

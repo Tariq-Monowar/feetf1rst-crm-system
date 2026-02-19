@@ -20,6 +20,7 @@ import {
   createCustomerRequirements,
   getCustomerRequirements,
   getAllVersorgungenByCustomerId,
+  _cursor_getAllCustomers,
 } from "./customers.controllers";
 import upload from "../../../config/multer.config";
 
@@ -30,6 +31,7 @@ router.post(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   createCustomerRequirements,
 );
+
 router.get(
   "/customer-requirements",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
@@ -46,6 +48,11 @@ router.post(
 router.get("/einlagen-in-produktion", getEinlagenInProduktion);
 
 router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllCustomers);
+router.get(
+  "/get-all-customers",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  _cursor_getAllCustomers,
+);
 
 router.get(
   "/search",
@@ -149,7 +156,5 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllVersorgungenByCustomerId,
 );
-
-
 
 export default router;

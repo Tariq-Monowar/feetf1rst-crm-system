@@ -629,6 +629,7 @@ model customers {
   shoeOrders               shoe_order[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
+  @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
   @@index([vorname, nachname])
   // @@index([telefonnummer])
   @@index([wohnort])
