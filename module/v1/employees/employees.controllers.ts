@@ -45,8 +45,8 @@ export const createEmployee = async (req: Request, res: Response) => {
       jobPosition,
     } = req.body;
 
-    const missingField = ["accountName", "employeeName", "password"].find(
-      (field) => !req.body[field]
+    const missingField = ["accountName", "employeeName"].find(
+      (field) => !req.body[field],
     );
 
     if (missingField) {
@@ -62,11 +62,14 @@ export const createEmployee = async (req: Request, res: Response) => {
       financialAccess === "true" ||
       financialAccess === 1;
 
+    // Hash password - use placeholder when not provided (employee can set later)
+    const hashedPassword = password ? await bcrypt.hash(password, 8) : null;
+
     const employeeData = {
       accountName,
       employeeName,
       email: email || null,
-      password,
+      password: hashedPassword,
       financialAccess: financialAccessBool,
       partnerId: req.user.id,
       image: file?.location || null,
@@ -201,7 +204,6 @@ export const getSingleEmployee = async (req: Request, res: Response) => {
       message: "Employee fetched successfully",
       data: existingEmployee,
     });
-
   } catch (error) {
     console.error("Get Single Employee error:", error);
     res.status(500).json({
