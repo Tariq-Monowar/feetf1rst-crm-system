@@ -1399,6 +1399,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         fertigstellungBis: true,
         createdAt: true,
         ausführliche_diagnose: true,
+        orderCategory: true,
         customer: {
           select: {
             id: true,
