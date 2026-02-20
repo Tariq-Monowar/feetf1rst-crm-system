@@ -5,7 +5,7 @@ import { createDiagnosisStatus, deleteDiagnosisStatus, getDiagnosisStatus } from
 const router = express.Router();
 
 router.post("/create-status", verifyUser("PARTNER", "EMPLOYEE"), createDiagnosisStatus);
-router.get("/delete-status", verifyUser("PARTNER", "EMPLOYEE"), deleteDiagnosisStatus);
+router.delete("/delete-status/:id", verifyUser("PARTNER", "EMPLOYEE"), deleteDiagnosisStatus);
 router.get("/get-status", verifyUser("PARTNER", "EMPLOYEE"), getDiagnosisStatus);
 
 
