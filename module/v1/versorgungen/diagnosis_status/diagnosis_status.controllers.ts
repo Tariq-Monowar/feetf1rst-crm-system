@@ -104,6 +104,7 @@ export const deleteDiagnosisStatus = async (req: Request, res: Response) => {
 export const getDiagnosisStatus = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
+    const search = (req.query.search as string)?.trim();
 
     if (!partnerId) {
       return res.status(401).json({
@@ -118,8 +119,15 @@ export const getDiagnosisStatus = async (req: Request, res: Response) => {
     const toResponse = (items: { id: string; name: string }[]) =>
       items.map(({ id, name }) => ({ id, name }));
 
+    const filterBySearch = (items: { id: string; name: string }[]) =>
+      search
+        ? items.filter((item) =>
+            item.name.toLowerCase().includes(search.toLowerCase())
+          )
+        : items;
+
     if (cached) {
-      const arr = JSON.parse(cached);
+      const arr = filterBySearch(JSON.parse(cached));
       return res.status(200).json({
         success: true,
         message: "Diagnosis status fetched successfully",
@@ -128,7 +136,12 @@ export const getDiagnosisStatus = async (req: Request, res: Response) => {
     }
 
     const arr = await prisma.diagnosis_status.findMany({
-      where: { partnerId },
+      where: {
+        partnerId,
+        ...(search && {
+          name: { contains: search, mode: "insensitive" },
+        }),
+      },
       orderBy: { createdAt: "desc" },
     });
 
