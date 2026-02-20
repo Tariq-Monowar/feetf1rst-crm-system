@@ -1399,7 +1399,18 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         fertigstellungBis: true,
         createdAt: true,
         ausführliche_diagnose: true,
+
         orderCategory: true,
+        service_name: true,
+        sonstiges_category: true,
+        insoleStandards: {
+          select: {
+            name: true,
+            left: true,
+            right: true,
+            isFavorite: true,
+          },
+        },
         customer: {
           select: {
             id: true,
@@ -1481,6 +1492,17 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       data: {
+        orderCategory: order.orderCategory === "sonstiges"? {
+          service_name: order.service_name ?? null,
+          sonstiges_category: order.sonstiges_category ?? null,
+        } : {
+          insoleStandards: order.insoleStandards.map((standard) => ({
+            name: standard.name ?? null,
+            left: standard.left ?? null,
+            right: standard.right ?? null,
+            isFavorite: standard.isFavorite ?? null,
+          })),
+        },
         customerName: `${order.customer.vorname} ${order.customer.nachname}`,
         versorgungName: order.product?.name ?? null,
         diagnosisStatus: order.product?.diagnosis_status ?? null,
