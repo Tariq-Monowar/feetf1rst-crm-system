@@ -79,6 +79,7 @@ model User {
   feetf1RstShopInterests      feetf1rst_shop_interests[]
   stockMaterials              stock_material[]
   shoeOrders                  shoe_order[]
+  diagnosisStatuses           diagnosis_status[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -342,8 +343,8 @@ model leave_application {
   employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   reason leave_application_reason?
-  date  DateTime
-  type  leave_application_type @default(FULL)
+  date   DateTime
+  type   leave_application_type    @default(FULL)
 
   status leave_application_status @default(Pending)
 
@@ -506,6 +507,20 @@ enum versorgungenDiagnosisStatus {
   SPREIZFUSS
   SENKFUSS
   PLATTFUSS
+}
+
+model diagnosis_status {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  //relation with partner
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([name])
+  @@index([id])
+  @@index([partnerId])
 }
 
 model customer_price {
@@ -1772,53 +1787,6 @@ model custom_shafts {
    * /**
    * /**
    * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1842,53 +1810,6 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
    * /**
    * /**
    * /**
@@ -2296,7 +2217,7 @@ model software_version {
 }
 
 //--------------------------------------------------------
-//------------------------ALL settings--------------------
+//----------------------ALL settings----------------------
 //--------------------------------------------------------
 
 model partners_settings {

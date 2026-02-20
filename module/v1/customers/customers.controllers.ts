@@ -1025,226 +1025,226 @@ export const getCustomerById = async (req: Request, res: Response) => {
 };
 //----------------------------------------end getCustomerById--------------------------------------------------
 
-export const assignVersorgungToCustomer = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const { customerId, versorgungenId } = req.params;
-    const [customer, versorgung] = await Promise.all([
-      prisma.customers.findUnique({ where: { id: customerId } }),
-      prisma.versorgungen.findUnique({ where: { id: versorgungenId } }),
-    ]);
-    if (!customer)
-      return res
-        .status(404)
-        .json({ success: false, message: "Customer not found" });
-    if (!versorgung)
-      return res
-        .status(404)
-        .json({ success: false, message: "Versorgung not found" });
-    // Get status from request body or use default
-    const { status } = req.body;
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "status is required (Alltagseinlagen, Sporteinlagen, or Businesseinlagen)",
-      });
-    }
+// export const assignVersorgungToCustomer = async (
+//   req: Request,
+//   res: Response
+// ) => {
+//   try {
+//     const { customerId, versorgungenId } = req.params;
+//     const [customer, versorgung] = await Promise.all([
+//       prisma.customers.findUnique({ where: { id: customerId } }),
+//       prisma.versorgungen.findUnique({ where: { id: versorgungenId } }),
+//     ]);
+//     if (!customer)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Customer not found" });
+//     if (!versorgung)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Versorgung not found" });
+//     // Get status from request body or use default
+//     const { status } = req.body;
+//     if (!status) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "status is required (Alltagseinlagen, Sporteinlagen, or Businesseinlagen)",
+//       });
+//     }
 
-    // Find existing record first
-    const diagnosisFilter =
-      versorgung.diagnosis_status && versorgung.diagnosis_status.length > 0
-        ? { hasSome: versorgung.diagnosis_status }
-        : undefined;
+//     // Find existing record first
+//     const diagnosisFilter =
+//       versorgung.diagnosis_status && versorgung.diagnosis_status.length > 0
+//         ? { hasSome: versorgung.diagnosis_status }
+//         : undefined;
 
-    const existingRecord = await prisma.customer_versorgungen.findFirst({
-      where: {
-        customerId,
-        status: status as any,
-        diagnosis_status: diagnosisFilter,
-      },
-    });
-    // Serialize material array to string for compatibility with current Prisma client
-    const materialString = serializeMaterialField(versorgung.material);
+//     const existingRecord = await prisma.customer_versorgungen.findFirst({
+//       where: {
+//         customerId,
+//         status: status as any,
+//         diagnosis_status: diagnosisFilter,
+//       },
+//     });
+//     // Serialize material array to string for compatibility with current Prisma client
+//     const materialString = serializeMaterialField(versorgung.material);
 
-    const createData: any = {
-      name: versorgung.name,
-      rohlingHersteller: versorgung.rohlingHersteller,
-      artikelHersteller: versorgung.artikelHersteller,
-      versorgung: versorgung.versorgung,
-      material: materialString,
-      status: status as any,
-      diagnosis_status: versorgung.diagnosis_status,
-      customerId,
-    };
+//     const createData: any = {
+//       name: versorgung.name,
+//       rohlingHersteller: versorgung.rohlingHersteller,
+//       artikelHersteller: versorgung.artikelHersteller,
+//       versorgung: versorgung.versorgung,
+//       material: materialString,
+//       status: status as any,
+//       diagnosis_status: versorgung.diagnosis_status,
+//       customerId,
+//     };
 
-    // Add optional fields if provided
-    if (req.body.cover_types !== undefined) {
-      createData.cover_types = req.body.cover_types;
-    }
-    if (req.body.laser_print_prices !== undefined) {
-      createData.laser_print_prices = req.body.laser_print_prices;
-    }
+//     // Add optional fields if provided
+//     if (req.body.cover_types !== undefined) {
+//       createData.cover_types = req.body.cover_types;
+//     }
+//     if (req.body.laser_print_prices !== undefined) {
+//       createData.laser_print_prices = req.body.laser_print_prices;
+//     }
 
-    if (existingRecord) {
-      const updateData: any = {
-        name: versorgung.name,
-        rohlingHersteller: versorgung.rohlingHersteller,
-        artikelHersteller: versorgung.artikelHersteller,
-        versorgung: versorgung.versorgung,
-        material: materialString,
-        status: status as any,
-        diagnosis_status: versorgung.diagnosis_status,
-      };
+//     if (existingRecord) {
+//       const updateData: any = {
+//         name: versorgung.name,
+//         rohlingHersteller: versorgung.rohlingHersteller,
+//         artikelHersteller: versorgung.artikelHersteller,
+//         versorgung: versorgung.versorgung,
+//         material: materialString,
+//         status: status as any,
+//         diagnosis_status: versorgung.diagnosis_status,
+//       };
 
-      // Add optional fields if provided
-      if (req.body.cover_types !== undefined) {
-        updateData.cover_types = req.body.cover_types;
-      }
-      if (req.body.laser_print_prices !== undefined) {
-        updateData.laser_print_prices = req.body.laser_print_prices;
-      }
+//       // Add optional fields if provided
+//       if (req.body.cover_types !== undefined) {
+//         updateData.cover_types = req.body.cover_types;
+//       }
+//       if (req.body.laser_print_prices !== undefined) {
+//         updateData.laser_print_prices = req.body.laser_print_prices;
+//       }
 
-      await prisma.customer_versorgungen.update({
-        where: { id: existingRecord.id },
-        data: updateData,
-      });
-    } else {
-      await prisma.customer_versorgungen.create({
-        data: createData,
-      });
-    }
-    const updatedCustomer = await prisma.customers.findUnique({
-      where: { id: customerId },
-      include: {
-        versorgungen: true,
-        screenerFile: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-      },
-    });
-    const latestScreener = updatedCustomer?.screenerFile[0] || null;
-    const screenerData = latestScreener
-      ? {
-          id: latestScreener.id,
-          customerId: latestScreener.customerId,
-          picture_10: latestScreener.picture_10 || null,
-          picture_23: latestScreener.picture_23 || null,
-          paint_24: latestScreener.paint_24 || null,
-          paint_23: latestScreener.paint_23 || null,
-          picture_11: latestScreener.picture_11 || null,
-          picture_24: latestScreener.picture_24 || null,
-          threed_model_left: latestScreener.threed_model_left || null,
-          threed_model_right: latestScreener.threed_model_right || null,
-          picture_17: latestScreener.picture_17 || null,
-          picture_16: latestScreener.picture_16 || null,
-          csvFile: latestScreener.csvFile || null,
-          createdAt: latestScreener.createdAt,
-          updatedAt: latestScreener.updatedAt,
-        }
-      : null;
+//       await prisma.customer_versorgungen.update({
+//         where: { id: existingRecord.id },
+//         data: updateData,
+//       });
+//     } else {
+//       await prisma.customer_versorgungen.create({
+//         data: createData,
+//       });
+//     }
+//     const updatedCustomer = await prisma.customers.findUnique({
+//       where: { id: customerId },
+//       include: {
+//         versorgungen: true,
+//         screenerFile: {
+//           orderBy: { createdAt: "desc" },
+//           take: 1,
+//         },
+//       },
+//     });
+//     const latestScreener = updatedCustomer?.screenerFile[0] || null;
+//     const screenerData = latestScreener
+//       ? {
+//           id: latestScreener.id,
+//           customerId: latestScreener.customerId,
+//           picture_10: latestScreener.picture_10 || null,
+//           picture_23: latestScreener.picture_23 || null,
+//           paint_24: latestScreener.paint_24 || null,
+//           paint_23: latestScreener.paint_23 || null,
+//           picture_11: latestScreener.picture_11 || null,
+//           picture_24: latestScreener.picture_24 || null,
+//           threed_model_left: latestScreener.threed_model_left || null,
+//           threed_model_right: latestScreener.threed_model_right || null,
+//           picture_17: latestScreener.picture_17 || null,
+//           picture_16: latestScreener.picture_16 || null,
+//           csvFile: latestScreener.csvFile || null,
+//           createdAt: latestScreener.createdAt,
+//           updatedAt: latestScreener.updatedAt,
+//         }
+//       : null;
 
-    const formattedCustomer = {
-      ...updatedCustomer,
-      screenerFile: screenerData ? [screenerData] : [],
-    };
+//     const formattedCustomer = {
+//       ...updatedCustomer,
+//       screenerFile: screenerData ? [screenerData] : [],
+//     };
 
-    res.status(200).json({
-      success: true,
-      message: "Versorgung assigned/replaced successfully",
-      data: formattedCustomer,
-    });
-  } catch (error: any) {
-    console.error("Assign Versorgung Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       message: "Versorgung assigned/replaced successfully",
+//       data: formattedCustomer,
+//     });
+//   } catch (error: any) {
+//     console.error("Assign Versorgung Error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Something went wrong",
+//       error: error.message,
+//     });
+//   }
+// };
 
-export const undoAssignVersorgungToCustomer = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const { customerId, versorgungenId } = req.params;
+// export const undoAssignVersorgungToCustomer = async (
+//   req: Request,
+//   res: Response
+// ) => {
+//   try {
+//     const { customerId, versorgungenId } = req.params;
 
-    const existing = await prisma.customer_versorgungen.findFirst({
-      where: {
-        customerId,
-        name:
-          (
-            await prisma.versorgungen.findUnique({
-              where: { id: versorgungenId },
-            })
-          )?.name || "",
-      },
-    });
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Assigned Versorgung not found for this customer",
-      });
-    }
+//     const existing = await prisma.customer_versorgungen.findFirst({
+//       where: {
+//         customerId,
+//         name:
+//           (
+//             await prisma.versorgungen.findUnique({
+//               where: { id: versorgungenId },
+//             })
+//           )?.name || "",
+//       },
+//     });
+//     if (!existing) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Assigned Versorgung not found for this customer",
+//       });
+//     }
 
-    await prisma.customer_versorgungen.delete({ where: { id: existing.id } });
+//     await prisma.customer_versorgungen.delete({ where: { id: existing.id } });
 
-    const updatedCustomer = await prisma.customers.findUnique({
-      where: { id: customerId },
-      include: {
-        versorgungen: true,
-        screenerFile: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-      },
-    });
+//     const updatedCustomer = await prisma.customers.findUnique({
+//       where: { id: customerId },
+//       include: {
+//         versorgungen: true,
+//         screenerFile: {
+//           orderBy: { createdAt: "desc" },
+//           take: 1,
+//         },
+//       },
+//     });
 
-    const latestScreener = updatedCustomer?.screenerFile[0] || null;
-    const screenerData = latestScreener
-      ? {
-          id: latestScreener.id,
-          customerId: latestScreener.customerId,
-          picture_10: latestScreener.picture_10 || null,
-          picture_23: latestScreener.picture_23 || null,
-          paint_24: latestScreener.paint_24 || null,
-          paint_23: latestScreener.paint_23 || null,
-          picture_11: latestScreener.picture_11 || null,
-          picture_24: latestScreener.picture_24 || null,
-          threed_model_left: latestScreener.threed_model_left || null,
-          threed_model_right: latestScreener.threed_model_right || null,
-          picture_17: latestScreener.picture_17 || null,
-          picture_16: latestScreener.picture_16 || null,
-          csvFile: latestScreener.csvFile || null,
-          createdAt: latestScreener.createdAt,
-          updatedAt: latestScreener.updatedAt,
-        }
-      : null;
+//     const latestScreener = updatedCustomer?.screenerFile[0] || null;
+//     const screenerData = latestScreener
+//       ? {
+//           id: latestScreener.id,
+//           customerId: latestScreener.customerId,
+//           picture_10: latestScreener.picture_10 || null,
+//           picture_23: latestScreener.picture_23 || null,
+//           paint_24: latestScreener.paint_24 || null,
+//           paint_23: latestScreener.paint_23 || null,
+//           picture_11: latestScreener.picture_11 || null,
+//           picture_24: latestScreener.picture_24 || null,
+//           threed_model_left: latestScreener.threed_model_left || null,
+//           threed_model_right: latestScreener.threed_model_right || null,
+//           picture_17: latestScreener.picture_17 || null,
+//           picture_16: latestScreener.picture_16 || null,
+//           csvFile: latestScreener.csvFile || null,
+//           createdAt: latestScreener.createdAt,
+//           updatedAt: latestScreener.updatedAt,
+//         }
+//       : null;
 
-    const formattedCustomer = {
-      ...updatedCustomer,
-      screenerFile: screenerData ? [screenerData] : [],
-    };
+//     const formattedCustomer = {
+//       ...updatedCustomer,
+//       screenerFile: screenerData ? [screenerData] : [],
+//     };
 
-    res.status(200).json({
-      success: true,
-      message: "Versorgung assignment undone successfully",
-      data: formattedCustomer,
-    });
-  } catch (error: any) {
-    console.error("Undo Assign Versorgung Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       message: "Versorgung assignment undone successfully",
+//       data: formattedCustomer,
+//     });
+//   } catch (error: any) {
+//     console.error("Undo Assign Versorgung Error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Something went wrong",
+//       error: error.message,
+//     });
+//   }
+// };
 
 // export const searchCustomers = async (req: Request, res: Response) => {
 //   try {

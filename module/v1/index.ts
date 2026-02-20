@@ -12,6 +12,7 @@ import appointment from "./appointment/appointment.routes";
 
 import versorgungen from "./versorgungen/versorgungen.routes";
 import privet_supply from "./versorgungen/privet_supply/privet_supply.routes";
+import diagnosis_status from "./versorgungen/diagnosis_status/diagnosis_status.routes";
 
 import employees from "./employees/employees.routes";
 import employeeAuth from "./employees/auth/employee.auth.routes";
@@ -59,6 +60,7 @@ const moduleRoutes = [
 
   { path: "/versorgungen", route: versorgungen },
   { path: "/privet-supply", route: privet_supply },
+  { path: "/diagnosis-status", route: diagnosis_status },
 
   { path: "/employees", route: employees },
   { path: "/employees/auth", route: employeeAuth },

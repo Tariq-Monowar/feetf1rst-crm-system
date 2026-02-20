@@ -34,4 +34,6 @@ router.post("/supply-status", verifyUser("PARTNER", "EMPLOYEE"), upload.single("
 router.patch("/supply-status/:id", verifyUser("PARTNER", "EMPLOYEE"), upload.single("image"), updateSupplyStatus);
 router.delete("/supply-status/:id", verifyUser("PARTNER", "EMPLOYEE"), deleteSupplyStatus);
 
+
+
 export default router;
