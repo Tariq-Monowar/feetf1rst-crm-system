@@ -11,6 +11,8 @@
     "migrate:diagnosis-status-to-string": "ts-node scripts/migrate-diagnosis-status-to-string.ts",
     "fix:cache-lookup": "ts-node scripts/fix-cache-lookup.ts",
     "clean:diagnosis-status-data": "ts-node scripts/clean-diagnosis-status-data.ts",
+    "backup:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts backup",
+    "restore:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts restore",
     "migrate:rename-transitions": "ts-node scripts/rename-transitions-table.ts",
     "migrate:employees-role": "ts-node scripts/migrate-employees-role.ts",
     "migrate:employees-password": "ts-node scripts/migrate-employees-password.ts",
