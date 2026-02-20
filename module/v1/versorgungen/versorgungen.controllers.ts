@@ -27,11 +27,9 @@ export const getAllVersorgungen = async (req: Request, res: Response) => {
       filters.supplyStatus = { name: status as string };
     }
 
-    // Filter by diagnosis_status (now an array, use hasEvery or has to check if array contains the value)
+    // Filter by diagnosis_status (String[] - check if array contains the value)
     if (typeof diagnosis_status === "string" && diagnosis_status.length) {
-      filters.diagnosis_status = {
-        has: diagnosis_status as any,
-      } as any;
+      filters.diagnosis_status = { has: diagnosis_status };
     }
 
     const totalCount = await prisma.versorgungen.count({ where: filters });
@@ -146,44 +144,15 @@ export const createVersorgungen = async (req: Request, res: Response) => {
     }
 
     // Validate diagnosis_status (now accepts array)
-    const validDiagnosisStatuses = [
-      "HAMMERZEHEN_KRALLENZEHEN",
-      "MORTON_NEUROM",
-      "FUSSARTHROSE",
-      "STRESSFRAKTUREN_IM_FUSS",
-      "DIABETISCHES_FUSSSYNDROM",
-      "HOHLFUSS",
-      "KNICKFUSS",
-      "KNICK_SENKFUSS",
-      "HALLUX_VALGUS",
-      "HALLUX_RIGIDUS",
-      "PLANTARFASZIITIS",
-      "FERSENSPORN",
-      "SPREIZFUSS",
-      "SENKFUSS",
-      "PLATTFUSS",
-    ];
-
-    // Normalize diagnosis_status to array (empty array means no status)
+    // Normalize diagnosis_status to array (free - any string from partner's diagnosis_status table)
     let normalizedDiagnosisStatus: string[] = [];
     if (diagnosis_status !== undefined && diagnosis_status !== null) {
       if (Array.isArray(diagnosis_status)) {
-        normalizedDiagnosisStatus = diagnosis_status.filter(Boolean);
+        normalizedDiagnosisStatus = diagnosis_status
+          .filter(Boolean)
+          .map((s) => String(s).trim());
       } else if (typeof diagnosis_status === "string") {
-        normalizedDiagnosisStatus = [diagnosis_status];
-      }
-
-      // Validate all values in the array
-      if (normalizedDiagnosisStatus.length > 0) {
-        const invalidStatuses = normalizedDiagnosisStatus.filter(
-          (status) => !validDiagnosisStatuses.includes(status),
-        );
-        if (invalidStatuses.length > 0) {
-          return res.status(400).json({
-            success: false,
-            message: `Invalid diagnosis_status values: ${invalidStatuses.join(", ")}. Valid values are: ${validDiagnosisStatuses.join(", ")}`,
-          });
-        }
+        normalizedDiagnosisStatus = [diagnosis_status.trim()];
       }
     }
 
@@ -249,7 +218,7 @@ export const createVersorgungen = async (req: Request, res: Response) => {
         versorgung,
         material: normalizedMaterial,
         supplyType: "public",
-        diagnosis_status: normalizedDiagnosisStatus as any,
+        diagnosis_status: normalizedDiagnosisStatus,
         partner: {
           connect: { id: partnerId },
         },
@@ -328,53 +297,22 @@ export const patchVersorgungen = async (req: Request, res: Response) => {
 
     const { material, storeId, supplyStatusId, ...rest } = req.body;
 
-    // Validate and normalize diagnosis_status if provided (now accepts array)
+    // Normalize diagnosis_status if provided (free - any string)
     if (rest.diagnosis_status !== undefined) {
-      const validDiagnosisStatuses = [
-        "HAMMERZEHEN_KRALLENZEHEN",
-        "MORTON_NEUROM",
-        "FUSSARTHROSE",
-        "STRESSFRAKTUREN_IM_FUSS",
-        "DIABETISCHES_FUSSSYNDROM",
-        "HOHLFUSS",
-        "KNICKFUSS",
-        "KNICK_SENKFUSS",
-        "HALLUX_VALGUS",
-        "HALLUX_RIGIDUS",
-        "PLANTARFASZIITIS",
-        "FERSENSPORN",
-        "SPREIZFUSS",
-        "SENKFUSS",
-        "PLATTFUSS",
-      ];
-
       let normalizedDiagnosisStatus: string[] = [];
       if (
         rest.diagnosis_status !== null &&
         rest.diagnosis_status !== undefined
       ) {
         if (Array.isArray(rest.diagnosis_status)) {
-          normalizedDiagnosisStatus = rest.diagnosis_status.filter(Boolean);
+          normalizedDiagnosisStatus = rest.diagnosis_status
+            .filter(Boolean)
+            .map((s) => String(s).trim());
         } else if (typeof rest.diagnosis_status === "string") {
-          normalizedDiagnosisStatus = [rest.diagnosis_status];
-        }
-
-        // Validate all values in the array
-        if (normalizedDiagnosisStatus.length > 0) {
-          const invalidStatuses = normalizedDiagnosisStatus.filter(
-            (status) => !validDiagnosisStatuses.includes(status),
-          );
-          if (invalidStatuses.length > 0) {
-            return res.status(400).json({
-              success: false,
-              message: `Invalid diagnosis_status values: ${invalidStatuses.join(", ")}. Valid values are: ${validDiagnosisStatuses.join(", ")}`,
-            });
-          }
+          normalizedDiagnosisStatus = [rest.diagnosis_status.trim()];
         }
       }
-
-      // Update the rest object with normalized array
-      rest.diagnosis_status = normalizedDiagnosisStatus as any;
+      rest.diagnosis_status = normalizedDiagnosisStatus;
     }
 
     const updateData: Prisma.VersorgungenUpdateInput = {};
@@ -559,34 +497,6 @@ export const getVersorgungenByDiagnosis = async (
       });
     }
 
-    // Validate diagnosis_status
-    const validDiagnosisStatuses = [
-      "HAMMERZEHEN_KRALLENZEHEN",
-      "MORTON_NEUROM",
-      "FUSSARTHROSE",
-      "STRESSFRAKTUREN_IM_FUSS",
-      "DIABETISCHES_FUSSSYNDROM",
-      "HOHLFUSS",
-      "KNICKFUSS",
-      "KNICK_SENKFUSS",
-      "HALLUX_VALGUS",
-      "HALLUX_RIGIDUS",
-      "PLANTARFASZIITIS",
-      "FERSENSPORN",
-      "SPREIZFUSS",
-      "SENKFUSS",
-      "PLATTFUSS",
-    ];
-
-    if (!validDiagnosisStatuses.includes(diagnosis_status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid diagnosis_status. Valid values are: ${validDiagnosisStatuses.join(
-          ", ",
-        )}`,
-      });
-    }
-
     // Build the filter query - only public; this API is not for private
     const whereClause: Prisma.VersorgungenWhereInput = {
       partnerId,
@@ -595,9 +505,7 @@ export const getVersorgungenByDiagnosis = async (
 
     // If diagnosis_status filter is provided, check if array contains the value
     if (diagnosis_status) {
-      whereClause.diagnosis_status = {
-        has: diagnosis_status as any,
-      } as any;
+      whereClause.diagnosis_status = { has: diagnosis_status };
     }
 
     // If status filter is provided, filter by supplyStatus name

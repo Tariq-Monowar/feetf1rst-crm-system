@@ -5,8 +5,8 @@ generator client {
 // The datasource `url` property is deprecated in Prisma 5+. Connection info should be moved
 // to prisma.config.ts, and the schema only retains the provider.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
 }
 
 model User {
@@ -420,7 +420,7 @@ model Versorgungen {
   // langenempfehlung Json?
 
   // status           versorgungenStatus
-  diagnosis_status versorgungenDiagnosisStatus[] @default([])
+  diagnosis_status String[] @default([])
 
   // createdBy String
   updatedBy String?
@@ -489,24 +489,6 @@ enum versorgungenStatus {
   Alltagseinlagen
   Sporteinlagen
   Businesseinlagen
-}
-
-enum versorgungenDiagnosisStatus {
-  HAMMERZEHEN_KRALLENZEHEN
-  MORTON_NEUROM
-  FUSSARTHROSE
-  STRESSFRAKTUREN_IM_FUSS
-  DIABETISCHES_FUSSSYNDROM
-  HOHLFUSS
-  KNICKFUSS
-  KNICK_SENKFUSS
-  HALLUX_VALGUS
-  HALLUX_RIGIDUS
-  PLANTARFASZIITIS
-  FERSENSPORN
-  SPREIZFUSS
-  SENKFUSS
-  PLATTFUSS
 }
 
 model diagnosis_status {
@@ -843,7 +825,7 @@ model customer_versorgungen {
   material String[]
 
   // status           versorgungenStatus
-  diagnosis_status versorgungenDiagnosisStatus[] @default([])
+  diagnosis_status String[] @default([])
 
   status             versorgungenStatus
   cover_types        String?
@@ -1113,7 +1095,7 @@ model customerProduct {
   langenempfehlung  Json
 
   status           versorgungenStatus
-  diagnosis_status versorgungenDiagnosisStatus[] @default([])
+  diagnosis_status String[] @default([])
 
   order customerOrders?
 
