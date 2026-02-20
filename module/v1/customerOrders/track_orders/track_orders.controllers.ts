@@ -1531,6 +1531,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderStatus: true,
         geschaeftsstandort: true,
         barcodeCreatedAt: true,
+        barcodeLabel: true,
         createdAt: true,
         wohnort: true,
         totalPrice: true,
@@ -1548,11 +1549,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
             image: true,
             hauptstandort: true,
             busnessName: true,
-            accountInfos: {
-              select: {
-                barcodeLabel: true,
-              },
-            },
           },
         },
       },
@@ -1583,20 +1579,45 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
       completedAt = statusHistory?.createdAt || null;
     }
 
+    // barcode created at: prefer Abholbereit_Versandt history, else order.barcodeCreatedAt
+    let barcodeCreatedAt: Date | null = order.barcodeCreatedAt;
+    if (order.orderStatus === "Abholbereit_Versandt") {
+      const statusHistory = await prisma.customerOrdersHistory.findFirst({
+        where: {
+          orderId: orderId,
+          statusTo: "Abholbereit_Versandt",
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          createdAt: true,
+        },
+        take: 1,
+      });
+      barcodeCreatedAt = statusHistory?.createdAt ?? order.barcodeCreatedAt;
+    }
+
+    const customerName = order.customer
+      ? `${order.customer.vorname ?? ""} ${order.customer.nachname ?? ""}`.trim()
+      : null;
+
     res.status(200).json({
       success: true,
       data: {
-        partner: {
-          name: order.partner.busnessName || null,
-          // Image is already S3 URL, use directly
-          image: order.partner.image || null,
-        },
-        customer: `${order.customer.vorname} ${order.customer.nachname}`,
-        customerNumber: order.customer.customerNumber,
-        barcodeCreatedAt: order.barcodeCreatedAt,
+        partner: order.partner
+          ? {
+              name: order.partner.busnessName || null,
+              image: order.partner.image || null,
+            }
+          : null,
+        customer: customerName,
+        customerNumber: order.customer?.customerNumber ?? null,
+        barcodeLabel: order.barcodeLabel ?? null,
+        barcodeCreatedAt,
         orderNumber: order.orderNumber,
         orderStatus: order.orderStatus,
-        completedAt: completedAt, // Time when status changed to "Ausgeführt"
+        completedAt,
         partnerAddress: order.geschaeftsstandort,
         wohnort: order.wohnort,
         createdAt: order.createdAt,
