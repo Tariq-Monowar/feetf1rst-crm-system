@@ -1113,9 +1113,8 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
 
 export const getAllOrders = async (req: Request, res: Response) => {
   try {
-    const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const cursor = req.query.cursor as string | undefined;
 
     const type = String(req.query.type || "rady_insole").trim();
     if (type !== "rady_insole" && type !== "milling_block" && type !== "sonstiges") {
@@ -1200,81 +1199,63 @@ export const getAllOrders = async (req: Request, res: Response) => {
       where.AND = searchParts;
     }
 
-    const [orders, totalCount] = await Promise.all([
-      prisma.customerOrders.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          orderNumber: true,
-          totalPrice: true,
-          orderStatus: true,
-          statusUpdate: true,
-          invoice: true,
-          createdAt: true,
-          updatedAt: true,
-          priority: true,
-          bezahlt: true,
-          barcodeLabel: true,
-          fertigstellungBis: true,
-          geschaeftsstandort: true,
-          auftragsDatum: true,
-          versorgung_note: true,
-          orderCategory: true,
-          service_name: true,
-          sonstiges_category: true,
-          customer: {
-            select: {
-              id: true,
-              vorname: true,
-              nachname: true,
-              email: true,
-              wohnort: true,
-              customerNumber: true,
-            },
-          },
-          product: true,
-          versorgung: true,
-          employee: {
-            select: { accountName: true, employeeName: true, email: true },
+    const orders = await prisma.customerOrders.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        totalPrice: true,
+        orderStatus: true,
+        statusUpdate: true,
+        invoice: true,
+        createdAt: true,
+        updatedAt: true,
+        priority: true,
+        bezahlt: true,
+        barcodeLabel: true,
+        fertigstellungBis: true,
+        geschaeftsstandort: true,
+        auftragsDatum: true,
+        versorgung_note: true,
+        orderCategory: true,
+        service_name: true,
+        sonstiges_category: true,
+        customer: {
+          select: {
+            id: true,
+            vorname: true,
+            nachname: true,
+            email: true,
+            wohnort: true,
+            customerNumber: true,
           },
         },
-      }),
-      prisma.customerOrders.count({ where }),
-    ]);
+        product: true,
+        versorgung: true,
+        employee: {
+          select: { accountName: true, employeeName: true, email: true },
+        },
+      },
+    });
 
-    const totalPages = Math.ceil(totalCount / limit);
-    const filters = [];
-    if (req.query.orderStatus) filters.push(`status: ${req.query.orderStatus}`);
-    if (customerNumber) filters.push(`customer number: ${customerNumber}`);
-    if (orderNumber) filters.push(`order number: ${orderNumber}`);
-    if (customerName) filters.push(`customer name: "${customerName}"`);
+    const hasNextPage = orders.length > limit;
+    const data = hasNextPage ? orders.slice(0, limit) : orders;
+    // const nextCursor = hasNextPage ? data[data.length - 1].id : null;
 
     res.status(200).json({
       success: true,
-      message: filters.length
-        ? `Orders with ${filters.join(", ")}`
-        : "All orders fetched successfully",
-      data: orders.map((o) => ({
+      data: data.map((o) => ({
         ...o,
         invoice: o.invoice || null,
         barcodeLabel: o.barcodeLabel || null,
       })),
       pagination: {
-        totalItems: totalCount,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-        filter: days && !isNaN(days) ? `Last ${days} days` : "All time",
-        search: {
-          customerNumber: customerNumber || null,
-          orderNumber: orderNumber || null,
-          customerName: customerName || null,
-        },
+        limit,
+        // nextCursor,
+        hasNextPage,
       },
     });
   } catch (error: any) {
