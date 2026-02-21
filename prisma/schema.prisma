@@ -1013,7 +1013,7 @@ model customerOrderInsurance {
   price       Float?
   description Json?
 
-  insuranceStatus insuranceStatus?
+  // insuranceStatus insuranceStatus?
 
   vat_country String?
 
@@ -1027,11 +1027,11 @@ model customerOrderInsurance {
   @@index([updatedAt])
 }
 
-enum insuranceStatus {
-  L
-  R
-  BDS
-}
+// enum insuranceStatus {
+//   L
+//   R
+//   BDS
+// }
 
 enum vat_countrys {
   Pending
