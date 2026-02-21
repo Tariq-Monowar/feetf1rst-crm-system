@@ -4,7 +4,6 @@ import {
   getAllPickup,
   getPickupCalculation,
   getPickupByOrderId,
-  createPickupNote,
   getPickupPrice,
   posReceipt,
   handcashPayment,
@@ -27,11 +26,11 @@ router.get(
   getPickupByOrderId,
 );
 
-router.post(
-  "/manage-pickup-note",
-  verifyUser("PARTNER", "EMPLOYEE"),
-  createPickupNote,
-);
+// router.post(
+//   "/manage-pickup-note",
+//   verifyUser("PARTNER", "EMPLOYEE"),
+//   createPickupNote,
+// );
 
 //Order Process
 router.get(

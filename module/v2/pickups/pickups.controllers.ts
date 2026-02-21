@@ -40,7 +40,8 @@ export const getPickupByOrderId = async (req: Request, res: Response) => {
             bezahlt: true,
             orderStatus: true,
             fertigstellungBis: true,
-            cashNites: true,
+            // cashNites: true,
+            versorgung_note: true,
             createdAt: true,
             partnerId: true,
             kundenName: true,
@@ -176,7 +177,8 @@ export const getPickupByOrderId = async (req: Request, res: Response) => {
                 : o.replace(/_/g, " "),
           orderStatus: order.orderStatus,
           timeline,
-          notes: order.cashNites ?? null,
+          // notes: order.cashNites ?? null,
+          notes: order.versorgung_note ?? null,
           canPay: remaining > 0,
           canMarkAsPickedUp: o === "Abholbereit_Versandt",
           canSendReminder: o === "Abholbereit_Versandt",
@@ -374,93 +376,93 @@ export const getPickupCalculation = async (req: Request, res: Response) => {
   }
 };
 
-export const createPickupNote = async (req: Request, res: Response) => {
-  try {
-    const { orderId, note } = req.body;
-    const type = req.query.type as "insole" | "shoes";
+// export const createPickupNote = async (req: Request, res: Response) => {
+//   try {
+//     const { orderId, note } = req.body;
+//     const type = req.query.type as "insole" | "shoes";
 
-    if (!type) {
-      return res.status(400).json({
-        success: false,
-        message: "Type is required",
-        validTypes: ["insole", "shoes"],
-      });
-    }
-    if (!orderId) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
-    }
-    const noteStr = String(note ?? "").trim();
-    if (!noteStr) {
-      return res.status(400).json({
-        success: false,
-        message: "Note is required",
-      });
-    }
+//     if (!type) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Type is required",
+//         validTypes: ["insole", "shoes"],
+//       });
+//     }
+//     if (!orderId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Order ID is required",
+//       });
+//     }
+//     const noteStr = String(note ?? "").trim();
+//     if (!noteStr) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Note is required",
+//       });
+//     }
 
-    if (type === "insole") {
-      const order = await prisma.customerOrders.findFirst({
-        where: { id: orderId, partnerId: req.user.id },
-        select: { id: true, cashNites: true },
-      });
-      if (!order) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Order not found" });
-      }
-      const updated = await prisma.customerOrders.update({
-        where: { id: orderId },
-        data: { cashNites: noteStr },
-        select: { id: true, cashNites: true },
-      });
-      return res.status(200).json({
-        success: true,
-        message: order.cashNites
-          ? "Pickup note updated"
-          : "Pickup note created",
-        data: updated,
-      });
-    }
-    if (type === "shoes") {
-      // type === "shoes" -> massschuhe_order
-      const order = await prisma.massschuhe_order.findFirst({
-        where: { id: orderId, userId: req.user.id },
-        select: { id: true, cashNites: true },
-      });
-      if (!order) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Order not found" });
-      }
-      const updated = await prisma.massschuhe_order.update({
-        where: { id: orderId },
-        data: { cashNites: noteStr },
-        select: { id: true, cashNites: true },
-      });
-      return res.status(200).json({
-        success: true,
-        message: order.cashNites
-          ? "Pickup note updated"
-          : "Pickup note created",
-        data: updated,
-      });
-    }
-    return res.status(400).json({
-      success: false,
-      message: "Invalid product type",
-      validTypes: "may be in the future",
-    });
-  } catch (error: any) {
-    console.error("createPickupNote error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error?.message,
-    });
-  }
-};
+//     if (type === "insole") {
+//       const order = await prisma.customerOrders.findFirst({
+//         where: { id: orderId, partnerId: req.user.id },
+//         select: { id: true, cashNites: true },
+//       });
+//       if (!order) {
+//         return res
+//           .status(404)
+//           .json({ success: false, message: "Order not found" });
+//       }
+//       const updated = await prisma.customerOrders.update({
+//         where: { id: orderId },
+//         data: { cashNites: noteStr },
+//         select: { id: true, cashNites: true },
+//       });
+//       return res.status(200).json({
+//         success: true,
+//         message: order.cashNites
+//           ? "Pickup note updated"
+//           : "Pickup note created",
+//         data: updated,
+//       });
+//     }
+//     if (type === "shoes") {
+//       // type === "shoes" -> massschuhe_order
+//       const order = await prisma.massschuhe_order.findFirst({
+//         where: { id: orderId, userId: req.user.id },
+//         select: { id: true, cashNites: true },
+//       });
+//       if (!order) {
+//         return res
+//           .status(404)
+//           .json({ success: false, message: "Order not found" });
+//       }
+//       const updated = await prisma.massschuhe_order.update({
+//         where: { id: orderId },
+//         data: { cashNites: noteStr },
+//         select: { id: true, cashNites: true },
+//       });
+//       return res.status(200).json({
+//         success: true,
+//         message: order.cashNites
+//           ? "Pickup note updated"
+//           : "Pickup note created",
+//         data: updated,
+//       });
+//     }
+//     return res.status(400).json({
+//       success: false,
+//       message: "Invalid product type",
+//       validTypes: "may be in the future",
+//     });
+//   } catch (error: any) {
+//     console.error("createPickupNote error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error?.message,
+//     });
+//   }
+// };
 
 export const getPickupPrice = async (req: Request, res: Response) => {
   try {
