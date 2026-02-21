@@ -1126,9 +1126,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const partnerId = req.user?.id;
     const userRole = req.user?.role;
-    const customerNumber = String(req.query.customerNumber || "").trim();
-    const orderNumber = String(req.query.orderNumber || "").trim();
-    const customerName = String(req.query.customerName || "").trim();
+    const search = String(req.query.search || "").trim();
 
     const where: any =
       type === "sonstiges"
@@ -1161,42 +1159,61 @@ export const getAllOrders = async (req: Request, res: Response) => {
         statuses.length === 1 ? statuses[0] : { in: statuses };
     }
 
-    const searchParts = [];
-    if (customerNumber && !isNaN(Number(customerNumber))) {
-      searchParts.push({
-        customer: { customerNumber: parseInt(customerNumber, 10) },
-      });
+    if (req.query.bezahlt) {
+      const validBezahlt = [
+        "Privat_Bezahlt",
+        "Privat_offen",
+        "Krankenkasse_Ungenehmigt",
+        "Krankenkasse_Genehmigt",
+      ];
+      const values = String(req.query.bezahlt)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const invalid = values.filter((s) => !validBezahlt.includes(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid bezahlt value: ${invalid.join(", ")}`,
+          validValues: validBezahlt,
+        });
+      }
+      if (values.length > 0) {
+        where.bezahlt = values.length === 1 ? values[0] : { in: values };
+      }
     }
-    if (orderNumber && !isNaN(Number(orderNumber))) {
-      searchParts.push({ orderNumber: parseInt(orderNumber, 10) });
-    }
-    if (customerName) {
-      const terms = customerName.split(/\s+/).filter(Boolean);
-      const nameFilter =
-        terms.length === 1
-          ? {
-              OR: [
-                { vorname: { contains: terms[0], mode: "insensitive" } },
-                { nachname: { contains: terms[0], mode: "insensitive" } },
-              ],
-            }
-          : {
-              AND: [
-                { vorname: { contains: terms[0], mode: "insensitive" } },
-                {
-                  nachname: {
-                    contains: terms.slice(1).join(" "),
-                    mode: "insensitive",
-                  },
-                },
-              ],
-            };
-      searchParts.push({ customer: nameFilter });
-    }
-    if (searchParts.length === 1) {
-      Object.assign(where, searchParts[0]);
-    } else if (searchParts.length > 1) {
-      where.AND = searchParts;
+
+    if (search) {
+      const asNumber = Number(search);
+      const searchOR: any[] = [
+        {
+          customer: {
+            OR: [
+              { vorname: { contains: search, mode: "insensitive" } },
+              { nachname: { contains: search, mode: "insensitive" } },
+            ],
+          },
+        },
+        { einlagentyp: { contains: search, mode: "insensitive" } },
+        { versorgung_note: { contains: search, mode: "insensitive" } },
+        { kundenName: { contains: search, mode: "insensitive" } },
+      ];
+
+      if (!isNaN(asNumber) && asNumber > 0) {
+        // starts-with match on orderNumber (integer cast to text)
+        const matchingOrderIds = await prisma.$queryRawUnsafe<{ id: string }[]>(
+          `SELECT id FROM "customerOrders" WHERE CAST("orderNumber" AS TEXT) LIKE $1`,
+          `${search}%`
+        );
+        if (matchingOrderIds.length > 0) {
+          searchOR.push({ id: { in: matchingOrderIds.map((r) => r.id) } });
+        }
+
+        // exact match on customer number
+        searchOR.push({ customer: { customerNumber: asNumber } });
+      }
+
+      where.OR = searchOR;
     }
 
     const orders = await prisma.customerOrders.findMany({
@@ -1243,7 +1260,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const hasNextPage = orders.length > limit;
     const data = hasNextPage ? orders.slice(0, limit) : orders;
-    // const nextCursor = hasNextPage ? data[data.length - 1].id : null;
+    const nextCursor = hasNextPage ? data[data.length - 1].id : null;
 
     res.status(200).json({
       success: true,
@@ -1254,7 +1271,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
       })),
       pagination: {
         limit,
-        // nextCursor,
+        nextCursor,
         hasNextPage,
       },
     });
