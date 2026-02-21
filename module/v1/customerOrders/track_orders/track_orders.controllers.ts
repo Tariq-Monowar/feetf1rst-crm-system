@@ -1492,17 +1492,21 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       data: {
-        orderCategory: order.orderCategory === "sonstiges"? {
-          service_name: order.service_name ?? null,
-          sonstiges_category: order.sonstiges_category ?? null,
-        } : {
-          insoleStandards: order.insoleStandards.map((standard) => ({
-            name: standard.name ?? null,
-            left: standard.left ?? null,
-            right: standard.right ?? null,
-            isFavorite: standard.isFavorite ?? null,
-          })),
-        },
+        category: order.orderCategory,
+        orderCategory:
+          order.orderCategory === "sonstiges"
+            ? {
+                service_name: order.service_name ?? null,
+                sonstiges_category: order.sonstiges_category ?? null,
+              }
+            : {
+                insoleStandards: order.insoleStandards.map((standard) => ({
+                  name: standard.name ?? null,
+                  left: standard.left ?? null,
+                  right: standard.right ?? null,
+                  isFavorite: standard.isFavorite ?? null,
+                })),
+              },
         customerName: `${order.customer.vorname} ${order.customer.nachname}`,
         versorgungName: order.product?.name ?? null,
         diagnosisStatus: order.product?.diagnosis_status ?? null,
@@ -1615,7 +1619,8 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     });
-    const barcodeCreatedAt = abholbereitHistory?.createdAt ?? order.barcodeCreatedAt ?? null;
+    const barcodeCreatedAt =
+      abholbereitHistory?.createdAt ?? order.barcodeCreatedAt ?? null;
 
     res.status(200).json({
       success: true,
