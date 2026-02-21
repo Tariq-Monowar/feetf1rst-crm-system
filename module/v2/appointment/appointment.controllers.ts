@@ -35,7 +35,7 @@ const checkAppointmentOverlap = async (
   date: Date,
   time: string,
   duration: number,
-  excludeAppointmentId?: string
+  excludeAppointmentId?: string,
 ) => {
   // Validate date
   if (!date || isNaN(date.getTime())) {
@@ -68,12 +68,12 @@ const checkAppointmentOverlap = async (
   const dateStart = new Date(
     date.getFullYear(),
     date.getMonth(),
-    date.getDate()
+    date.getDate(),
   );
   const dateEnd = new Date(
     date.getFullYear(),
     date.getMonth(),
-    date.getDate() + 1
+    date.getDate() + 1,
   );
 
   // Validate date range
@@ -113,7 +113,7 @@ const checkAppointmentOverlap = async (
 
     const existingEndTime = new Date(existingStartTime);
     existingEndTime.setHours(
-      existingStartTime.getHours() + (appointment.duration || 1)
+      existingStartTime.getHours() + (appointment.duration || 1),
     );
 
     // Check if appointments overlap
@@ -162,12 +162,12 @@ export const getAvailableTimeSlots = async (req: Request, res: Response) => {
           gte: new Date(
             appointmentDate.getFullYear(),
             appointmentDate.getMonth(),
-            appointmentDate.getDate()
+            appointmentDate.getDate(),
           ),
           lt: new Date(
             appointmentDate.getFullYear(),
             appointmentDate.getMonth(),
-            appointmentDate.getDate() + 1
+            appointmentDate.getDate() + 1,
           ),
         },
       },
@@ -334,17 +334,17 @@ export const createAppointment = async (req: Request, res: Response) => {
       });
 
       const existingEmployeeIds = new Set(
-        existingEmployees.map((emp) => emp.id)
+        existingEmployees.map((emp) => emp.id),
       );
       const missingEmployeeIds = employeeIds.filter(
-        (id) => !existingEmployeeIds.has(id)
+        (id) => !existingEmployeeIds.has(id),
       );
 
       if (missingEmployeeIds.length > 0) {
         res.status(400).json({
           success: false,
           message: `Employees with IDs not found: ${missingEmployeeIds.join(
-            ", "
+            ", ",
           )}`,
         });
         return;
@@ -374,7 +374,7 @@ export const createAppointment = async (req: Request, res: Response) => {
             emp.employeId,
             appointmentDate,
             time,
-            appointmentDuration
+            appointmentDuration,
           );
 
           if (overlapCheck.hasOverlap) {
@@ -400,7 +400,7 @@ export const createAppointment = async (req: Request, res: Response) => {
           employeId,
           appointmentDate,
           time,
-          appointmentDuration
+          appointmentDuration,
         );
 
         if (overlapCheck.hasOverlap) {
@@ -488,43 +488,50 @@ export const createAppointment = async (req: Request, res: Response) => {
               },
             },
           },
+        },
       },
-    },
-  });
-
-  // Format date for notifications and history
-  const formattedDate = appointmentDate.toLocaleDateString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-
-  if (isClient && customerId) {
-    const customerExists = await prisma.customers.findUnique({
-      where: { id: customerId },
-      select: { id: true },
     });
 
-    if (!customerExists) {
-      console.warn(
-        `Customer with ID ${customerId} not found. Skipping history creation.`
-      );
-    } else {
-      await prisma.customerHistorie.create({
-        data: {
-          customerId,
-          category: "Termin",
-          url: `/appointment/system-appointment/${customerId}/${appointment.id}`,
-          methord: "GET",
-          system_note: `Termin zur Laufanalyse am ${formattedDate}`,
-        },
+    // Format date for notifications and history
+    const formattedDate = appointmentDate.toLocaleDateString("de-DE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+    if (isClient && customerId) {
+      const customerExists = await prisma.customers.findUnique({
+        where: { id: customerId },
         select: { id: true },
       });
-    }
-  }
 
-  notificationSend(id, "Appointment_Created" as notificationType, `Termin zur Laufanalyse am ${formattedDate}`, appointment.id, false, `/dashboard/calendar`);
-    
+      if (!customerExists) {
+        console.warn(
+          `Customer with ID ${customerId} not found. Skipping history creation.`,
+        );
+      } else {
+        await prisma.customerHistorie.create({
+          data: {
+            customerId,
+            category: "Termin",
+            url: `/appointment/system-appointment/${customerId}/${appointment.id}`,
+            methord: "GET",
+            system_note: `Termin zur Laufanalyse am ${formattedDate}`,
+          },
+          select: { id: true },
+        });
+      }
+    }
+
+    notificationSend(
+      id,
+      "Appointment_Created" as notificationType,
+      `Termin zur Laufanalyse am ${formattedDate}`,
+      appointment.id,
+      false,
+      `/dashboard/calendar`,
+    );
+
     res.status(201).json({
       success: true,
       message: "Appointment created successfully",
@@ -781,8 +788,8 @@ export const updateAppointment = async (req: Request, res: Response) => {
     const updatedEmployeId = hasMultipleEmployees
       ? employees[0]?.employeId
       : employeId !== undefined
-      ? employeId
-      : existingAppointment.employeId;
+        ? employeId
+        : existingAppointment.employeId;
     const updatedDuration =
       duration !== undefined ? duration : existingAppointment.duration || 1;
 
@@ -806,17 +813,17 @@ export const updateAppointment = async (req: Request, res: Response) => {
       });
 
       const existingEmployeeIds = new Set(
-        existingEmployees.map((emp) => emp.id)
+        existingEmployees.map((emp) => emp.id),
       );
       const missingEmployeeIds = employeeIds.filter(
-        (id) => !existingEmployeeIds.has(id)
+        (id) => !existingEmployeeIds.has(id),
       );
 
       if (missingEmployeeIds.length > 0) {
         res.status(400).json({
           success: false,
           message: `Employees with IDs not found: ${missingEmployeeIds.join(
-            ", "
+            ", ",
           )}`,
         });
         return;
@@ -868,7 +875,7 @@ export const updateAppointment = async (req: Request, res: Response) => {
               updatedDate,
               updatedTime,
               updatedDuration,
-              id // Exclude current appointment from overlap check
+              id, // Exclude current appointment from overlap check
             );
 
             if (overlapCheck.hasOverlap) {
@@ -895,7 +902,7 @@ export const updateAppointment = async (req: Request, res: Response) => {
             updatedDate,
             updatedTime,
             updatedDuration,
-            id // Exclude current appointment from overlap check
+            id, // Exclude current appointment from overlap check
           );
 
           if (overlapCheck.hasOverlap) {
@@ -1024,19 +1031,28 @@ export const deleteAppointment = async (req: Request, res: Response) => {
 export const getAppointmentsByDate = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const { startDate, endDate, dates, employee, limit: limitQuery, cursor } = req.query;
+    const {
+      startDate,
+      endDate,
+      dates,
+      employee,
+      limit: limitQuery,
+      cursor,
+    } = req.query;
 
     const limit = parseInt(limitQuery as string) || 30;
 
     let whereCondition: any = { userId: id };
 
     // Parse employee IDs filter: ?employee=id1,id2,id3
-    const employeeIds: string[] =
-      employee
-        ? (Array.isArray(employee) ? (employee as string[]) : (employee as string).split(","))
-            .map((e) => e.trim())
-            .filter(Boolean)
-        : [];
+    const employeeIds: string[] = employee
+      ? (Array.isArray(employee)
+          ? (employee as string[])
+          : (employee as string).split(",")
+        )
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : [];
 
     const hasDateFilter = !!(dates || (startDate && endDate));
 
@@ -1044,7 +1060,8 @@ export const getAppointmentsByDate = async (req: Request, res: Response) => {
     if (!hasDateFilter && employeeIds.length === 0) {
       res.status(400).json({
         success: false,
-        message: "Provide either ?dates=... or ?startDate=...&endDate=..., or ?employee=id1,id2",
+        message:
+          "Provide either ?dates=... or ?startDate=...&endDate=..., or ?employee=id1,id2",
       });
       return;
     }
@@ -1071,7 +1088,9 @@ export const getAppointmentsByDate = async (req: Request, res: Response) => {
       const end = new Date(endDate as string);
 
       if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        res.status(400).json({ success: false, message: "Invalid startDate or endDate" });
+        res
+          .status(400)
+          .json({ success: false, message: "Invalid startDate or endDate" });
         return;
       }
 
@@ -1141,11 +1160,19 @@ export const getAppointmentsByDate = async (req: Request, res: Response) => {
 export const getAllAppointmentsDate = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const { year, employee } = req.query;
+    const { year, month, employee } = req.query;
 
-    const targetYear = parseInt(year as string) || new Date().getFullYear();
-    const yearStart = new Date(targetYear, 0, 1);
-    const yearEnd   = new Date(targetYear + 1, 0, 1);
+    const now        = new Date();
+    const targetYear = parseInt(year as string)  || now.getFullYear();
+    const targetMonth = month !== undefined ? parseInt(month as string) : null;
+
+    // Range: full year or single month
+    const rangeStart = targetMonth !== null
+      ? new Date(targetYear, targetMonth - 1, 1)
+      : new Date(targetYear, 0, 1);
+    const rangeEnd = targetMonth !== null
+      ? new Date(targetYear, targetMonth, 1)
+      : new Date(targetYear + 1, 0, 1);
 
     const employeeIds: string[] = employee
       ? (Array.isArray(employee) ? (employee as string[]) : (employee as string).split(","))
@@ -1157,28 +1184,31 @@ export const getAllAppointmentsDate = async (req: Request, res: Response) => {
 
     if (employeeIds.length > 0) {
       const placeholders = employeeIds.map((_, i) => `$${i + 4}`).join(",");
-      // Single query, DISTINCT inside DB, flat string[] back — zero intermediate objects
-      dates = (await prisma.$queryRawUnsafe<{ d: string }[]>(
-        `SELECT DISTINCT CAST(a.date AS DATE)::text AS d
-         FROM appointment a
-         JOIN appointment_employee ae ON ae."appointmentId" = a.id
-         WHERE a."userId" = $1
-           AND a.date >= $2 AND a.date < $3
-           AND ae."employeeId" IN (${placeholders})
-         ORDER BY d`,
-        id, yearStart, yearEnd, ...employeeIds
-      )).map((r) => r.d);
+      dates = (
+        await prisma.$queryRawUnsafe<{ d: string }[]>(
+          `SELECT DISTINCT CAST(a.date AS DATE)::text AS d
+           FROM appointment a
+           JOIN appointment_employee ae ON ae."appointmentId" = a.id
+           WHERE a."userId" = $1
+             AND a.date >= $2 AND a.date < $3
+             AND ae."employeeId" IN (${placeholders})
+           ORDER BY d`,
+          id, rangeStart, rangeEnd, ...employeeIds,
+        )
+      ).map((r) => r.d);
     } else {
-      dates = (await prisma.$queryRaw<{ d: string }[]>`
-        SELECT DISTINCT CAST(date AS DATE)::text AS d
-        FROM appointment
-        WHERE "userId" = ${id}
-          AND date >= ${yearStart} AND date < ${yearEnd}
-        ORDER BY d
-      `).map((r) => r.d);
+      dates = (
+        await prisma.$queryRaw<{ d: string }[]>`
+          SELECT DISTINCT CAST(date AS DATE)::text AS d
+          FROM appointment
+          WHERE "userId" = ${id}
+            AND date >= ${rangeStart} AND date < ${rangeEnd}
+          ORDER BY d
+        `
+      ).map((r) => r.d);
     }
 
-    res.status(200).json({ dates });
+    res.status(200).json({ success: true, dates });
   } catch (error: any) {
     console.error("Get all appointments date error:", error);
     res.status(500).json({
@@ -1187,7 +1217,7 @@ export const getAllAppointmentsDate = async (req: Request, res: Response) => {
       error: error.message,
     });
   }
-}
+};
 
 // Get my appointments
 export const getMyAppointments = async (req: Request, res: Response) => {
