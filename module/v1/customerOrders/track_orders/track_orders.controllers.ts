@@ -1558,10 +1558,12 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         orderNumber: true,
         orderStatus: true,
         geschaeftsstandort: true,
+        orderCategory: true,
         barcodeCreatedAt: true,
         createdAt: true,
         wohnort: true,
         totalPrice: true,
+
         customer: {
           select: {
             vorname: true,
@@ -1630,8 +1632,10 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
           name: order.partner.busnessName || null,
           // Image is already S3 URL, use directly
           image: order.partner.image || null,
-          barcodeLabel: order.partner.accountInfos?.[0]?.barcodeLabel || null,
+          // barcodeLabel: order.partner.accountInfos?.[0]?.barcodeLabel || null,
+          barcodeLabel: order?.orderCategory === "sonstiges" ? "SN" : "EN",
         },
+
         customer: `${order.customer.vorname} ${order.customer.nachname}`,
         customerNumber: order.customer.customerNumber,
         barcodeCreatedAt: barcodeCreatedAt,
@@ -1743,7 +1747,6 @@ export const getOrderStatusNote = async (req: Request, res: Response) => {
             nachname: true,
           },
         },
-
       },
     });
 
