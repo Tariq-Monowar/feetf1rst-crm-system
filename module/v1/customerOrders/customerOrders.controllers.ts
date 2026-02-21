@@ -301,7 +301,9 @@ export const createOrder = async (req: Request, res: Response) => {
         const right =
           item.right != null && item.right !== "" ? Number(item.right) : 0;
         const isFavorite =
-          item.isFavorite === true || item.isFavorite === "true" || item.isFavorite === 1;
+          item.isFavorite === true ||
+          item.isFavorite === "true" ||
+          item.isFavorite === 1;
         normalizedInsoleStandards.push({
           name,
           left: Number.isNaN(left) ? 0 : left,
@@ -354,8 +356,10 @@ export const createOrder = async (req: Request, res: Response) => {
     // When no screenerId, customer must have foot data to create order
     if (!screenerId) {
       const hasFootData =
-        (customer.fusslange1 != null && String(customer.fusslange1).trim() !== "") &&
-        (customer.fusslange2 != null && String(customer.fusslange2).trim() !== "");
+        customer.fusslange1 != null &&
+        String(customer.fusslange1).trim() !== "" &&
+        customer.fusslange2 != null &&
+        String(customer.fusslange2).trim() !== "";
       if (!hasFootData)
         return bad(
           400,
@@ -548,18 +552,22 @@ export const createOrder = async (req: Request, res: Response) => {
             : null,
         // pickUpLocation from req.body when sent; otherwise use geschaeftsstandort (same shape)
         pickUpLocation:
-          pickUpLocation != null && typeof pickUpLocation === "object" && !Array.isArray(pickUpLocation)
+          pickUpLocation != null &&
+          typeof pickUpLocation === "object" &&
+          !Array.isArray(pickUpLocation)
             ? pickUpLocation
-            : geschaeftsstandort != null && typeof geschaeftsstandort === "object" && !Array.isArray(geschaeftsstandort)
+            : geschaeftsstandort != null &&
+                typeof geschaeftsstandort === "object" &&
+                !Array.isArray(geschaeftsstandort)
               ? geschaeftsstandort
               : null,
         addonPrices:
           addonPrices != null && addonPrices !== ""
-            ? (Number(addonPrices) || 0)
+            ? Number(addonPrices) || 0
             : 0,
         insuranceTotalPrice:
           insuranceTotalPrice != null && insuranceTotalPrice !== ""
-            ? (Number(insuranceTotalPrice) || 0)
+            ? Number(insuranceTotalPrice) || 0
             : 0,
       };
       if (effectiveVersorgungId)
@@ -1117,10 +1125,15 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const cursor = req.query.cursor as string | undefined;
 
     const type = String(req.query.type || "rady_insole").trim();
-    if (type !== "rady_insole" && type !== "milling_block" && type !== "sonstiges") {
+    if (
+      type !== "rady_insole" &&
+      type !== "milling_block" &&
+      type !== "sonstiges"
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid type. Use rady_insole, milling_block, or sonstiges",
+        message: "Invalid type",
+        validTypes: ["rady_insole", "milling_block", "sonstiges"],
       });
     }
 
@@ -1203,7 +1216,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
         // starts-with match on orderNumber (integer cast to text)
         const matchingOrderIds = await prisma.$queryRawUnsafe<{ id: string }[]>(
           `SELECT id FROM "customerOrders" WHERE CAST("orderNumber" AS TEXT) LIKE $1`,
-          `${search}%`
+          `${search}%`,
         );
         if (matchingOrderIds.length > 0) {
           searchOR.push({ id: { in: matchingOrderIds.map((r) => r.id) } });
@@ -1850,7 +1863,9 @@ export const updateOrder = async (req: Request, res: Response) => {
     const { orderNotes, statusNote } = req.body;
 
     if (!id) {
-      return res.status(400).json({ success: false, message: "Order ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Order ID is required" });
     }
 
     const data: Record<string, any> = {};
@@ -1876,16 +1891,12 @@ export const updateOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const order = await prisma.customerOrders.updateMany({
+    await prisma.customerOrders.update({
       where: { id },
       data,
     });
 
-    if (order.count === 0) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    res.status(200).json({ success: true, id });
+    res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error("Update Order Error:", error);
     res.status(500).json({

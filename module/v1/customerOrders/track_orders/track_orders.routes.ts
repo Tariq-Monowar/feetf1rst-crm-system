@@ -10,7 +10,8 @@ import {
   getPicture2324ByOrderId,
   getBarcodeLabel,
   getNewOrderHistory,
-  getPriceDetails
+  getPriceDetails,
+  getOrderStatusNote
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -67,6 +68,13 @@ router.get(
   "/prise-details/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   getPriceDetails,
+);
+
+//not
+router.get(
+  "/status-note/:orderId",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getOrderStatusNote,
 );
 
 export default router;

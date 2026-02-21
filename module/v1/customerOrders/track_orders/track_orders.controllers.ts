@@ -1684,7 +1684,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
               select: {
                 price: true,
                 vatRate: true,
-               
+
                 // profitPercentage: true,
               },
             },
@@ -1710,6 +1710,59 @@ export const getPriceDetails = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while fetching price details",
+      error: error.message,
+    });
+  }
+};
+
+export const getOrderStatusNote = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        statusNote: true,
+        orderNumber: true,
+        product: {
+          select: {
+            name: true,
+            versorgung: true,
+          },
+        },
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+          },
+        },
+
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Get Order Status Note Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching order status note",
       error: error.message,
     });
   }
