@@ -919,8 +919,6 @@ model customerOrders {
   priority    Priority?   @default(Normal)
   type        StoreType   @default(rady_insole)
 
-  footScreenLocation Json? // { title: string, description?: string }
-
   //---------------------------------------------------------
   productId String?          @unique
   product   customerProduct? @relation(fields: [productId], references: [id])
