@@ -21,6 +21,7 @@ import {
   getCustomerRequirements,
   getAllVersorgungenByCustomerId,
   _cursor_getAllCustomers,
+  countCustomers
 } from "./customers.controllers";
 import upload from "../../../config/multer.config";
 
@@ -155,6 +156,12 @@ router.get(
   "/supply-status/:customerId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllVersorgungenByCustomerId,
+);
+
+router.get(
+  "/count/customers",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  countCustomers,
 );
 
 export default router;

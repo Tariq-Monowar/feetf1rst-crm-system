@@ -3159,3 +3159,26 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+export const countCustomers = async (req: Request, res: Response) => {
+  try {
+    const { id: partnerId } = req.user;
+
+    const count = await prisma.customers.count({
+      where: { partnerId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      count,
+    });
+  } catch (error: any) {
+    console.error("Count Customers Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
