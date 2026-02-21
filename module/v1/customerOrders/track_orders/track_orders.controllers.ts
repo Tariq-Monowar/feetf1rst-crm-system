@@ -1633,7 +1633,10 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
           // Image is already S3 URL, use directly
           image: order.partner.image || null,
           // barcodeLabel: order.partner.accountInfos?.[0]?.barcodeLabel || null,
-          barcodeLabel: order?.orderCategory === "sonstiges" ? "SN" : "EN",
+          barcodeLabel:
+            order?.orderCategory === "sonstiges"
+              ? `SN${order.orderNumber}`
+              : `EN${order.orderNumber}`,
         },
 
         customer: `${order.customer.vorname} ${order.customer.nachname}`,
