@@ -1013,6 +1013,8 @@ model customerOrderInsurance {
   price       Float?
   description Json?
 
+  insuranceStatus insuranceStatus?
+
   vat_country String?
 
   createdAt DateTime @default(now())
@@ -1023,6 +1025,12 @@ model customerOrderInsurance {
   @@index([description])
   @@index([createdAt])
   @@index([updatedAt])
+}
+
+enum insuranceStatus {
+  L
+  R
+  BDS
 }
 
 enum vat_countrys {
@@ -1773,6 +1781,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1796,6 +1805,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

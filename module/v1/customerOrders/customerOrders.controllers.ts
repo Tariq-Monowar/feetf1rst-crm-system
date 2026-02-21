@@ -245,6 +245,25 @@ export const createOrder = async (req: Request, res: Response) => {
     if (!okStatus.includes(bezahlt))
       return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
+    const validInsuranceStatuses = ["L", "R", "BDS"];
+
+    // Validate all insurance items whenever they are provided
+    if (insurances != null) {
+      if (typeof insurances !== "object")
+        return bad(400, "insurances must be an array or a single object");
+      const hasPriceOrDesc = (o: any) => "price" in o || "description" in o;
+      const insuranceList = Array.isArray(insurances) ? insurances : [insurances];
+      for (let i = 0; i < insuranceList.length; i++) {
+        const item = insuranceList[i];
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return bad(400, `insurances[${i}] must be an object`);
+        if (!hasPriceOrDesc(item))
+          return bad(400, `insurances[${i}] must contain at least price or description`);
+        if (item.status == null || !validInsuranceStatuses.includes(item.status))
+          return bad(400, `insurances[${i}].status is required and must be one of: ${validInsuranceStatuses.join(", ")}`);
+      }
+    }
+
     let vat_country: string | undefined;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
@@ -255,20 +274,6 @@ export const createOrder = async (req: Request, res: Response) => {
           400,
           "insurances information is required when payment by insurance",
         );
-      if (typeof insurances !== "object")
-        return bad(400, "insurances must be an array or a single object");
-      const hasPriceOrDesc = (o: any) => "price" in o || "description" in o;
-      const list = Array.isArray(insurances) ? insurances : [insurances];
-      for (let i = 0; i < list.length; i++) {
-        const item = list[i];
-        if (!item || typeof item !== "object" || Array.isArray(item))
-          return bad(400, `insurances[${i}] must be an object`);
-        if (!hasPriceOrDesc(item))
-          return bad(
-            400,
-            `insurances[${i}] must contain at least price or description`,
-          );
-      }
       const partner = await prisma.user.findUnique({
         where: { id: partnerId },
         select: { accountInfos: { select: { vat_country: true } } },
@@ -700,6 +705,7 @@ export const createOrder = async (req: Request, res: Response) => {
                   ? item.description
                   : null,
               vat_country: fallbackVat,
+              insuranceStatus: item.status,
             },
           }),
         ),
