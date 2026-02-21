@@ -5,8 +5,8 @@ generator client {
 // The datasource `url` property is deprecated in Prisma 5+. Connection info should be moved
 // to prisma.config.ts, and the schema only retains the provider.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -877,9 +877,9 @@ model customerOrders {
   einlagentyp            String?
   überzug               String?
   quantity               Int?
-  versorgung_note        String? //Hast du sonstige Anmerkungen oder Notizen zur Versorgung... ?
-  schuhmodell_wählen    String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
-  kostenvoranschlag      Boolean? @default(false)
+
+  schuhmodell_wählen String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
+  kostenvoranschlag   Boolean? @default(false)
 
   discount Float?
 
@@ -907,8 +907,10 @@ model customerOrders {
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
 
-  cashNites  String?
-  orderNotes String?
+  //---------NOTE--------------
+  orderNotes      String?
+  versorgung_note String?
+  statusNote      String?
 
   bezahlt             paymnentStatus?
   insuranceTotalPrice Float?          @default(0)
@@ -916,6 +918,8 @@ model customerOrders {
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
   priority    Priority?   @default(Normal)
   type        StoreType   @default(rady_insole)
+
+  footScreenLocation Json? // { title: string, description?: string }
 
   //---------------------------------------------------------
   productId String?          @unique
@@ -1095,7 +1099,7 @@ model customerProduct {
   langenempfehlung  Json
 
   status           versorgungenStatus
-  diagnosis_status String[] @default([])
+  diagnosis_status String[]           @default([])
 
   order customerOrders?
 
@@ -1769,6 +1773,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1792,6 +1798,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**

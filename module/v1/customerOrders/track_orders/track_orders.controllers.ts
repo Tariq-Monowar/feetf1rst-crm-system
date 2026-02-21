@@ -1653,3 +1653,64 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getPriceDetails = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        discount: true,
+        addonPrices: true,
+        insuranceTotalPrice: true,
+        bezahlt: true,
+        orderStatus: true,
+        orderCategory: true,
+        totalPrice: true,
+        fussanalysePreis: true,
+        einlagenversorgungPreis: true,
+        quantity: true,
+        Versorgungen: {
+          select: {
+            supplyStatus: {
+              select: {
+                price: true,
+                vatRate: true,
+               
+                // profitPercentage: true,
+              },
+            },
+          },
+        },
+        customerOrderInsurances: {
+          select: {
+            id: true,
+            price: true,
+            description: true,
+            vat_country: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Get Price Details Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching price details",
+      error: error.message,
+    });
+  }
+};

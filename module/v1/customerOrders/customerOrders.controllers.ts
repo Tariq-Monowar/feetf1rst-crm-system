@@ -1826,4 +1826,55 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
     });
   }
 };
- 
+
+export const updateOrder = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { orderNotes, statusNote } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Order ID is required" });
+    }
+
+    const data: Record<string, any> = {};
+
+    if (orderNotes !== undefined) {
+      data.orderNotes =
+        orderNotes != null && String(orderNotes).trim() !== ""
+          ? String(orderNotes).trim()
+          : null;
+    }
+
+    if (statusNote !== undefined) {
+      data.statusNote =
+        statusNote != null && String(statusNote).trim() !== ""
+          ? String(statusNote).trim()
+          : null;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one of orderNotes or statusNote is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.updateMany({
+      where: { id },
+      data,
+    });
+
+    if (order.count === 0) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    res.status(200).json({ success: true, id });
+  } catch (error: any) {
+    console.error("Update Order Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
