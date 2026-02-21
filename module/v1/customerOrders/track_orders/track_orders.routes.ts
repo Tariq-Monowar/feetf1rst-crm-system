@@ -29,6 +29,7 @@ router.get("/history/orders/:orderId", verifyUser("ADMIN", "PARTNER","EMPLOYEE")
 */
 router.get("/order-history/:orderId", verifyUser("ADMIN", "PARTNER","EMPLOYEE"), getNewOrderHistory);
 router.get("/supply-info/:orderId", verifyUser("ADMIN", "PARTNER","EMPLOYEE"), getSupplyInfo);
+
 router.get("/picture-23-24/:orderId", verifyUser("ADMIN", "PARTNER","EMPLOYEE"), getPicture2324ByOrderId);
 
 router.get("/barcode-label/:orderId", verifyUser("ADMIN", "PARTNER","EMPLOYEE"), getBarcodeLabel);

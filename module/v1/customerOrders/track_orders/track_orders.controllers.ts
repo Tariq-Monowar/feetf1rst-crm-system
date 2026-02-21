@@ -1403,6 +1403,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         orderCategory: true,
         service_name: true,
         sonstiges_category: true,
+
         insoleStandards: {
           select: {
             name: true,

@@ -216,52 +216,24 @@ export const updateMultipleOrderStatuses = async (
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Update all orders
       const updateResult = await tx.customerOrders.updateMany({
-        where: {
-          id: {
-            in: orderIds,
-          },
-        },
-        data: {
-          orderStatus,
-          statusUpdate: new Date(),
-        },
+        where: { id: { in: orderIds } },
+        data: { orderStatus, statusUpdate: new Date() },
       });
 
       const updatedOrders = await tx.customerOrders.findMany({
-        where: {
-          id: {
-            in: orderIds,
-          },
-        },
-        include: {
-          customer: {
-            select: {
-              id: true,
-              customerNumber: true,
-              vorname: true,
-              nachname: true,
-              email: true,
-              wohnort: true,
-            },
-          },
-          
-          product: true,
-          
-          partner: {
-            select: {
-              id: true,
-            },
-          },
+        where: { id: { in: orderIds } },
+        select: {
+          id: true,
+          orderStatus: true,
+          customerId: true,
+          partnerId: true,
         },
       });
 
       for (const id of orderIds) {
         await tx.customerHistorie.updateMany({
-          where: {
-            eventId: id, // exact order ID
-          },
+          where: { eventId: id },
           data: {
             note: `Einlagenauftrag ${id} erstellt & Einlagenauftrag ${id} ${orderStatus}`,
             updatedAt: new Date(),
@@ -271,16 +243,10 @@ export const updateMultipleOrderStatuses = async (
 
       for (const order of updatedOrders) {
         const previousHistoryRecord = await tx.customerOrdersHistory.findFirst({
-          where: {
-            orderId: order.id,
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
+          where: { orderId: order.id },
+          orderBy: { createdAt: "desc" },
           take: 1,
-          select: {
-            statusTo: true,
-          },
+          select: { statusTo: true },
         });
         await tx.customerOrdersHistory.create({
           data: {
@@ -288,17 +254,14 @@ export const updateMultipleOrderStatuses = async (
             statusFrom: previousHistoryRecord?.statusTo || order.orderStatus,
             statusTo: orderStatus,
             partnerId: order.partnerId,
-            employeeId: (order as any).werkstattEmployeeId || null,
             note: `Status changed from ${order.orderStatus} to ${orderStatus}`,
           },
         });
       }
 
-      return {
-        updateCount: updateResult.count,
-        updatedOrders,
-      };
+      return { updateCount: updateResult.count, updatedOrders };
     });
+
     if (orderStatus === "Abholbereit_Versandt") {
       for (const order of result.updatedOrders) {
         await prisma.customerHistorie.create({
@@ -313,17 +276,12 @@ export const updateMultipleOrderStatuses = async (
       }
     }
 
-    // Format orders with invoice URLs (already S3 URLs)
-    const formattedOrders = result.updatedOrders.map((order) => ({
-      ...order,
-      invoice: order.invoice || null,
-    }));
-
     res.status(200).json({
       success: true,
-      message: `Successfully updated ${result.updateCount} order(s) to status: ${orderStatus}`,
-      data: formattedOrders,
-      updatedCount: result.updateCount,
+      data: result.updatedOrders.map(({ id, orderStatus: status }) => ({
+        id,
+        status,
+      })),
     });
   } catch (error: any) {
     console.error("Update Multiple Order Statuses Error:", error);
