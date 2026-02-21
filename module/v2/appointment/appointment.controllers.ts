@@ -1020,6 +1020,175 @@ export const deleteAppointment = async (req: Request, res: Response) => {
   }
 };
 
+// Get appointments by date range or a bundle of specific dates
+export const getAppointmentsByDate = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user;
+    const { startDate, endDate, dates, employee, limit: limitQuery, cursor } = req.query;
+
+    const limit = parseInt(limitQuery as string) || 30;
+
+    let whereCondition: any = { userId: id };
+
+    // Parse employee IDs filter: ?employee=id1,id2,id3
+    const employeeIds: string[] =
+      employee
+        ? (Array.isArray(employee) ? (employee as string[]) : (employee as string).split(","))
+            .map((e) => e.trim())
+            .filter(Boolean)
+        : [];
+
+    const hasDateFilter = !!(dates || (startDate && endDate));
+
+    // Require either a date filter or at least one employee ID
+    if (!hasDateFilter && employeeIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: "Provide either ?dates=... or ?startDate=...&endDate=..., or ?employee=id1,id2",
+      });
+      return;
+    }
+
+    if (dates) {
+      const rawDates = Array.isArray(dates)
+        ? (dates as string[])
+        : (dates as string).split(",").map((d) => d.trim());
+
+      const parsedDates = rawDates.map((d) => {
+        const parsed = new Date(d);
+        if (isNaN(parsed.getTime())) throw new Error(`Invalid date: ${d}`);
+        return parsed;
+      });
+
+      whereCondition.OR = parsedDates.map((d) => ({
+        date: {
+          gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+          lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
+        },
+      }));
+    } else if (startDate && endDate) {
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        res.status(400).json({ success: false, message: "Invalid startDate or endDate" });
+        return;
+      }
+
+      whereCondition.date = {
+        gte: new Date(start.getFullYear(), start.getMonth(), start.getDate()),
+        lt: new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1),
+      };
+    }
+
+    // Filter by employee IDs when provided
+    if (employeeIds.length > 0) {
+      whereCondition.appointmentEmployees = {
+        some: {
+          employeeId: { in: employeeIds },
+        },
+      };
+    }
+
+    const cursorId = cursor as string | undefined;
+
+    const appointments = await prisma.appointment.findMany({
+      where: whereCondition,
+      orderBy: { date: "asc" },
+      take: limit + 1,
+      ...(cursorId && {
+        cursor: { id: cursorId },
+        skip: 1,
+      }),
+      include: {
+        appointmentEmployees: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const hasMore = appointments.length > limit;
+    const data = hasMore ? appointments.slice(0, limit) : appointments;
+    // const nextCursor = hasMore ? data[data.length - 1].id : null;
+
+    res.status(200).json({
+      success: true,
+      data: data.map(formatAppointmentResponse),
+      pagination: {
+        limit,
+        hasMore,
+        // nextCursor,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get appointments by date error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getAllAppointmentsDate = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user;
+    const { year, employee } = req.query;
+
+    const targetYear = parseInt(year as string) || new Date().getFullYear();
+    const yearStart = new Date(targetYear, 0, 1);
+    const yearEnd   = new Date(targetYear + 1, 0, 1);
+
+    const employeeIds: string[] = employee
+      ? (Array.isArray(employee) ? (employee as string[]) : (employee as string).split(","))
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : [];
+
+    let dates: string[];
+
+    if (employeeIds.length > 0) {
+      const placeholders = employeeIds.map((_, i) => `$${i + 4}`).join(",");
+      // Single query, DISTINCT inside DB, flat string[] back — zero intermediate objects
+      dates = (await prisma.$queryRawUnsafe<{ d: string }[]>(
+        `SELECT DISTINCT CAST(a.date AS DATE)::text AS d
+         FROM appointment a
+         JOIN appointment_employee ae ON ae."appointmentId" = a.id
+         WHERE a."userId" = $1
+           AND a.date >= $2 AND a.date < $3
+           AND ae."employeeId" IN (${placeholders})
+         ORDER BY d`,
+        id, yearStart, yearEnd, ...employeeIds
+      )).map((r) => r.d);
+    } else {
+      dates = (await prisma.$queryRaw<{ d: string }[]>`
+        SELECT DISTINCT CAST(date AS DATE)::text AS d
+        FROM appointment
+        WHERE "userId" = ${id}
+          AND date >= ${yearStart} AND date < ${yearEnd}
+        ORDER BY d
+      `).map((r) => r.d);
+    }
+
+    res.status(200).json({ dates });
+  } catch (error: any) {
+    console.error("Get all appointments date error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+}
+
 // Get my appointments
 export const getMyAppointments = async (req: Request, res: Response) => {
   try {

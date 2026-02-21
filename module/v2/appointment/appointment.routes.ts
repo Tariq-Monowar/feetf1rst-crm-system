@@ -6,8 +6,10 @@ import {
   updateAppointment,
   deleteAppointment,
   getMyAppointments,
+  getAppointmentsByDate,
   getSystemAppointment,
-  getAvailableTimeSlots
+  getAvailableTimeSlots,
+  getAllAppointmentsDate,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
@@ -27,12 +29,15 @@ router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
 
 router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
 
+router.get("/by-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentsByDate);
+
+router.get("/dates", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
+router.get("/all-appointments-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
+
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentById);
 
 router.put("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateAppointment);
 
 router.delete("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteAppointment);
-
-
 
 export default router;

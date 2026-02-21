@@ -3,6 +3,26 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const formatAppointmentResponse = (appointment: any) => {
+  const employeesArray = appointment.appointmentEmployees
+    ? appointment.appointmentEmployees.map((ae: any) => ({
+        employeId: ae.employee?.id || ae.employeeId,
+        assignedTo: ae.assignedTo,
+      }))
+    : [];
+
+  const formatted = {
+    ...appointment,
+    assignedTo:
+      employeesArray.length > 0 ? employeesArray : appointment.assignedTo,
+  };
+
+  delete formatted.appointmentEmployees;
+  delete formatted.employeId;
+
+  return formatted;
+};
+
 ///using ai------------------------------------------------------------------------------------
 // Helper function to check for overlapping appointments
 const checkAppointmentOverlap = async (
@@ -624,6 +644,84 @@ export const getMyAppointments = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Get my appointments error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+// Get appointments by date range or a bundle of specific dates
+export const getAppointmentsByDate = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user;
+    const { startDate, endDate, dates } = req.query;
+
+    let whereCondition: any = { userId: id };
+
+    if (dates) {
+      const rawDates = Array.isArray(dates)
+        ? (dates as string[])
+        : (dates as string).split(",").map((d) => d.trim());
+
+      const parsedDates = rawDates.map((d) => {
+        const parsed = new Date(d);
+        if (isNaN(parsed.getTime())) throw new Error(`Invalid date: ${d}`);
+        return parsed;
+      });
+
+      whereCondition.OR = parsedDates.map((d) => ({
+        date: {
+          gte: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+          lt: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1),
+        },
+      }));
+    } else if (startDate && endDate) {
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        res.status(400).json({ success: false, message: "Invalid startDate or endDate" });
+        return;
+      }
+
+      whereCondition.date = {
+        gte: new Date(start.getFullYear(), start.getMonth(), start.getDate()),
+        lt: new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1),
+      };
+    } else {
+      res.status(400).json({
+        success: false,
+        message: "Provide either ?dates=... or ?startDate=...&endDate=...",
+      });
+      return;
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where: whereCondition,
+      orderBy: { date: "asc" },
+      include: {
+        appointmentEmployees: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: appointments.map(formatAppointmentResponse),
+    });
+  } catch (error: any) {
+    console.error("Get appointments by date error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",

@@ -6,6 +6,7 @@ import {
   updateAppointment,
   deleteAppointment,
   getMyAppointments,
+  getAppointmentsByDate,
   getSystemAppointment,
   getAvailableTimeSlots
 } from "./appointment.controllers";
@@ -26,6 +27,8 @@ router.get("/available-slots", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAv
 router.get("/", verifyUser("ADMIN"), getAllAppointments);
 
 router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
+
+router.get("/by-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentsByDate);
 
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentById);
 
