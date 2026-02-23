@@ -331,6 +331,7 @@ model Employees {
   partnerConversationMessages partner_conversation_message[]
   employeeFeatureAccess       employee_feature_access[]
   leave_application           leave_application[]
+  shoeOrders                  shoe_order[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -1626,16 +1627,70 @@ model shoe_order {
   priority    Priority? @default(Normal)
   quantity    Int?
 
-  busness_location Json? // { title: string, description?: string }
+  branch_location  Json? // { title: string, description?: string }
+  pick_up_location Json? // { title: string, description?: string }
   payment_status   paymnentStatus?
+  order_note       String?
 
   //Ärztliche Diagnose (1st fields)
-  medical_diagnosis        String?
-  // Versorgung laut Arzt (2nd fields)
-  care_according_to_doctor String?
-  // 3rd fields
-  total_price              Float?
-  // 4th fields
+  medical_diagnosis  String?
+  // Ausführliche Diagnose (2nd fields)
+  detailed_diagnosis String?
+
+  /**
+   * 3rd fields
+   * if it's private i get form input field
+   * if it's insurance i get from dropdown
+   */
+  total_price Float?
+
+  /**
+   * government vat it's only for private order
+   * if it's insurance i dont need this field
+   */
+  vat_rate Float?
+
+  store_location Json? // { title: string, description?: string }
+
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  kva       Boolean? @default(true)
+  halbprobe Boolean? @default(true)
+
+  /**
+   * ----------------------
+   * PRODUCTION WORKFLOW
+   * ----------------------
+   */
+
+  /**
+   * if it's true{
+   * i skip the
+   * - Step 4 (Halbprobenerstellung)
+   * - Step 5 (Halbprobe durchführen)
+   * }
+   */
+  half_sample_required Boolean?
+
+  /**
+   * if it's false{
+   * i skip the
+   * - Step 2 (Leistenerstellung)
+   * }
+   */
+  has_trim_strips Boolean?
+
+  /**
+   * if it's true{
+   * i skip the
+   * - Step 3 (Bettungserstellung)
+   * }
+   */
+  bedding_required Boolean?
+
+  supply_note String?
+  insurances  shoe_order_insurance[]
 
   // -- RELATIONS
   customerId String?
@@ -1643,6 +1698,130 @@ model shoe_order {
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  //relation 
+
+  //relation with employee
+
+  status String? @default("Auftragserstellung")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shoeOrderStep shoe_order_step[]
+}
+
+enum shoe_order_status {
+  Auftragserstellung //step 1
+  Leistenerstellung //step 2
+  Bettungserstellung //step 3
+  Halbprobenerstellung //step 4
+  Halbprobe_durchführen //step 5
+  Schaft_fertigen //step 6
+  Bodenerstellen //step 7
+  Qualitätskontrolle //step 8
+  Abholbereit //step 9
+  Ausgeführt //step 10
+}
+
+/**
+ * 1. Auftragserstellung,
+ * 2. Leistenerstellung,
+ * 3. Bettungserstellung,
+ * 4. Halbprobenerstellung,
+ * 5. Halbprobe durchführen,
+ * 6. Schaft fertigen,
+ * 7. Bodenerstellen,
+ * 8. Qualitätskontrolle,
+ * 9. Abholbereit,
+ * 10. Ausgeführt
+ */
+
+model shoe_order_step {
+  id String @id @default(uuid())
+
+  orderId String?
+  order   shoe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  status      String?
+  isCompleted Boolean? @default(false)
+
+  // step 1
+  files files[]
+  notes String?
+
+  // step 2
+  // files files[]
+  // notes String?
+  size     String?
+  material String?
+
+  // step 3
+  // files files[]
+  // notes String?
+  //material string?
+  thickness String?
+
+  // step 4
+  preparation_date DateTime?
+  // notes String
+
+  /**
+   * step 5
+   */
+  // files files[]
+  // notes String
+  checkliste_halbprobe Json? //other info
+  fitting_date         DateTime?
+  adjustments          String?
+  customer_reviews     String?
+
+  // step 6
+  // files files[]
+  // notes String
+
+  // step 7
+  // files files[]
+  // notes String
+
+  // step 8
+  // files files[]
+  // notes String
+
+  // step 9
+  // files files[]
+  // notes String
+
+  // step 10
+  // files files[]
+  // notes String
+
+  createdAt DateTime @default(now())
+}
+
+model files {
+  id String @id @default(uuid())
+
+  fileName String?
+  fileUrl  String?
+  fileType String?
+  fileSize Float?
+
+  createdAt DateTime @default(now())
+
+  shoeOrderStep   shoe_order_step? @relation(fields: [shoeOrderStepId], references: [id])
+  shoeOrderStepId String?
+}
+
+model shoe_order_insurance {
+  id String @id @default(uuid())
+
+  orderId String?
+  order   shoe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  price       Float?
+  description Json?
+  vat_country String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1782,6 +1961,34 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1805,6 +2012,34 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
