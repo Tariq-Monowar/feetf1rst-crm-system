@@ -110,7 +110,7 @@ export const systemLogin = async (req: Request, res: Response) => {
       });
     }
     const token = jwt.sign(
-      { id: partner.id, email: partner.email, role: partner.role },
+      { id: partner.id, email: partner.email},
       process.env.JWT_SECRET as string,
     );
 
