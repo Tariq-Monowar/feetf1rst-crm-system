@@ -25,7 +25,7 @@ router.post("/set-secret-password", verifyUser("PARTNER"), setSecretPassword);
 * @description System login for partner it's less secure than the normal login
 * @body { email: string, password: string }
 */
-router.post("/system-login", verifyUser("ANY"), systemLogin);
+router.post("/system-login", systemLogin);
 
 /*
 * STEP 2: Find all employee and partners

@@ -2307,7 +2307,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
       oneOrdersInProduction,
       finishedOrders,
       //--------------------
-      paymnentType,
+      paymnentType: paymnentTypeQuery,
       geschaeftsstandort,
       page = "1",
       limit = "10",
@@ -2355,7 +2355,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
     const oneAllOrdersFilter = parseBoolean(oneAllOrders);
     const oneOrdersInProductionFilter = parseBoolean(oneOrdersInProduction);
     const finishedOrdersFilter = parseBoolean(finishedOrders);
-    const normalizedPaymnentType = normalizeString(paymnentType)?.toLowerCase();
+    const paymnentType = normalizeString(paymnentTypeQuery)?.toLowerCase();
     const normalizedGeschaeftsstandort =
       normalizeString(geschaeftsstandort)?.trim();
 
@@ -2379,9 +2379,9 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
     // Validate payment type
     if (
-      normalizedPaymnentType &&
-      normalizedPaymnentType !== "insurance" &&
-      normalizedPaymnentType !== "private"
+      paymnentType &&
+      paymnentType !== "insurance" &&
+      paymnentType !== "private"
     ) {
       return res.status(400).json({
         success: false,
@@ -2570,9 +2570,26 @@ export const filterCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Note: Payment type filtering will be done after fetching based on latestOrder
-    // This is because we need to filter by the most recent order's payment status,
-    // not just any order with that payment status
+    // Filter by customer billingType (insurance or private)
+    if (paymnentType === "insurance") {
+      whereConditions.push({
+        OR: [
+          { billingType: "Krankenkasse_Ungenehmigt" },
+          { billingType: "Krankenkasse_Genehmigt" },
+          { billingType: { equals: "insurance", mode: "insensitive" } },
+          { billingType: { contains: "Krankenkasse", mode: "insensitive" } },
+        ],
+      });
+    } else if (paymnentType === "private") {
+      whereConditions.push({
+        OR: [
+          { billingType: "Privat_Bezahlt" },
+          { billingType: "Privat_offen" },
+          { billingType: { equals: "private", mode: "insensitive" } },
+          { billingType: { contains: "Privat", mode: "insensitive" } },
+        ],
+      });
+    }
 
     const normalizedSearch = normalizeString(search)?.trim();
     if (normalizedSearch) {
@@ -2590,10 +2607,9 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
     const where: any = whereConditions.length ? { AND: whereConditions } : {};
 
-    // If payment type, geschaeftsstandort, or count-based filters are applied, fetch more records to account for filtering
+    // If geschaeftsstandort or count-based filters are applied, fetch more records to account for filtering
     // We'll filter after fetching, so we need a larger batch to ensure we get enough results
     const needsPostFilter =
-      normalizedPaymnentType ||
       normalizedGeschaeftsstandort ||
       oneAllOrdersFilter ||
       oneOrdersInProductionFilter;
@@ -2667,28 +2683,6 @@ export const filterCustomer = async (req: Request, res: Response) => {
           }
         : null;
 
-    // Helper: treat customer billingType or fallback to latest order bezahlt as "insurance" or "private"
-    const isInsurancePayment = (billingType: string | null, latestOrderBezahlt: string | null) => {
-      const source = billingType ?? latestOrderBezahlt ?? "";
-      const lower = String(source).toLowerCase();
-      return (
-        source === "Krankenkasse_Ungenehmigt" ||
-        source === "Krankenkasse_Genehmigt" ||
-        lower === "insurance" ||
-        lower.includes("krankenkasse")
-      );
-    };
-    const isPrivatePayment = (billingType: string | null, latestOrderBezahlt: string | null) => {
-      const source = billingType ?? latestOrderBezahlt ?? "";
-      const lower = String(source).toLowerCase();
-      return (
-        source === "Privat_Bezahlt" ||
-        source === "Privat_offen" ||
-        lower === "private" ||
-        lower.includes("privat")
-      );
-    };
-
     // Map customers to response data
     let responseData = customers.map((customer) => {
       const completedOrdersCount = customer.customerOrders.filter((order) =>
@@ -2716,30 +2710,9 @@ export const filterCustomer = async (req: Request, res: Response) => {
         latestScreener,
         latestMassschuheOrder,
         billingType,
-        // Keep for payment filter (customer-level billingType, fallback to latest order)
-        _customerBillingType: customer.billingType,
         _customerOrders: customer.customerOrders,
       };
     });
-
-    // Filter by payment type: use customer's billingType first, fallback to latest order's bezahlt
-    if (normalizedPaymnentType) {
-      if (normalizedPaymnentType === "insurance") {
-        responseData = responseData.filter((customer: any) => {
-          return isInsurancePayment(
-            customer._customerBillingType ?? null,
-            customer.latestOrder?.bezahlt ?? null
-          );
-        });
-      } else if (normalizedPaymnentType === "private") {
-        responseData = responseData.filter((customer: any) => {
-          return isPrivatePayment(
-            customer._customerBillingType ?? null,
-            customer.latestOrder?.bezahlt ?? null
-          );
-        });
-      }
-    }
 
     // Filter by geschaeftsstandort (JSON in DB: match on title or string value)
     if (normalizedGeschaeftsstandort) {
@@ -2786,12 +2759,12 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
     // Remove internal fields before sending response
     responseData = responseData.map((customer: any) => {
-      const { _customerOrders, _customerBillingType, ...rest } = customer;
+      const { _customerOrders, ...rest } = customer;
       return rest;
     });
 
     // Calculate total for pagination
-    // Note: When payment type, geschaeftsstandort, or count-based filters are applied, totalItems is approximate
+    // Note: When geschaeftsstandort or count-based filters are applied, totalItems is approximate
     // as we only count the filtered results from the fetched batch
     const filteredTotal =
       needsPostFilter || oneAllOrdersFilter || oneOrdersInProductionFilter
@@ -2821,7 +2794,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
         oneAllOrders: oneAllOrdersFilter,
         oneOrdersInProduction: oneOrdersInProductionFilter,
         finishedOrders: finishedOrdersFilter,
-        paymnentType: normalizedPaymnentType || undefined,
+        paymnentType: paymnentType || undefined,
         geschaeftsstandort: normalizedGeschaeftsstandort || undefined,
         search: normalizedSearch || undefined,
         dateRange: dateRange

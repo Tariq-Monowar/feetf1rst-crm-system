@@ -70,7 +70,7 @@ router.get(
   getPriceDetails,
 );
 
-//not
+
 router.get(
   "/status-note/:orderId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
