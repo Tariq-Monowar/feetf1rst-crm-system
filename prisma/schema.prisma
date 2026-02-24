@@ -1760,8 +1760,8 @@ model shoe_order_step {
   // step 2
   // files files[]
   // notes String?
-  size     String?
-  material String?
+  leistentyp String?
+  material   String?
 
   // step 3
   // files files[]
