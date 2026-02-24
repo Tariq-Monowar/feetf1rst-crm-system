@@ -273,14 +273,15 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         },
       });
 
-      // Step 1: Auftragserstellung
-      await tx.shoe_order_step.create({
-        data: {
-          orderId: order.id,
-          status: "Auftragserstellung",
-          isCompleted: false,
-        },
-      });
+      // // Step 1: Auftragserstellung
+      // await tx.shoe_order_step.create({
+      //   data: {
+      //     orderId: order.id,
+      //     status: "Auftragserstellung",
+      //     isCompleted: false,
+      //     auto_print: true,
+      //   },
+      // });
 
       // Step 4 & 5: when half_sample_required is true
       if (halfSampleRequired) {
@@ -289,6 +290,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobenerstellung",
             isCompleted: true,
+            auto_print: true,
             preparation_date: new Date(preparation_date),
             notes: step4_notes ?? undefined,
           },
@@ -298,6 +300,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobe_durchführen",
             isCompleted: true,
+            auto_print: true,
             fitting_date: new Date(fitting_date),
             adjustments: adjustments ?? undefined,
             customer_reviews: customer_reviews ?? undefined,
@@ -312,6 +315,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Leistenerstellung",
             isCompleted: true,
+            auto_print: true,
             leistentyp: step2_leistentyp ?? undefined,
             material: step2_material ?? undefined,
             notes: step2_notes ?? undefined,
@@ -326,6 +330,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Bettungserstellung",
             isCompleted: true,
+            auto_print: true,
             material: step3_material ?? undefined,
             thickness: step3_thickness ?? undefined,
             notes: step3_notes ?? undefined,
@@ -444,6 +449,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         createdAt: true,
         payment_status: true,
         priority: true,
+        total_price: true,
         shoeOrderStep: {
           orderBy: { createdAt: "asc" },
           where: { isCompleted: true },
@@ -543,9 +549,14 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     const stepPayload = {
       notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
-      leistentyp: leistentyp !== undefined ? (leistentyp?.trim() ?? undefined) : undefined,
-      material: material !== undefined ? (material?.trim() ?? undefined) : undefined,
-      thickness: thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
+      leistentyp:
+        leistentyp !== undefined
+          ? (leistentyp?.trim() ?? undefined)
+          : undefined,
+      material:
+        material !== undefined ? (material?.trim() ?? undefined) : undefined,
+      thickness:
+        thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
       preparation_date:
         preparation_date !== undefined && preparation_date !== ""
           ? new Date(preparation_date)
@@ -556,7 +567,9 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           ? new Date(fitting_date)
           : undefined,
       adjustments:
-        adjustments !== undefined ? (adjustments?.trim() ?? undefined) : undefined,
+        adjustments !== undefined
+          ? (adjustments?.trim() ?? undefined)
+          : undefined,
       customer_reviews:
         customer_reviews !== undefined
           ? (customer_reviews?.trim() ?? undefined)
@@ -573,7 +586,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       };
       Object.keys(updateData).forEach(
         (k) =>
-          (updateData as any)[k] === undefined && delete (updateData as any)[k]
+          (updateData as any)[k] === undefined && delete (updateData as any)[k],
       );
 
       await prisma.shoe_order_step.update({
@@ -700,6 +713,202 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while getting shoe order status",
+    });
+  }
+};
+
+export const updateShoeOrder = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const { status_note } = req.body;
+
+    if (!status_note) {
+      return res.status(400).json({
+        success: false,
+        message: "Status note is required",
+      });
+    }
+
+    const order = await prisma.shoe_order.update({
+      where: { id, partnerId },
+      data: { status_note },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shoe order updated successfully",
+      data: order?.status_note,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order",
+      error: error.message,
+    });
+  }
+};
+
+export const getShoeOrderStatusNote = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        status_note: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Get Shoe Order Status Note Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe order status note",
+      error: error.message,
+    });
+  }
+};
+
+export const getShoeOrderDetails = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: {
+        id: true,
+
+        // diagnosis
+        medical_diagnosis: true,
+        detailed_diagnosis: true,
+
+        //location
+        branch_location: true,
+        pick_up_location: true,
+        store_location: true,
+
+        //payment
+        payment_status: true,
+        total_price: true,
+        //cash payment
+        price: true,
+        vat_rate: true,
+
+        foot_analysis_price: true,
+        deposit_provision: true,
+
+        //insurance payment
+        insurances: {
+          select: {
+            price: true,
+            description: true,
+          },
+        },
+
+        //order note
+        order_note: true,
+        status_note: true,
+        supply_note: true,
+
+        //employee
+        employee: {
+          select: {
+            id: true,
+            accountName: true,
+            employeeName: true,
+            image: true,
+          },
+        },
+
+        //customer
+        customer: {
+          select: {
+            id: true,
+            customerNumber: true,
+            vorname: true,
+            nachname: true,
+            telefon: true,
+          },
+        },
+
+        orderNumber: true,
+        quantity: true,
+        kva: true,
+        halbprobe: true,
+
+        status: true,
+
+        createdAt: true,
+
+        // steps with auto_print false only (for time-spent calculation)
+        shoeOrderStep: {
+          where: { auto_print: false },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, status: true, createdAt: true },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    // time spent per status (only auto_print false steps)
+    const steps = order.shoeOrderStep || [];
+    const now = new Date();
+    const timeSpentByStatus = steps.map((step, i) => {
+      const startedAt = step.createdAt;
+      const nextStep = steps[i + 1];
+      const endedAt = nextStep ? nextStep.createdAt : now;
+      const durationMs = endedAt.getTime() - startedAt.getTime();
+      return {
+        status: step.status,
+        startedAt,
+        endedAt,
+        durationMs,
+        durationHours: Math.round((durationMs / (1000 * 60 * 60)) * 100) / 100,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...order,
+        timeSpentByStatus,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Shoe Order Details Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe order details",
+      error: error.message,
     });
   }
 };

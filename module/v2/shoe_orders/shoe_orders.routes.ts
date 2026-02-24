@@ -6,6 +6,9 @@ import {
   getAllShoeOrders,
   getShoeOrderStatus,
   updateShoeOrderStatus,
+  updateShoeOrder,
+  getShoeOrderStatusNote,
+  getShoeOrderDetails
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
@@ -25,5 +28,24 @@ router.get(
   verifyUser("PARTNER", "EMPLOYEE"),
   getShoeOrderStatus,
 );
+
+router.patch(
+  "/update-order/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  updateShoeOrder,
+);
+
+router.get(
+  "/get-status-note/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getShoeOrderStatusNote,
+);
+
+router.get(
+  "/get-order-details/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getShoeOrderDetails,
+);
+
 
 export default router;
