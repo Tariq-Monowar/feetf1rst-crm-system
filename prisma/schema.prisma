@@ -1077,8 +1077,8 @@ model ordersFeedback {
   massschuheOrderId String?
   massschuheOrder   massschuhe_order? @relation(fields: [massschuheOrderId], references: [id], onDelete: SetNull)
 
-  //shoe order id
-  shoeOrderId String?   @unique
+  //shoe order id (optional; one shoe_order can have multiple feedback records)
+  shoeOrderId String?
   shoeOrder   shoe_order? @relation(fields: [shoeOrderId], references: [id], onDelete: SetNull)
 
   feedbackFor FeedbackFor? @default(insole)
@@ -1718,7 +1718,7 @@ model shoe_order {
   updatedAt DateTime @updatedAt
 
   shoeOrderStep   shoe_order_step[]
-  ordersFeedbacks ordersFeedback?
+  ordersFeedbacks ordersFeedback[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])

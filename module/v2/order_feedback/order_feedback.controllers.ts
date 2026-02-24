@@ -152,8 +152,10 @@ export const createOrderFeedback = async (req: Request, res: Response) => {
         });
       }
 
+      // One feedback per shoe order: find existing by shoeOrderId + feedbackFor, then update or create
       const existingFeedback = await prisma.ordersFeedback.findFirst({
         where: { shoeOrderId: order.id, feedbackFor: "shoes" },
+        orderBy: { createdAt: "desc" },
         select: { id: true, react: true, image: true, note: true },
       });
 
