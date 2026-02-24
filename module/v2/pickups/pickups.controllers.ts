@@ -217,7 +217,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
     if (type === "insole") {
       const whereCondition: any = {
         partnerId,
-        status: { in: ["Abholbereit_Versandt", "Ausgeführt"] },
+        orderStatus: { in: ["Abholbereit_Versandt", "Ausgeführt"] },
         bezahlt: "Privat_offen",
       };
 
@@ -288,6 +288,13 @@ export const getAllPickup = async (req: Request, res: Response) => {
               customerNumber: true,
             },
           },
+          // date when order became Abholbereit (from step createdAt)
+          shoeOrderStep: {
+            where: { status: "Abholbereit" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { createdAt: true },
+          },
         },
       });
 
@@ -302,7 +309,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
           id: item.id,
           orderNumber: item.orderNumber,
           createdAt: item.createdAt,
-          fertigstellungBis: null,
+          fertigstellungBis: item.shoeOrderStep[0]?.createdAt ?? null,
           bezahlt: item.payment_status,
           orderStatus: item.status,
           customer: item.customer,

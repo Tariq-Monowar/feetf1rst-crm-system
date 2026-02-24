@@ -698,9 +698,10 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
     });
 
     if (statusParam && steps.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `No step with status "${statusParam}" found for this order`,
+      return res.status(200).json({
+        success: true,
+        message: "No step with this status found for this order",
+        data: null,
       });
     }
 
