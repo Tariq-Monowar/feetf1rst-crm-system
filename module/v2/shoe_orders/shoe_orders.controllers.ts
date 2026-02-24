@@ -459,6 +459,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
           select: {
             status: true,
             isCompleted: true,
+            auto_print: true,
             createdAt: true,
           },
         },
