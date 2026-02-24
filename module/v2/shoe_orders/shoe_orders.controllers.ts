@@ -37,6 +37,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       medical_diagnosis,
       detailed_diagnosis,
       total_price,
+      price,
       vat_rate,
       store_location,
       employeeId,
@@ -256,6 +257,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           partnerId,
           deposit_provision: Number(deposit_provision),
           foot_analysis_price: footAnalysisPrice ?? undefined,
+          price: Number(price) ?? undefined,
         },
       });
 
