@@ -3,6 +3,17 @@ import { PrismaClient, Prisma } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/** Get next order number for a partner (starts from 1000, unique per partner) - raw query for speed */
+const getNextShoeOrderNumberForPartner = async (
+  tx: any,
+  partnerId: string,
+): Promise<number> => {
+  const rows = (await tx.$queryRaw(
+    Prisma.sql`SELECT COALESCE(MAX("orderNumber"), 999) + 1 AS next_num FROM "shoe_order" WHERE "partnerId" = ${partnerId}`,
+  )) as Array<{ next_num: number }>;
+  return Number(rows[0]?.next_num ?? 1000);
+};
+
 const parseJsonField = (value: unknown): Prisma.InputJsonValue | undefined => {
   if (value == null) return undefined;
   if (typeof value === "string") {
@@ -81,6 +92,9 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step3_material,
       step3_thickness,
       step3_notes,
+
+      deposit_provision,
+      foot_analysis_price,
     } = req.body;
 
     const partnerId = req.user?.id;
@@ -104,9 +118,29 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       }
     }
 
+    //valit payment_status
+    const validPaymentStatuses = [
+      "Privat_Bezahlt",
+      "Privat_offen",
+      "Krankenkasse_Ungenehmigt",
+      "Krankenkasse_Genehmigt",
+    ];
+    if (
+      payment_status != null &&
+      payment_status !== "" &&
+      !validPaymentStatuses.includes(payment_status)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment status",
+        validStatuses: validPaymentStatuses,
+      });
+    }
+
     const branchLocation = parseJsonField(branch_location);
     const pickUpLocation = parseJsonField(pick_up_location);
     const storeLocation = parseJsonField(store_location);
+    const footAnalysisPrice = parseJsonField(foot_analysis_price);
 
     let insurancesArr: Array<{
       price?: number;
@@ -124,20 +158,22 @@ export const createShoeOrder = async (req: Request, res: Response) => {
               }
             })()
           : insurances;
-      insurancesArr = Array.isArray(parsed) ? (parsed as typeof insurancesArr) : [];
+      insurancesArr = Array.isArray(parsed)
+        ? (parsed as typeof insurancesArr)
+        : [];
     }
 
-    const halfSampleRequired = half_sample_required === true || half_sample_required === "true";
-    const hasTrimStrips = has_trim_strips === true || has_trim_strips === "true";
-    const beddingRequired = bedding_required === true || bedding_required === "true";
+    const halfSampleRequired =
+      half_sample_required === true || half_sample_required === "true";
+    const hasTrimStrips =
+      has_trim_strips === true || has_trim_strips === "true";
+    const beddingRequired =
+      bedding_required === true || bedding_required === "true";
 
     // Validate conditional data when required
     if (!halfSampleRequired) {
       // Need steps 4 & 5 data
-      if (
-        preparation_date == null ||
-        fitting_date == null
-      ) {
+      if (preparation_date == null || fitting_date == null) {
         return res.status(400).json({
           success: false,
           message:
@@ -182,23 +218,33 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message: "Customer not found. Ensure customerId exists and belongs to your account.",
+        message:
+          "Customer not found. Ensure customerId exists and belongs to your account.",
       });
     }
 
     const newOrder = await prisma.$transaction(async (tx) => {
+      const orderNumber = await getNextShoeOrderNumberForPartner(tx, partnerId);
+
       const order = await tx.shoe_order.create({
         data: {
+          orderNumber,
           quantity: Number(quantity) || undefined,
-          branch_location: (branchLocation ?? undefined) as Prisma.InputJsonValue | undefined,
-          pick_up_location: (pickUpLocation ?? undefined) as Prisma.InputJsonValue | undefined,
+          branch_location: (branchLocation ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
+          pick_up_location: (pickUpLocation ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           payment_status: payment_status ?? undefined,
           order_note: order_note ?? undefined,
           medical_diagnosis: medical_diagnosis ?? undefined,
           detailed_diagnosis: detailed_diagnosis ?? undefined,
           total_price: Number(total_price) ?? undefined,
           vat_rate: vat_rate != null ? Number(vat_rate) : undefined,
-          store_location: (storeLocation ?? undefined) as Prisma.InputJsonValue | undefined,
+          store_location: (storeLocation ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           employeeId: employeeId ?? undefined,
           kva: kva === true || kva === "true",
           halbprobe: halbprobe === true || halbprobe === "true",
@@ -208,6 +254,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           supply_note: supply_note ?? undefined,
           customerId: customerId ?? undefined,
           partnerId,
+          deposit_provision: Number(deposit_provision),
+          foot_analysis_price: footAnalysisPrice ?? undefined,
         },
       });
 
@@ -277,7 +325,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           data: insurancesArr.map((ins) => ({
             orderId: order.id,
             price: ins.price != null ? Number(ins.price) : undefined,
-            description: (ins.description as Prisma.InputJsonValue) ?? undefined,
+            description:
+              (ins.description as Prisma.InputJsonValue) ?? undefined,
             vat_country: ins.vat_country ?? undefined,
           })),
         });
@@ -292,7 +341,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         shoeOrderStep: true,
         insurances: true,
         customer: {
-          select: { id: true, vorname: true, nachname: true, customerNumber: true },
+          select: {
+            id: true,
+            vorname: true,
+            nachname: true,
+            customerNumber: true,
+          },
         },
       },
     });
@@ -306,7 +360,230 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     console.error("Create Shoe Order Error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Something went wrong while creating shoe order",
+      message:
+        error.message || "Something went wrong while creating shoe order",
+    });
+  }
+};
+
+export const getAllShoeOrders = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const limitParam = req.query.limit;
+    const cursorParam = req.query.cursor;
+    const statusParam = req.query.status;
+    const searchParam = req.query.search;
+
+    const limit = Math.min(Math.max(Number(limitParam) || 10, 1), 100);
+    const cursor = typeof cursorParam === "string" ? cursorParam : undefined;
+
+    //valid statuses
+    const validStatuses = [
+      "Auftragserstellung",
+      "Leistenerstellung",
+      "Bettungserstellung",
+      "Halbprobenerstellung",
+      "Halbprobe_durchführen",
+      "Schaft_fertigen",
+      "Bodenerstellen",
+      "Qualitätskontrolle",
+      "Abholbereit",
+      "Ausgeführt",
+    ] as const;
+    if (statusParam && !validStatuses.includes(statusParam.toString() as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+        validStatuses: validStatuses,
+      });
+    }
+
+    const whereCondition: Record<string, unknown> = { partnerId };
+
+    if (statusParam && typeof statusParam === "string") {
+      whereCondition.status = statusParam;
+    }
+
+    if (searchParam && typeof searchParam === "string" && searchParam.trim()) {
+      const term = searchParam.trim();
+      const numSearch = Number(term);
+      const orderNumMatch =
+        !Number.isNaN(numSearch) && numSearch > 0
+          ? { orderNumber: numSearch }
+          : null;
+      whereCondition.OR = [
+        ...(orderNumMatch ? [orderNumMatch] : []),
+        { customer: { vorname: { contains: term, mode: "insensitive" } } },
+        { customer: { nachname: { contains: term, mode: "insensitive" } } },
+      ];
+    }
+
+    const shoeOrders = await prisma.shoe_order.findMany({
+      where: whereCondition,
+      orderBy: [{ orderNumber: "desc" }, { id: "asc" }],
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      select: {
+        id: true,
+        orderNumber: true,
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+          },
+        },
+        status: true,
+        branch_location: true,
+        createdAt: true,
+        payment_status: true,
+        priority: true,
+        shoeOrderStep: {
+          orderBy: { createdAt: "asc" },
+          where: { isCompleted: true },
+          select: {
+            status: true,
+            isCompleted: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    const hasMore = shoeOrders.length > limit;
+    const data = hasMore ? shoeOrders.slice(0, limit) : shoeOrders;
+    // const nextCursor = hasMore ? data[data.length - 1]?.id : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Shoe orders fetched successfully",
+      data,
+      pagination: {
+        limit,
+        // nextCursor,
+        hasMore,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get All Shoe Orders Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe orders",
+    });
+  }
+};
+
+export const updateShoeOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    const status = req.query?.status?.toString();
+
+    const {
+      notes,
+      size,
+      material,
+      thickness,
+      preparation_date,
+      checkliste_halbprobe,
+      fitting_date,
+      adjustments,
+      customer_reviews,
+    } = req.body;
+    const fileList = (req.files as any)?.files ?? [];
+
+    const SHOE_ORDER_STATUSES = [
+      "Auftragserstellung",
+      "Leistenerstellung",
+      "Bettungserstellung",
+      "Halbprobenerstellung",
+      "Halbprobe_durchführen",
+      "Schaft_fertigen",
+      "Bodenerstellen",
+      "Qualitätskontrolle",
+      "Abholbereit",
+      "Ausgeführt",
+    ];
+
+    if (!status || !SHOE_ORDER_STATUSES.includes(status as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid status is required",
+        validStatuses: [...SHOE_ORDER_STATUSES],
+      });
+    }
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: { id: true },
+    });
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shoe order not found" });
+    }
+
+    const already = await prisma.shoe_order_step.findFirst({
+      where: { orderId: id, status },
+    });
+    if (already) {
+      return res.status(400).json({
+        success: false,
+        message: `Step "${status}" already exists for this order`,
+      });
+    }
+
+    const stepData = {
+      orderId: id,
+      status,
+      isCompleted: true,
+      notes: notes?.trim() ?? undefined,
+      size: size?.trim() ?? undefined,
+      material: material?.trim() ?? undefined,
+      thickness: thickness?.trim() ?? undefined,
+      preparation_date: preparation_date
+        ? new Date(preparation_date)
+        : undefined,
+      checkliste_halbprobe: checkliste_halbprobe
+        ? JSON.parse(checkliste_halbprobe)
+        : undefined,
+      fitting_date: fitting_date ? new Date(fitting_date) : undefined,
+      adjustments: adjustments?.trim() ?? undefined,
+      customer_reviews: customer_reviews?.trim() ?? undefined,
+    };
+
+    await prisma.shoe_order_step.create({ data: stepData });
+
+    await prisma.shoe_order.update({ where: { id }, data: { status } });
+
+    const updatedOrder = await prisma.shoe_order.findUnique({
+      where: { id },
+      include: {
+        shoeOrderStep: true,
+        customer: {
+          select: {
+            id: true,
+            vorname: true,
+            nachname: true,
+            customerNumber: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shoe order status updated successfully",
+      data: updatedOrder,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Status Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order status",
     });
   }
 };

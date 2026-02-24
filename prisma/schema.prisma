@@ -1637,6 +1637,9 @@ model shoe_order {
   // Ausführliche Diagnose (2nd fields)
   detailed_diagnosis String?
 
+  deposit_provision   Float?
+  foot_analysis_price Json?
+
   /**
    * 3rd fields
    * if it's private i get form input field
@@ -1709,6 +1712,9 @@ model shoe_order {
   updatedAt DateTime @updatedAt
 
   shoeOrderStep shoe_order_step[]
+
+  @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
+  @@index([partnerId, orderNumber])
 }
 
 enum shoe_order_status {
@@ -1989,6 +1995,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2012,6 +2019,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
