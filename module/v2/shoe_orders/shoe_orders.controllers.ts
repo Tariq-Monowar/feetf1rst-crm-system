@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
@@ -688,30 +689,38 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const steps = await prisma.shoe_order_step.findMany({
-      where: {
-        orderId: id,
-        ...(statusParam ? { status: statusParam } : {}),
-      },
-      orderBy: { createdAt: "asc" },
-      include: { files: true },
-    });
+    const [steps, shoeOrderStep] = await Promise.all([
+      prisma.shoe_order_step.findMany({
+        where: {
+          orderId: id,
+          ...(statusParam ? { status: statusParam } : {}),
+        },
+        orderBy: { createdAt: "asc" },
+        include: { files: true },
+      }),
+      prisma.shoe_order_step.findMany({
+        where: { orderId: id },
+        orderBy: { createdAt: "asc" },
+        select: { status: true, isCompleted: true, auto_print: true, createdAt: true },
+      }),
+    ]);
 
     if (statusParam && steps.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No step with this status found for this order",
         data: null,
+        shoeOrderStep,
       });
     }
 
-    // Return only step(s) with files, not full order
     const data = steps.length === 1 && statusParam ? steps[0] : steps;
 
     return res.status(200).json({
       success: true,
       message: "Shoe order status fetched successfully",
       data,
+      shoeOrderStep,
     });
   } catch (error: any) {
     console.error("Get Shoe Order Status Error:", error);
@@ -916,6 +925,71 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong while getting shoe order details",
       error: error.message,
+    });
+  }
+};
+
+export const removeShoeOrderFile = async (req: Request, res: Response) => {
+  try {
+    const { fileId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const file = await prisma.files.findUnique({
+      where: { id: fileId },
+      include: {
+        shoeOrderStep: {
+          include: {
+            order: { select: { partnerId: true } },
+          },
+        },
+      },
+    });
+
+    if (!file || !file.shoeOrderStep?.order) {
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
+    }
+
+    if (file.shoeOrderStep.order.partnerId !== partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have access to this file",
+      });
+    }
+
+    const fileUrlToDelete = file.fileUrl ?? undefined;
+    const stepId = file.shoeOrderStepId;
+
+    if (stepId) {
+      await prisma.shoe_order_step.update({
+        where: { id: stepId },
+        data: { files: { delete: { id: fileId } } },
+      });
+    } else {
+      await prisma.files.delete({ where: { id: fileId } });
+    }
+
+    if (fileUrlToDelete) {
+      deleteFileFromS3(fileUrlToDelete).catch((err) =>
+        console.error("S3 cleanup after file remove:", err)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "File removed successfully",
+    });
+  } catch (error: any) {
+    console.error("Remove Shoe Order File Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while removing file",
     });
   }
 };

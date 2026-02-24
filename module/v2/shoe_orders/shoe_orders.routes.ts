@@ -8,7 +8,8 @@ import {
   updateShoeOrderStatus,
   updateShoeOrder,
   getShoeOrderStatusNote,
-  getShoeOrderDetails
+  getShoeOrderDetails,
+  removeShoeOrderFile,
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
@@ -47,5 +48,10 @@ router.get(
   getShoeOrderDetails,
 );
 
+router.delete(
+  "/remove-file/:fileId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  removeShoeOrderFile,
+);
 
 export default router;
