@@ -97,10 +97,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       adjustments,
       customer_reviews,
 
-      // Step 2 data (when has_trim_strips is false)
+      // Step 2 data (when has_trim_strips is false); accept step2_leistentyp or leistentyp
       step2_material,
       step2_leistentyp,
       step2_notes,
+      leistentyp: body_leistentyp,
 
       // Step 3 data (when has_trim_strips false or bedding_required false)
       step3_material,
@@ -110,6 +111,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       deposit_provision,
       foot_analysis_price,
     } = req.body;
+
+    const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
 
     const partnerId = req.user?.id;
     if (!partnerId) {
@@ -196,12 +199,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     }
 
     if (!hasTrimStrips) {
-      // Need step 2 & 3 data
-      if (step2_material == null || step2_leistentyp == null) {
+      // Need step 2 & 3 data (leistentyp can be sent as step2_leistentyp or leistentyp)
+      if (step2_material == null || step2Leistentyp == null || step2Leistentyp === "") {
         return res.status(400).json({
           success: false,
           message:
-            "When has_trim_strips is false, step2_material and step2_leistentyp are required",
+            "When has_trim_strips is false, step2_material and step2_leistentyp (or leistentyp) are required",
         });
       }
       if (step3_material == null || step3_thickness == null) {
@@ -316,7 +319,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             status: "Leistenerstellung",
             isCompleted: true,
             auto_print: true,
-            leistentyp: step2_leistentyp ?? undefined,
+            leistentyp: step2Leistentyp?.trim() ?? undefined,
             material: step2_material ?? undefined,
             notes: step2_notes ?? undefined,
           },

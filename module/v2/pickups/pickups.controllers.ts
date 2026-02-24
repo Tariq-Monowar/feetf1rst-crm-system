@@ -217,7 +217,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
     if (type === "insole") {
       const whereCondition: any = {
         partnerId,
-        fertigstellungBis: { lte: new Date() },
+        status: { in: ["Abholbereit_Versandt", "Ausgeführt"] },
         bezahlt: "Privat_offen",
       };
 
@@ -263,9 +263,56 @@ export const getAllPickup = async (req: Request, res: Response) => {
         },
       });
     } else if (type === "shoes") {
-      return res.status(400).json({
-        success: false,
-        message: "Shoes type is not supported yet",
+      const whereCondition: any = {
+        partnerId,
+        status: { in: ["Abholbereit", "Ausgeführt"] },
+        payment_status: "Privat_offen",
+      };
+
+      const shoesOrders = await prisma.shoe_order.findMany({
+        where: whereCondition,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          orderNumber: true,
+          createdAt: true,
+          payment_status: true,
+          status: true,
+          customer: {
+            select: {
+              id: true,
+              vorname: true,
+              nachname: true,
+              customerNumber: true,
+            },
+          },
+        },
+      });
+
+      const hasNextPage = shoesOrders.length > limit;
+      const items = hasNextPage ? shoesOrders.slice(0, limit) : shoesOrders;
+      const nextCursor = hasNextPage ? items[items.length - 1].id : null;
+
+      return res.status(200).json({
+        success: true,
+        message: "Pickup orders fetched successfully",
+        data: items.map((item) => ({
+          id: item.id,
+          orderNumber: item.orderNumber,
+          createdAt: item.createdAt,
+          fertigstellungBis: null,
+          bezahlt: item.payment_status,
+          orderStatus: item.status,
+          customer: item.customer,
+          type: "shoes",
+        })),
+        pagination: {
+          limit,
+          hasNextPage,
+          nextCursor,
+        },
       });
     } else {
       return res.status(400).json({
