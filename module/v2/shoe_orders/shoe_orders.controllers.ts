@@ -45,8 +45,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       halbprobe,
 
       /**
-       * half_sample_required: if true → skip steps 4 & 5.
-       * if false → need steps 4 & 5, get extra input:
+       * half_sample_required: if false → skip steps 4 & 5.
+       * if true → need steps 4 & 5, get extra input:
        *   step 4: preparation_date, notes
        *   step 5: fitting_date, adjustments, customer_reviews
        *   save with isCompleted true
@@ -77,7 +77,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
       customerId,
 
-      // Step 4 & 5 data (when half_sample_required is false)
+      // Step 4 & 5 data (when half_sample_required is true)
       preparation_date,
       notes: step4_notes,
       fitting_date,
@@ -172,13 +172,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       bedding_required === true || bedding_required === "true";
 
     // Validate conditional data when required
-    if (!halfSampleRequired) {
-      // Need steps 4 & 5 data
+    if (halfSampleRequired) {
+      // Need steps 4 & 5 data when half sample is required
       if (preparation_date == null || fitting_date == null) {
         return res.status(400).json({
           success: false,
-          message:
-            "When half_sample_required is false, preparation_date and fitting_date are required",
+          message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date, notes and for step 5: fitting_date, adjustments, customer_reviews are required`,
         });
       }
     }
@@ -270,8 +269,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         },
       });
 
-      // Step 4 & 5: when half_sample_required is false
-      if (!halfSampleRequired) {
+      // Step 4 & 5: when half_sample_required is true
+      if (halfSampleRequired) {
         await tx.shoe_order_step.create({
           data: {
             orderId: order.id,
@@ -484,6 +483,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     const partnerId = req.user?.id;
     const status = req.query?.status?.toString();
 
+    const body = req.body ?? {};
     const {
       notes,
       size,
@@ -494,8 +494,15 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       fitting_date,
       adjustments,
       customer_reviews,
-    } = req.body;
-    const fileList = (req.files as any)?.files ?? [];
+    } = body;
+
+    // multer.fields({ name: "files" }) → req.files.files is array of S3 file objects (each has .location)
+    const rawFiles = (req.files as any)?.files;
+    const fileList = Array.isArray(rawFiles)
+      ? rawFiles
+      : rawFiles
+        ? [rawFiles]
+        : [];
 
     const SHOE_ORDER_STATUSES = [
       "Auftragserstellung",
@@ -557,20 +564,44 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       customer_reviews: customer_reviews?.trim() ?? undefined,
     };
 
-    await prisma.shoe_order_step.create({ data: stepData });
+    const newStep = await prisma.shoe_order_step.create({
+      data: stepData,
+    });
 
-    await prisma.shoe_order.update({ where: { id }, data: { status } });
+    // save uploaded files for this step (S3 URL in file.location from multer-s3)
+    for (const file of fileList) {
+      if (file?.location) {
+        await prisma.files.create({
+          data: {
+            shoeOrderStepId: newStep.id,
+            fileUrl: file.location,
+            fileName: file.originalname ?? undefined,
+            fileType: file.mimetype ?? undefined,
+            fileSize: file.size ?? undefined,
+          },
+        });
+      }
+    }
 
-    const updatedOrder = await prisma.shoe_order.findUnique({
-      where: { id },
+    await prisma.shoe_order.update({
+      where: {
+        id,
+      },
+      data: {
+        status,
+      },
+    });
+
+    const stepWithFiles = await prisma.shoe_order_step.findUnique({
+      where: {
+        id: newStep.id,
+      },
       include: {
-        shoeOrderStep: true,
-        customer: {
+        files: {
           select: {
             id: true,
-            vorname: true,
-            nachname: true,
-            customerNumber: true,
+            fileUrl: true,
+            fileName: true,
           },
         },
       },
@@ -579,13 +610,27 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Shoe order status updated successfully",
-      data: updatedOrder,
+      data: stepWithFiles ?? newStep,
     });
   } catch (error: any) {
     console.error("Update Shoe Order Status Error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order status",
+    });
+  }
+};
+
+export const getShoeOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    const status = req.query?.status?.toString();
+  } catch (error: any) {
+    console.error("Get Shoe Order Status Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe order status",
     });
   }
 };
