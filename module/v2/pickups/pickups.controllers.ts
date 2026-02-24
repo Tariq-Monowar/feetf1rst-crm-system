@@ -186,9 +186,139 @@ export const getPickupByOrderId = async (req: Request, res: Response) => {
         },
       });
     } else if (type === "shoes") {
-      return res.status(400).json({
-        success: false,
-        message: "Shoes type is not supported yet",
+      const order = await prisma.shoe_order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          orderNumber: true,
+          total_price: true,
+          payment_status: true,
+          status: true,
+          order_note: true,
+          supply_note: true,
+          createdAt: true,
+          customer: { select: { vorname: true, nachname: true } },
+          insurances: { select: { price: true } },
+          shoeOrderStep: {
+            orderBy: { createdAt: "asc" },
+            select: { status: true, createdAt: true },
+          },
+        },
+      });
+
+      if (!order) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Order not found" });
+      }
+
+      const steps = order.shoeOrderStep ?? [];
+      const timeline: {
+        statusFrom: string | null;
+        statusTo: string | null;
+        changedAt: Date;
+        durationMs: number;
+      }[] = [];
+      let prevAt = order.createdAt.getTime();
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        const currAt = s.createdAt.getTime();
+        timeline.push({
+          statusFrom: i === 0 ? null : steps[i - 1].status ?? null,
+          statusTo: s.status ?? null,
+          changedAt: s.createdAt,
+          durationMs: currAt - prevAt,
+        });
+        prevAt = currAt;
+      }
+
+      const total = order.total_price ?? 0;
+      const bezahlt = order.payment_status ?? "";
+      const insurances = order.insurances ?? [];
+
+      let paid = 0;
+      let remaining = 0;
+      let insuranceSum = 0;
+      let coPayment = 0;
+
+      if (bezahlt === "Privat_Bezahlt") {
+        paid = total;
+        remaining = 0;
+        coPayment = 0;
+      } else if (bezahlt === "Privat_offen") {
+        paid = 0;
+        coPayment = total;
+        remaining = total;
+      } else if (
+        bezahlt === "Krankenkasse_Genehmigt" ||
+        bezahlt === "Krankenkasse_Ungenehmigt"
+      ) {
+        insuranceSum = Math.min(
+          total,
+          insurances.reduce((s, i) => s + (i.price ?? 0), 0),
+        );
+        coPayment = Math.max(0, total - insuranceSum);
+        paid = 0;
+        remaining = coPayment;
+      } else {
+        remaining = total;
+        coPayment = total;
+      }
+
+      const o = order.status ?? "";
+      const c = order.customer;
+      const customerName =
+        (c ? `${c.vorname ?? ""} ${c.nachname ?? ""}`.trim() : "") || "-";
+
+      const abholbereitStep = steps.find((s) => s.status === "Abholbereit");
+      const pickupDate = abholbereitStep?.createdAt ?? null;
+
+      return res.status(200).json({
+        success: true,
+        message: "Pickup detail fetched successfully",
+        data: {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customerName,
+          product: {
+            name: "Shoes",
+            description: order.supply_note ?? order.order_note ?? null,
+          },
+          pickupDate,
+          paymentType: !bezahlt
+            ? "Not set"
+            : String(bezahlt).includes("Krankenkasse")
+              ? "Insurance"
+              : String(bezahlt).includes("Privat")
+                ? "Private"
+                : String(bezahlt).replace(/_/g, " "),
+          paymentMethod: order.payment_status,
+          paymentOutstanding: remaining > 0,
+          paymentOutstandingMessage:
+            remaining > 0
+              ? `Co-payment of €${remaining.toFixed(2)} is still open. Pickup is still possible.`
+              : null,
+          payment: {
+            total,
+            insurance: insuranceSum,
+            coPayment,
+            paid,
+            remaining,
+          },
+          status:
+            o === "Ausgeführt"
+              ? "Picked up"
+              : o === "Abholbereit"
+                ? "Ready"
+                : (o ?? "").replace(/_/g, " "),
+          orderStatus: order.status,
+          timeline,
+          notes: order.supply_note ?? order.order_note ?? null,
+          canPay: remaining > 0,
+          canMarkAsPickedUp: o === "Abholbereit",
+          canSendReminder: o === "Abholbereit",
+          type: "shoes",
+        },
       });
     } else {
       return res.status(400).json({
