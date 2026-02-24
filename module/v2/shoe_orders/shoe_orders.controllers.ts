@@ -896,10 +896,12 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
       };
     });
 
+    const { shoeOrderStep: _steps, ...orderWithoutSteps } = order;
+
     return res.status(200).json({
       success: true,
       data: {
-        ...order,
+        ...orderWithoutSteps,
         timeSpentByStatus,
       },
     });
