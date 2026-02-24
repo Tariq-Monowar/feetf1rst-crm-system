@@ -428,7 +428,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
 
     const shoeOrders = await prisma.shoe_order.findMany({
       where: whereCondition,
-      orderBy: [{ orderNumber: "desc" }, { id: "asc" }],
+      orderBy: { orderNumber: "desc" },
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       select: {
