@@ -491,63 +491,41 @@ export const getAllPickup = async (req: Request, res: Response) => {
 export const getPickupCalculation = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
-
     const now = new Date();
-    const startOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      0,
-      0,
-      0,
-      0,
-    );
-    const endOfToday = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-      23,
-      59,
-      59,
-      999,
-    );
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-    // Single raw query — 1 round-trip, 1 table scan (uses partnerId index)
-    const [row] = await prisma.$queryRaw<any>(Prisma.sql`
+    // readyToPickup = same as get-all-pickup: ready (Abholbereit_Versandt / Abholbereit) AND unpaid (Privat_offen)
+    const rows = await prisma.$queryRaw<any>(Prisma.sql`
+      SELECT * FROM (
+        SELECT
+          COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt' AND "bezahlt" = 'Privat_offen') AS ready_to_pickup,
+          COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt' AND "bezahlt" = 'Privat_offen' AND "fertigstellungBis" >= ${startOfToday} AND "fertigstellungBis" <= ${endOfToday}) AS pickups_today,
+          COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt' AND "bezahlt" = 'Privat_offen' AND "fertigstellungBis" IS NOT NULL AND "fertigstellungBis" < ${startOfToday}) AS overdue_pickups,
+          COUNT(*) FILTER (WHERE "bezahlt" = 'Privat_offen') AS unpaid_count
+        FROM "customerOrders" WHERE "partnerId" = ${partnerId}
+      ) AS insole
+      UNION ALL
       SELECT
-        COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt') AS ready_to_pickup,
-        COUNT(*) FILTER (WHERE "fertigstellungBis" >= ${startOfToday} AND "fertigstellungBis" <= ${endOfToday}) AS pickups_today,
-        COUNT(*) FILTER (WHERE "orderStatus" = 'Abholbereit_Versandt' AND "fertigstellungBis" IS NOT NULL AND "fertigstellungBis" < ${startOfToday}) AS overdue_pickups,
-        COUNT(*) FILTER (WHERE "bezahlt" = 'Privat_offen') AS unpaid_count,
-        COALESCE(SUM("totalPrice") FILTER (WHERE "bezahlt" = 'Privat_offen'), 0) AS unpaid_amount
-      FROM "customerOrders"
-      WHERE "partnerId" = ${partnerId}
+        (SELECT COUNT(*) FROM "shoe_order" WHERE "partnerId" = ${partnerId} AND status = 'Abholbereit' AND "payment_status" = 'Privat_offen'),
+        (SELECT COUNT(DISTINCT so.id) FROM "shoe_order" so INNER JOIN "shoe_order_step" s ON s."orderId" = so.id AND s.status = 'Abholbereit' WHERE so."partnerId" = ${partnerId} AND so."payment_status" = 'Privat_offen' AND s."createdAt" >= ${startOfToday} AND s."createdAt" <= ${endOfToday}),
+        (SELECT COUNT(*) FROM "shoe_order" so INNER JOIN "shoe_order_step" s ON s."orderId" = so.id AND s.status = 'Abholbereit' WHERE so."partnerId" = ${partnerId} AND so.status = 'Abholbereit' AND so."payment_status" = 'Privat_offen' AND s."createdAt" < ${startOfToday}),
+        (SELECT COUNT(*) FROM "shoe_order" WHERE "partnerId" = ${partnerId} AND "payment_status" = 'Privat_offen')
+      FROM (SELECT 1) AS t
     `);
 
-    if (!row) {
-      return res.status(200).json({
-        success: true,
-        message: "Pickup calculation fetched successfully",
-        data: {
-          readyToPickup: 0,
-          pickupsToday: 0,
-          overduePickups: 0,
-          unpaidPayments: { count: 0, totalAmount: 0 },
-        },
-      });
-    }
+    const n = (v: any) => Number(v) || 0;
+    const a = (rows as any[])[0];
+    const b = (rows as any[])[1];
 
     return res.status(200).json({
       success: true,
       message: "Pickup calculation fetched successfully",
       data: {
-        readyToPickup: Number(row.ready_to_pickup),
-        pickupsToday: Number(row.pickups_today),
-        overduePickups: Number(row.overdue_pickups),
-        unpaidPayments: {
-          count: Number(row.unpaid_count),
-          totalAmount: Number(row.unpaid_amount) || 0,
-        },
+        readyToPickup: n(a?.ready_to_pickup) + n(b?.ready_to_pickup),
+        pickupsToday: n(a?.pickups_today) + n(b?.pickups_today),
+        overduePickups: n(a?.overdue_pickups) + n(b?.overdue_pickups),
+        unpaidPayments: n(a?.unpaid_count) + n(b?.unpaid_count),
       },
     });
   } catch (error: any) {

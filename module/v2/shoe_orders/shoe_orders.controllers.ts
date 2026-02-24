@@ -71,13 +71,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
        * has_trim_strips: if true → skip step 2.
        * if false → get extra input:
        *   step 2: material, leistentyp, notes
-       *   step 3: material, thickness, notes
        */
       has_trim_strips,
 
       /**
-       * bedding_required: if true → skip step 3.
-       * if false → get extra input:
+       * bedding_required: if false → skip step 3.
+       * if true → get extra input:
        *   step 3: material, thickness, notes
        */
       bedding_required,
@@ -104,7 +103,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step2_notes,
       leistentyp: body_leistentyp,
 
-      // Step 3 data (when has_trim_strips false or bedding_required false)
+      // Step 3 data (when bedding_required is true)
       step3_material,
       step3_thickness,
       step3_notes,
@@ -200,7 +199,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     }
 
     if (!hasTrimStrips) {
-      // Need step 2 & 3 data (leistentyp can be sent as step2_leistentyp or leistentyp)
+      // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
       if (step2_material == null || step2Leistentyp == null || step2Leistentyp === "") {
         return res.status(400).json({
           success: false,
@@ -208,22 +207,15 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             "When has_trim_strips is false, step2_material and step2_leistentyp (or leistentyp) are required",
         });
       }
-      if (step3_material == null || step3_thickness == null) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "When has_trim_strips is false, step3_material and step3_thickness are required",
-        });
-      }
     }
 
-    if (!beddingRequired) {
+    if (beddingRequired) {
       // Need step 3 data
       if (step3_material == null || step3_thickness == null) {
         return res.status(400).json({
           success: false,
           message:
-            "When bedding_required is false, step3_material and step3_thickness are required",
+            "When bedding_required is true, step3_material and step3_thickness are required",
         });
       }
     }
@@ -327,8 +319,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // Step 3: when bedding_required is false or has_trim_strips is false
-      if (!beddingRequired || !hasTrimStrips) {
+      // Step 3: when bedding_required is true
+      if (beddingRequired) {
         await tx.shoe_order_step.create({
           data: {
             orderId: order.id,
