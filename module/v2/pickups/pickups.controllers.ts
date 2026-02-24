@@ -837,10 +837,14 @@ export const handcashPayment = async (req: Request, res: Response) => {
     const { orderId } = req.params;
     const partnerId = req.user.id;
     const type = req.query.type as "insole" | "shoes";
-    const pickup = req.query.pickup as string | undefined;
+    const pickupRaw = req.query.pickup;
+    const pickupStr =
+      Array.isArray(pickupRaw) ? pickupRaw[0] : pickupRaw;
+    const isPickup =
+      pickupStr === "true" || String(pickupStr || "").toLowerCase() === "true";
 
     if (!type) {
-      res.status(400).json({
+      return res.status(400).json({
         success: false,
         message: "Type is required",
         validTypes: ["insole", "shoes"],
@@ -906,7 +910,7 @@ export const handcashPayment = async (req: Request, res: Response) => {
         },
       });
 
-      if (pickup === "true") {
+      if (isPickup) {
         if (order.orderStatus !== "Abholbereit_Versandt") {
           await prisma.customerOrders.update({
             where: { id: orderId },
@@ -936,9 +940,79 @@ export const handcashPayment = async (req: Request, res: Response) => {
       });
     }
     if (type === "shoes") {
+      const order = await prisma.shoe_order.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          payment_status: true,
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      if (
+        order.payment_status === "Krankenkasse_Genehmigt" ||
+        order.payment_status === "Krankenkasse_Ungenehmigt"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "it's insurance payment",
+        });
+      }
+
+      if (order.payment_status === "Privat_Bezahlt") {
+        return res.status(400).json({
+          success: false,
+          message: "Order already paid",
+        });
+      }
+
+      const updateData: { payment_status: "Privat_Bezahlt"; status?: string } = {
+        payment_status: "Privat_Bezahlt",
+      };
+      // When pickup=true and order is Abholbereit → mark as picked up (Ausgeführt)
+      if (isPickup && order.status === "Abholbereit") {
+        updateData.status = "Ausgeführt";
+      }
+
+      const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updated = await tx.shoe_order.update({
+          where: { id: orderId },
+          data: updateData,
+          select: {
+            id: true,
+            orderNumber: true,
+            payment_status: true,
+            status: true,
+          },
+        });
+
+        // When marking as picked up, create shoe_order_step for Ausgeführt (step 10)
+        if (isPickup && updateData.status === "Ausgeführt") {
+          await tx.shoe_order_step.create({
+            data: {
+              orderId: orderId,
+              status: "Ausgeführt",
+              isCompleted: true,
+              auto_print: false,
+            },
+          });
+        }
+
+        return updated;
+      });
+
       return res.status(200).json({
         success: true,
-        message: "not implemented yet",
+        message: "Order paid successfully",
+        data: updatedOrder,
       });
     }
     return res.status(400).json({

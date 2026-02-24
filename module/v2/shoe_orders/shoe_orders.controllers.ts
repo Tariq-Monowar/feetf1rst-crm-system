@@ -517,7 +517,8 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    // Single query: order + existing step for this status
+    // Single query: order + existing step for this status.
+    // Only this one step is created/updated; no other steps (e.g. Bettungserstellung, Halbprobenerstellung) are auto-completed.
     const order = await prisma.shoe_order.findFirst({
       where: { id, partnerId },
       select: {
