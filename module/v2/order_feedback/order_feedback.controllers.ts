@@ -121,59 +121,71 @@ export const createOrderFeedback = async (req: Request, res: Response) => {
     }
 
     if (type === "shoes") {
-      // const order = await prisma.massschuhe_order.findUnique({
-      //   where: { id: orderId },
-      // });
-      // if (!order) {
-      //   cleanupFiles();
-      //   return res.status(404).json({
-      //     success: false,
-      //     message: "Massschuhe order not found",
-      //   });
-      // }
+      if (!orderId) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "Order ID is required for shoes feedback",
+        });
+      }
 
-      // const existingFeedback = await prisma.ordersFeedback.findFirst({
-      //   where: {
-      //     orderId: order.id,
-      //     feedbackFor: "shoes",
-      //   },
-      //   select: { id: true, react: true, image: true, note: true },
-      // });
+      const order = await prisma.shoe_order.findUnique({
+        where: { id: orderId },
+        select: { id: true, payment_status: true },
+      });
+      if (!order) {
+        cleanupFiles();
+        return res.status(404).json({
+          success: false,
+          message: "Shoe order not found",
+        });
+      }
 
-      // const feedbackData = {
-      //   react: FeedbackReact ?? existingFeedback?.react,
-      //   image: files?.image?.[0]?.location ?? existingFeedback?.image,
-      //   note: note ?? existingFeedback?.note,
-      // };
+      if (
+        order.payment_status !== "Privat_Bezahlt" &&
+        order.payment_status !== "Krankenkasse_Ungenehmigt"
+      ) {
+        cleanupFiles();
+        return res.status(400).json({
+          success: false,
+          message: "Order is not paid",
+        });
+      }
 
-      // const feedback = existingFeedback
-      //   ? await prisma.ordersFeedback.update({
-      //       where: { id: existingFeedback.id },
-      //       data: feedbackData,
-      //     })
-      //   : await prisma.ordersFeedback.create({
-      //       data: {
-      //         massschuheOrderId: order.id,
-      //         feedbackFor: "shoes",
-      //         ...feedbackData,
-      //       },
-      //     });
+      const existingFeedback = await prisma.ordersFeedback.findFirst({
+        where: { shoeOrderId: order.id, feedbackFor: "shoes" },
+        select: { id: true, react: true, image: true, note: true },
+      });
 
-      // if (existingFeedback?.image && files?.image?.[0]?.location) {
-      //   deleteFileFromS3(existingFeedback.image);
-      // }
+      const feedbackData = {
+        react: FeedbackReact ?? existingFeedback?.react,
+        image: file?.location ?? existingFeedback?.image,
+        note: note ?? existingFeedback?.note,
+      };
 
-      // return res.status(200).json({
-      //   success: true,
-      //   message: existingFeedback
-      //     ? "Order feedback updated successfully"
-      //     : "Order feedback created successfully",
-      //   data: feedback,
-      // });
+      const feedback = existingFeedback
+        ? await prisma.ordersFeedback.update({
+            where: { id: existingFeedback.id },
+            data: feedbackData,
+          })
+        : await prisma.ordersFeedback.create({
+            data: {
+              shoeOrderId: order.id,
+              feedbackFor: "shoes",
+              ...feedbackData,
+            },
+          });
+
+      if (existingFeedback?.image && file?.location) {
+        deleteFileFromS3(existingFeedback.image);
+      }
 
       return res.status(200).json({
         success: true,
-        message: "features not available",
+        message: existingFeedback
+          ? "Order feedback updated successfully"
+          : "Order feedback created successfully",
+        data: feedback,
       });
     }
 
@@ -206,13 +218,21 @@ export const getOrderFeedback = async (req: Request, res: Response) => {
       });
     }
 
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        message: "Type is required",
+        validTypes: ["insole", "shoes"],
+      });
+    }
+
     const data =
       type === "insole"
         ? await prisma.ordersFeedback.findFirst({
             where: { orderId },
           })
         : await prisma.ordersFeedback.findFirst({
-            where: { massschuheOrderId: orderId },
+            where: { shoeOrderId: orderId },
           });
     if (!data) {
       return res.status(404).json({
@@ -282,6 +302,7 @@ export const getAllOrderFeedback = async (req: Request, res: Response) => {
         id: true,
         orderId: true,
         massschuheOrderId: true,
+        shoeOrderId: true,
         feedbackFor: true,
         react: true,
         note: true,

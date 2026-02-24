@@ -1077,6 +1077,10 @@ model ordersFeedback {
   massschuheOrderId String?
   massschuheOrder   massschuhe_order? @relation(fields: [massschuheOrderId], references: [id], onDelete: SetNull)
 
+  //shoe order id
+  shoeOrderId String?   @unique
+  shoeOrder   shoe_order? @relation(fields: [shoeOrderId], references: [id], onDelete: SetNull)
+
   feedbackFor FeedbackFor? @default(insole)
 
   react FeedbackReact?
@@ -1713,7 +1717,8 @@ model shoe_order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shoeOrderStep shoe_order_step[]
+  shoeOrderStep   shoe_order_step[]
+  ordersFeedbacks ordersFeedback?
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
@@ -2005,6 +2010,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2028,6 +2035,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2713,3 +2722,8 @@ enum vat_country {
   Frankreich
   Niederlande
 }
+
+// also a search 
+// SN+ordernumber (it's insole but orderCategory is sonstiges)
+// EN+ordernumber  (it's insole but orderCategory is insole)
+// MS+ordernumber (it's shoe order)

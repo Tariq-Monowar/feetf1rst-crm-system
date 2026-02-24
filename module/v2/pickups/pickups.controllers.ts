@@ -342,7 +342,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
     const limit = parseInt(req.query.limit as string) || 10;
     const cursor = req.query.cursor as string | undefined;
-    const type = req.query.productType as "insole" | "shoes" | undefined;
+    const type = req.query.productType as "insole" | "shoes" | "all" | undefined;
 
     if (type === "insole") {
       const whereCondition: any = {
@@ -451,11 +451,109 @@ export const getAllPickup = async (req: Request, res: Response) => {
           nextCursor,
         },
       });
+    } else if (type === "all") {
+      const skip = cursor ? parseInt(cursor, 10) || 0 : 0;
+      const take = limit + 1;
+
+      const rows = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          orderNumber: number | null;
+          createdAt: Date;
+          fertigstellungBis: Date | null;
+          bezahlt: string | null;
+          orderStatus: string | null;
+          customer_id: string | null;
+          customer_vorname: string | null;
+          customer_nachname: string | null;
+          customer_customerNumber: number | null;
+          type: string;
+        }>
+      >(Prisma.sql`
+        SELECT * FROM (
+          SELECT
+            co.id,
+            co."orderNumber",
+            co."createdAt",
+            COALESCE(
+              (SELECT h."createdAt" FROM "customerOrdersHistory" h
+               WHERE h."orderId" = co.id AND h."statusTo" = 'Abholbereit_Versandt'
+               ORDER BY h."createdAt" ASC LIMIT 1),
+              co."fertigstellungBis"
+            ) AS "fertigstellungBis",
+            co.bezahlt::text,
+            co."orderStatus"::text,
+            c.id AS customer_id,
+            c.vorname AS customer_vorname,
+            c.nachname AS customer_nachname,
+            c."customerNumber" AS customer_customerNumber,
+            'insole' AS type
+          FROM "customerOrders" co
+          LEFT JOIN customers c ON c.id = co."customerId"
+          WHERE co."partnerId" = ${partnerId}
+            AND co."orderStatus" IN ('Abholbereit_Versandt', 'Ausgeführt')
+            AND co.bezahlt = 'Privat_offen'
+          UNION ALL
+          SELECT
+            so.id,
+            so."orderNumber",
+            so."createdAt",
+            (SELECT s."createdAt" FROM "shoe_order_step" s
+             WHERE s."orderId" = so.id AND s.status = 'Abholbereit'
+             ORDER BY s."createdAt" DESC LIMIT 1) AS "fertigstellungBis",
+            so."payment_status"::text AS bezahlt,
+            so.status::text AS "orderStatus",
+            c.id AS customer_id,
+            c.vorname AS customer_vorname,
+            c.nachname AS customer_nachname,
+            c."customerNumber" AS customer_customerNumber,
+            'shoes' AS type
+          FROM "shoe_order" so
+          LEFT JOIN customers c ON c.id = so."customerId"
+          WHERE so."partnerId" = ${partnerId}
+            AND so.status IN ('Abholbereit', 'Ausgeführt')
+            AND so."payment_status" = 'Privat_offen'
+        ) AS combined
+        ORDER BY "fertigstellungBis" DESC NULLS LAST, "createdAt" DESC
+        LIMIT ${take} OFFSET ${skip}
+      `);
+
+      const hasNextPage = rows.length > limit;
+      const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+      const items = pageRows.map((row) => ({
+        id: row.id,
+        orderNumber: row.orderNumber,
+        createdAt: row.createdAt,
+        fertigstellungBis: row.fertigstellungBis,
+        bezahlt: row.bezahlt,
+        orderStatus: row.orderStatus,
+        customer: row.customer_id
+          ? {
+              id: row.customer_id,
+              vorname: row.customer_vorname,
+              nachname: row.customer_nachname,
+              customerNumber: row.customer_customerNumber,
+            }
+          : null,
+        type: row.type as "insole" | "shoes",
+      }));
+      const nextCursor = hasNextPage ? String(skip + limit) : null;
+
+      return res.status(200).json({
+        success: true,
+        message: "Pickup orders fetched successfully",
+        data: items,
+        pagination: {
+          limit,
+          hasNextPage,
+          nextCursor,
+        },
+      });
     } else {
       return res.status(400).json({
         success: false,
         message: "you must provide a valid query type",
-        validTypes: ["insole", "shoes"],
+        validTypes: ["insole", "shoes", "all"],
       });
     }
 
@@ -754,18 +852,13 @@ export const posReceipt = async (req: Request, res: Response) => {
         select: {
           id: true,
           orderNumber: true,
-
           totalPrice: true,
           quantity: true,
-
+          createdAt: true,
           geschaeftsstandort: true,
-
           employee: {
-            select: {
-              employeeName: true,
-            },
+            select: { employeeName: true },
           },
-
           customer: {
             select: {
               vorname: true,
@@ -790,31 +883,158 @@ export const posReceipt = async (req: Request, res: Response) => {
               busnessName: true,
               phone: true,
               accountInfos: {
-                select: {
-                  vat_number: true,
-                },
+                select: { vat_number: true },
               },
             },
           },
         },
       });
 
-      if (!orderId) {
-        return res.status(400).json({
+      if (!order) {
+        return res.status(404).json({
           success: false,
-          message: "Order ID is required",
+          message: "Order not found",
         });
       }
+
+      const total = Number(order.totalPrice) || 0;
+      const qty = Number(order.quantity) || 1;
+      const vatRate = order.Versorgungen?.supplyStatus?.vatRate ?? 19;
+      const vatRateDecimal = vatRate / 100;
+      const subtotal = total / (1 + vatRateDecimal);
+      const vatAmount = total - subtotal;
+      const unitPrice = qty > 0 ? total / qty : total;
+
+      const location = order.geschaeftsstandort as { title?: string; description?: string } | null;
+      const address = location?.description ?? location?.title ?? "";
+
+      const customerName = [order.customer?.vorname, order.customer?.nachname]
+        .filter(Boolean)
+        .join(" ") || "–";
+
+      const productName =
+        order.Versorgungen?.supplyStatus?.name ??
+        "Maßeinlagen – Orthopädische Einlagen";
+
+     
+      const receipt = {
+        company: {
+          companyName: order.partner?.busnessName ?? "",
+          address: address || "",
+          phone: order.partner?.phone ?? "",
+          vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+        },
+        transaction: {
+          order: `#${order.orderNumber}`,
+          customer: customerName,
+        },
+        product: {
+          description: productName,
+          quantity: qty,
+          unitPrice: unitPrice,
+          itemTotal: total,
+        },
+        financial: {
+          subtotal: subtotal,
+          vatRate: vatRate,
+          vatAmount: vatAmount,
+          total: total,
+        },
+        servedBy: order.employee?.employeeName ?? "",
+      };
+
       return res.status(200).json({
         success: true,
         message: "POS receipt fetched successfully",
-        data: order,
+        data: receipt,
       });
     }
     if (type === "shoes") {
+      const order = await prisma.shoe_order.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          id: true,
+          orderNumber: true,
+          total_price: true,
+          quantity: true,
+          createdAt: true,
+          store_location: true,
+          vat_rate: true,
+          employee: {
+            select: { employeeName: true },
+          },
+          customer: {
+            select: {
+              vorname: true,
+              nachname: true,
+              email: true,
+              telefon: true,
+            },
+          },
+          partner: {
+            select: {
+              busnessName: true,
+              phone: true,
+              accountInfos: {
+                select: { vat_number: true },
+              },
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      const total = Number(order.total_price) || 0;
+      const qty = Number(order.quantity) || 1;
+      const vatRate = order.vat_rate ?? 19;
+      const vatRateDecimal = vatRate / 100;
+      const subtotal = total / (1 + vatRateDecimal);
+      const vatAmount = total - subtotal;
+      const unitPrice = qty > 0 ? total / qty : total;
+
+      const location = order.store_location as { title?: string; description?: string } | null;
+      const address = location?.description ?? location?.title ?? "";
+
+      const customerName = [order.customer?.vorname, order.customer?.nachname]
+        .filter(Boolean)
+        .join(" ") || "–";
+
+      const receipt = {
+        company: {
+          companyName: order.partner?.busnessName ?? "",
+          address: address || "",
+          phone: order.partner?.phone ?? "",
+          vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+        },
+        transaction: {
+          order: `#${order.orderNumber ?? ""}`,
+          customer: customerName,
+        },
+        product: {
+          description: "Orthopädische Maßschuhe",
+          quantity: qty,
+          unitPrice,
+          itemTotal: total,
+        },
+        financial: {
+          subtotal,
+          vatRate,
+          vatAmount,
+          total,
+        },
+        servedBy: order.employee?.employeeName ?? "",
+      };
+
       return res.status(200).json({
         success: true,
-        message: "not implemented yet",
+        message: "POS receipt fetched successfully",
+        data: receipt,
       });
     }
     return res.status(400).json({
