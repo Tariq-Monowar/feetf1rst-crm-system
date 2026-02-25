@@ -219,22 +219,18 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message:
-          "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
-      });
+    return res.status(400).json({
+      success: false,
+      message:
+        "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
+    });
   }
   if (hasAnyCourier && !hasAllCourier) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "If providing courier contact, all fields are required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "If providing courier contact, all fields are required",
+    });
   }
 
   const isCustomModels = !!requiredCustomModel;
@@ -246,12 +242,10 @@ export const sendToAdminOrder_2 = async (req, res) => {
   });
   if (!userExists) {
     cleanupFiles();
-    return res
-      .status(401)
-      .json({
-        success: false,
-        message: "User not found. Please log in again.",
-      });
+    return res.status(401).json({
+      success: false,
+      message: "User not found. Please log in again.",
+    });
   }
 
   try {
@@ -355,22 +349,18 @@ export const sendToAdminOrder_2 = async (req, res) => {
       const addr = parseJsonField(b.courier_address);
       if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
         cleanupFiles();
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "courier_address must be a JSON object",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "courier_address must be a JSON object",
+        });
       }
       const price = parsePrice(b.courier_price);
       if (!price || price <= 0) {
         cleanupFiles();
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "courier_price must be a valid number greater than 0",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "courier_price must be a valid number greater than 0",
+        });
       }
       courierContactData = {
         address: addr,
@@ -850,6 +840,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
+            busnessName: true,
             image: true,
           },
         },
