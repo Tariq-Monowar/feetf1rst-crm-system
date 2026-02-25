@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import { PrismaClient, custom_shafts_catagoary } from "@prisma/client";
+import redis from "../../../../config/redis.config";
 
 const prisma = new PrismaClient();
+
+const REDIS_DELIVERY_DATES_KEY = "delivery_dates:list";
 
 const VALID_CATEGORIES: custom_shafts_catagoary[] = [
   custom_shafts_catagoary.Halbprobenerstellung,
@@ -58,6 +61,9 @@ export const manageDeliveryDates = async (req: Request, res: Response) => {
       });
     }
 
+    // Invalidate Redis cache so next GET refetches (cache is lifetime, no expiry)
+    await redis.del(REDIS_DELIVERY_DATES_KEY).catch(() => {});
+
     return res.status(200).json({
       success: true,
       data: record,
@@ -74,8 +80,19 @@ export const manageDeliveryDates = async (req: Request, res: Response) => {
 
 export const getDeliveryDates = async (req: Request, res: Response) => {
   try {
+    // Serve from Redis (lifetime cache, no expiry) if present
+    const cached = await redis.get(REDIS_DELIVERY_DATES_KEY);
+    if (cached) {
+      return res.status(200).json({
+        success: true,
+        data: JSON.parse(cached),
+      });
+    }
 
     const deliveryDates = await prisma.custom_shafts_delivery_dates.findMany();
+
+    // Store in Redis with no expiry (lifetime)
+    await redis.set(REDIS_DELIVERY_DATES_KEY, JSON.stringify(deliveryDates)).catch(() => {});
 
     return res.status(200).json({
       success: true,
@@ -85,7 +102,7 @@ export const getDeliveryDates = async (req: Request, res: Response) => {
     console.error(error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
