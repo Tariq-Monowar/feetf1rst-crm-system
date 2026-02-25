@@ -781,6 +781,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
         other_customer_number: true,
         createdAt: true,
         isCustomeModels: true,
+        deliveryDate: true,
         user: {
           select: {
             id: true,
