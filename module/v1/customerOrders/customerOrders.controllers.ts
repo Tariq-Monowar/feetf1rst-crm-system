@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -1139,7 +1139,269 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const partnerId = req.user?.id;
     const userRole = req.user?.role;
-    const search = String(req.query.search || "").trim();
+    const searchRaw = String(req.query.search || "").trim().replace(/\s+/g, " ");
+    const search = searchRaw || "";
+
+    const effectivePartnerId =
+      userRole === "PARTNER" ? partnerId : (req.query.partnerId as string) || partnerId;
+
+    const selectFields = {
+      id: true,
+      orderNumber: true,
+      totalPrice: true,
+      orderStatus: true,
+      statusUpdate: true,
+      invoice: true,
+      createdAt: true,
+      updatedAt: true,
+      priority: true,
+      bezahlt: true,
+      barcodeLabel: true,
+      fertigstellungBis: true,
+      geschaeftsstandort: true,
+      auftragsDatum: true,
+      versorgung_note: true,
+      orderCategory: true,
+      service_name: true,
+      sonstiges_category: true,
+      customer: {
+        select: {
+          id: true,
+          vorname: true,
+          nachname: true,
+          email: true,
+          wohnort: true,
+          customerNumber: true,
+        },
+      },
+      product: true,
+      versorgung: true,
+      employee: {
+        select: { accountName: true, employeeName: true, email: true },
+      },
+    };
+
+    if (search) {
+      const tokens = search.split(" ").filter(Boolean);
+      const conditions: Prisma.Sql[] = [];
+      if (effectivePartnerId) {
+        conditions.push(Prisma.sql`co."partnerId" = ${effectivePartnerId}::text`);
+      }
+      if (type === "sonstiges") {
+        conditions.push(Prisma.sql`co."orderCategory" = 'sonstiges'`);
+      } else {
+        conditions.push(Prisma.sql`co.type = ${type}::"StoreType"`);
+        conditions.push(Prisma.sql`(co."orderCategory" IS NULL OR co."orderCategory" != 'sonstiges')`);
+      }
+      if (req.query.customerId) {
+        conditions.push(Prisma.sql`co."customerId" = ${req.query.customerId}::text`);
+      }
+      const days = Number(req.query.days);
+      if (days && !isNaN(days)) {
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        conditions.push(Prisma.sql`co."createdAt" >= ${startDate}::timestamp`);
+      }
+      if (req.query.orderStatus) {
+        const statuses = String(req.query.orderStatus)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (statuses.length === 1) {
+          conditions.push(Prisma.sql`co."orderStatus" = ${statuses[0]}::"OrderStatus"`);
+        } else if (statuses.length > 1) {
+          conditions.push(
+            Prisma.sql`co."orderStatus" IN (${Prisma.join(
+              statuses.map((s) => Prisma.sql`${s}::"OrderStatus"`),
+              ", "
+            )})`
+          );
+        }
+      }
+      if (req.query.bezahlt) {
+        const validBezahlt = [
+          "Privat_Bezahlt",
+          "Privat_offen",
+          "Krankenkasse_Ungenehmigt",
+          "Krankenkasse_Genehmigt",
+        ];
+        const values = String(req.query.bezahlt)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const invalid = values.filter((s) => !validBezahlt.includes(s));
+        if (invalid.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid bezahlt value: ${invalid.join(", ")}`,
+            validValues: validBezahlt,
+          });
+        }
+        if (values.length === 1) {
+          conditions.push(Prisma.sql`co.bezahlt = ${values[0]}::"paymnentStatus"`);
+        } else if (values.length > 1) {
+          conditions.push(
+            Prisma.sql`co.bezahlt IN (${Prisma.join(
+              values.map((v) => Prisma.sql`${v}::"paymnentStatus"`),
+              ", "
+            )})`
+          );
+        }
+      }
+      tokens.forEach((token) => {
+        const term = `%${token}%`;
+        conditions.push(
+          Prisma.sql`(
+            LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(co."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(c."customerNumber"::text, '')) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(co.einlagentyp, '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(co."versorgung_note", '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(co."kundenName", '')::text) LIKE LOWER(${term}::text)
+          )`
+        );
+      });
+      if (cursor) {
+        const cursorCond = effectivePartnerId
+          ? Prisma.sql`(co."createdAt", co.id) < (
+              SELECT "createdAt", id FROM "customerOrders"
+              WHERE id = ${cursor}::text AND "partnerId" = ${effectivePartnerId}::text
+            )`
+          : Prisma.sql`(co."createdAt", co.id) < (
+              SELECT "createdAt", id FROM "customerOrders"
+              WHERE id = ${cursor}::text
+            )`;
+        conditions.push(cursorCond);
+      }
+      const whereClause = Prisma.join(conditions, " AND ");
+
+      const rows = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          orderNumber: number;
+          totalPrice: number;
+          orderStatus: string;
+          statusUpdate: Date | null;
+          invoice: string | null;
+          createdAt: Date;
+          updatedAt: Date;
+          priority: string | null;
+          bezahlt: string | null;
+          barcodeLabel: string | null;
+          fertigstellungBis: Date | null;
+          geschaeftsstandort: unknown;
+          auftragsDatum: Date | null;
+          versorgung_note: string | null;
+          orderCategory: string | null;
+          service_name: string | null;
+          sonstiges_category: string | null;
+          cust_id: string | null;
+          vorname: string | null;
+          nachname: string | null;
+          email: string | null;
+          wohnort: string | null;
+          customerNumber: number | null;
+          accountName: string | null;
+          employeeName: string | null;
+          emp_email: string | null;
+          product: unknown;
+          versorgung: unknown;
+        }>
+      >(Prisma.sql`
+        SELECT
+          co.id, co."orderNumber", co."totalPrice", co."orderStatus", co."statusUpdate",
+          co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt, co."barcodeLabel",
+          co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
+          co."orderCategory", co."service_name", co."sonstiges_category",
+          c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
+          e."accountName", e."employeeName", e.email AS emp_email,
+          (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
+          (SELECT row_to_json(v) FROM "Versorgungen" v WHERE v.id = co."versorgungId" LIMIT 1) AS versorgung
+        FROM "customerOrders" co
+        LEFT JOIN customers c ON c.id = co."customerId"
+        LEFT JOIN "Employees" e ON e.id = co."employeeId"
+        WHERE ${whereClause}
+        ORDER BY co."createdAt" DESC, co.id DESC
+        LIMIT ${limit + 1}
+      `);
+
+      const hasNextPage = rows.length > limit;
+      const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
+      const nextCursor = hasNextPage ? (pageRows[pageRows.length - 1]?.id ?? null) : null;
+
+      const data = pageRows.map((row) => ({
+        id: row.id,
+        orderNumber: row.orderNumber,
+        totalPrice: row.totalPrice,
+        orderStatus: row.orderStatus,
+        statusUpdate: row.statusUpdate,
+        invoice: row.invoice ?? null,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        priority: row.priority,
+        bezahlt: row.bezahlt,
+        barcodeLabel: row.barcodeLabel ?? null,
+        fertigstellungBis: row.fertigstellungBis,
+        geschaeftsstandort: row.geschaeftsstandort,
+        auftragsDatum: row.auftragsDatum,
+        versorgung_note: row.versorgung_note,
+        orderCategory: row.orderCategory,
+        service_name: row.service_name,
+        sonstiges_category: row.sonstiges_category,
+        customer: row.cust_id
+          ? {
+              id: row.cust_id,
+              vorname: row.vorname,
+              nachname: row.nachname,
+              email: row.email,
+              wohnort: row.wohnort,
+              customerNumber: row.customerNumber,
+            }
+          : null,
+        product:
+          row.product != null
+            ? typeof row.product === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(row.product as string);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : row.product
+            : null,
+        versorgung:
+          row.versorgung != null
+            ? typeof row.versorgung === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(row.versorgung as string);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : row.versorgung
+            : null,
+        employee: row.accountName != null || row.employeeName != null
+          ? {
+              accountName: row.accountName ?? undefined,
+              employeeName: row.employeeName ?? undefined,
+              email: row.emp_email ?? undefined,
+            }
+          : null,
+      }));
+
+      return res.status(200).json({
+        success: true,
+        data: data.map((o) => ({
+          ...o,
+          invoice: o.invoice ?? null,
+          barcodeLabel: o.barcodeLabel ?? null,
+        })),
+        pagination: { limit, nextCursor, hasNextPage },
+      });
+    }
 
     const where: any =
       type === "sonstiges"
@@ -1196,79 +1458,12 @@ export const getAllOrders = async (req: Request, res: Response) => {
       }
     }
 
-    if (search) {
-      const asNumber = Number(search);
-      const searchOR: any[] = [
-        {
-          customer: {
-            OR: [
-              { vorname: { contains: search, mode: "insensitive" } },
-              { nachname: { contains: search, mode: "insensitive" } },
-            ],
-          },
-        },
-        { einlagentyp: { contains: search, mode: "insensitive" } },
-        { versorgung_note: { contains: search, mode: "insensitive" } },
-        { kundenName: { contains: search, mode: "insensitive" } },
-      ];
-
-      if (!isNaN(asNumber) && asNumber > 0) {
-        // starts-with match on orderNumber (integer cast to text)
-        const matchingOrderIds = await prisma.$queryRawUnsafe<{ id: string }[]>(
-          `SELECT id FROM "customerOrders" WHERE CAST("orderNumber" AS TEXT) LIKE $1`,
-          `${search}%`,
-        );
-        if (matchingOrderIds.length > 0) {
-          searchOR.push({ id: { in: matchingOrderIds.map((r) => r.id) } });
-        }
-
-        // exact match on customer number
-        searchOR.push({ customer: { customerNumber: asNumber } });
-      }
-
-      where.OR = searchOR;
-    }
-
     const orders = await prisma.customerOrders.findMany({
       where,
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        orderNumber: true,
-        totalPrice: true,
-        orderStatus: true,
-        statusUpdate: true,
-        invoice: true,
-        createdAt: true,
-        updatedAt: true,
-        priority: true,
-        bezahlt: true,
-        barcodeLabel: true,
-        fertigstellungBis: true,
-        geschaeftsstandort: true,
-        auftragsDatum: true,
-        versorgung_note: true,
-        orderCategory: true,
-        service_name: true,
-        sonstiges_category: true,
-        customer: {
-          select: {
-            id: true,
-            vorname: true,
-            nachname: true,
-            email: true,
-            wohnort: true,
-            customerNumber: true,
-          },
-        },
-        product: true,
-        versorgung: true,
-        employee: {
-          select: { accountName: true, employeeName: true, email: true },
-        },
-      },
+      select: selectFields,
     });
 
     const hasNextPage = orders.length > limit;
