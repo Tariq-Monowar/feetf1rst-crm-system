@@ -768,7 +768,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     }
 
     // // Always ignore canceled orders
-    // whereCondition.order_status = { not: "canceled" };
+    whereCondition.order_status = { not: "canceled" };
 
     if (status) {
       // Schema has typo: In_Produktiony; accept In_Produktion from API
