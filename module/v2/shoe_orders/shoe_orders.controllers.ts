@@ -406,24 +406,98 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const whereCondition: Record<string, unknown> = { partnerId };
+    const search = (typeof searchParam === "string" && searchParam.trim())
+      ? searchParam.trim().replace(/\s+/g, " ")
+      : "";
 
-    if (statusParam && typeof statusParam === "string") {
-      whereCondition.status = statusParam;
+    if (search) {
+      const tokens = search.split(" ").filter(Boolean);
+      const conditions: Prisma.Sql[] = [
+        Prisma.sql`so."partnerId" = ${partnerId}::text`,
+      ];
+      if (statusParam && typeof statusParam === "string") {
+        conditions.push(Prisma.sql`so.status = ${statusParam}::text`);
+      }
+      tokens.forEach((token) => {
+        const term = `%${token}%`;
+        conditions.push(
+          Prisma.sql`(
+            LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
+            LOWER(COALESCE(so."orderNumber"::text, '')) LIKE LOWER(${term}::text)
+          )`
+        );
+      });
+      if (cursor) {
+        conditions.push(
+          Prisma.sql`(so."orderNumber", so.id) < (
+            SELECT "orderNumber", id FROM "shoe_order"
+            WHERE id = ${cursor}::text AND "partnerId" = ${partnerId}::text
+          )`
+        );
+      }
+      const whereClause = Prisma.join(conditions, " AND ");
+
+      const rows = await prisma.$queryRaw<
+        Array<{
+          id: string;
+          orderNumber: number | null;
+          status: string | null;
+          branch_location: unknown;
+          createdAt: Date;
+          payment_status: string | null;
+          priority: string | null;
+          total_price: number | null;
+          vorname: string | null;
+          nachname: string | null;
+          shoeOrderStep: unknown;
+        }>
+      >(Prisma.sql`
+        SELECT so.id, so."orderNumber", so.status, so."branch_location",
+               so."createdAt", so."payment_status", so.priority, so."total_price",
+               c.vorname, c.nachname,
+               (SELECT COALESCE(JSON_AGG(
+                 json_build_object('status', s.status, 'isCompleted', s."isCompleted", 'auto_print', s."auto_print", 'createdAt', s."createdAt")
+                 ORDER BY s."createdAt" ASC
+               ), '[]'::json) FROM "shoe_order_step" s
+               WHERE s."orderId" = so.id AND s."isCompleted" = true) AS "shoeOrderStep"
+        FROM "shoe_order" so
+        LEFT JOIN customers c ON c.id = so."customerId"
+        WHERE ${whereClause}
+        ORDER BY so."orderNumber" DESC NULLS LAST, so.id DESC
+        LIMIT ${limit + 1}
+      `);
+
+      const hasMore = rows.length > limit;
+      const pageRows = hasMore ? rows.slice(0, limit) : rows;
+      const data = pageRows.map((row) => ({
+        id: row.id,
+        orderNumber: row.orderNumber,
+        customer: { vorname: row.vorname, nachname: row.nachname },
+        status: row.status,
+        branch_location: row.branch_location,
+        createdAt: row.createdAt,
+        payment_status: row.payment_status,
+        priority: row.priority,
+        total_price: row.total_price,
+        shoeOrderStep: Array.isArray(row.shoeOrderStep)
+          ? row.shoeOrderStep
+          : typeof row.shoeOrderStep === "string"
+            ? JSON.parse(row.shoeOrderStep as string)
+            : [],
+      }));
+
+      return res.status(200).json({
+        success: true,
+        message: "Shoe orders fetched successfully",
+        data,
+        pagination: { limit, hasMore },
+      });
     }
 
-    if (searchParam && typeof searchParam === "string" && searchParam.trim()) {
-      const term = searchParam.trim();
-      const numSearch = Number(term);
-      const orderNumMatch =
-        !Number.isNaN(numSearch) && numSearch > 0
-          ? { orderNumber: numSearch }
-          : null;
-      whereCondition.OR = [
-        ...(orderNumMatch ? [orderNumMatch] : []),
-        { customer: { vorname: { contains: term, mode: "insensitive" } } },
-        { customer: { nachname: { contains: term, mode: "insensitive" } } },
-      ];
+    const whereCondition: Record<string, unknown> = { partnerId };
+    if (statusParam && typeof statusParam === "string") {
+      whereCondition.status = statusParam;
     }
 
     const shoeOrders = await prisma.shoe_order.findMany({
