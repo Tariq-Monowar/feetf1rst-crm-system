@@ -364,6 +364,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
           fertigstellungBis: true,
           bezahlt: true,
           orderStatus: true,
+          totalPrice: true,
           customer: {
             select: {
               id: true,
@@ -410,6 +411,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
           createdAt: true,
           payment_status: true,
           status: true,
+          total_price: true,
           customer: {
             select: {
               id: true,
@@ -442,6 +444,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
           fertigstellungBis: item.shoeOrderStep[0]?.createdAt ?? null,
           bezahlt: item.payment_status,
           orderStatus: item.status,
+          totalPrice: item.total_price ?? null,
           customer: item.customer,
           type: "shoes",
         })),
@@ -463,6 +466,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
           fertigstellungBis: Date | null;
           bezahlt: string | null;
           orderStatus: string | null;
+          totalPrice: number | null;
           customer_id: string | null;
           customer_vorname: string | null;
           customer_nachname: string | null;
@@ -483,6 +487,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
             ) AS "fertigstellungBis",
             co.bezahlt::text,
             co."orderStatus"::text,
+            co."totalPrice" AS "totalPrice",
             c.id AS customer_id,
             c.vorname AS customer_vorname,
             c.nachname AS customer_nachname,
@@ -503,6 +508,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
              ORDER BY s."createdAt" DESC LIMIT 1) AS "fertigstellungBis",
             so."payment_status"::text AS bezahlt,
             so.status::text AS "orderStatus",
+            so."total_price" AS "totalPrice",
             c.id AS customer_id,
             c.vorname AS customer_vorname,
             c.nachname AS customer_nachname,
@@ -527,6 +533,7 @@ export const getAllPickup = async (req: Request, res: Response) => {
         fertigstellungBis: row.fertigstellungBis,
         bezahlt: row.bezahlt,
         orderStatus: row.orderStatus,
+        totalPrice: row.totalPrice ?? null,
         customer: row.customer_id
           ? {
               id: row.customer_id,

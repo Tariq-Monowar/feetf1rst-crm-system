@@ -9,5 +9,7 @@ router.delete("/delete-status/:id", verifyUser("PARTNER", "EMPLOYEE"), deleteDia
 router.get("/get-status", verifyUser("PARTNER", "EMPLOYEE"), getDiagnosisStatus);
 
 
+
+
 export default router;
   

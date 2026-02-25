@@ -1140,11 +1140,15 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const partnerId = req.user?.id;
     const userRole = req.user?.role;
-    const searchRaw = String(req.query.search || "").trim().replace(/\s+/g, " ");
+    const searchRaw = String(req.query.search || "")
+      .trim()
+      .replace(/\s+/g, " ");
     const search = searchRaw || "";
 
     const effectivePartnerId =
-      userRole === "PARTNER" ? partnerId : (req.query.partnerId as string) || partnerId;
+      userRole === "PARTNER"
+        ? partnerId
+        : (req.query.partnerId as string) || partnerId;
 
     const selectFields = {
       id: true,
@@ -1186,7 +1190,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       const tokens = search.split(" ").filter(Boolean);
       const conditions: Prisma.Sql[] = [];
       if (effectivePartnerId) {
-        conditions.push(Prisma.sql`co."partnerId" = ${effectivePartnerId}::text`);
+        conditions.push(
+          Prisma.sql`co."partnerId" = ${effectivePartnerId}::text`,
+        );
       }
       if (type === "all") {
         // no type/orderCategory filter — return all types
@@ -1194,10 +1200,14 @@ export const getAllOrders = async (req: Request, res: Response) => {
         conditions.push(Prisma.sql`co."orderCategory" = 'sonstiges'`);
       } else {
         conditions.push(Prisma.sql`co.type = ${type}::"StoreType"`);
-        conditions.push(Prisma.sql`(co."orderCategory" IS NULL OR co."orderCategory" != 'sonstiges')`);
+        conditions.push(
+          Prisma.sql`(co."orderCategory" IS NULL OR co."orderCategory" != 'sonstiges')`,
+        );
       }
       if (req.query.customerId) {
-        conditions.push(Prisma.sql`co."customerId" = ${req.query.customerId}::text`);
+        conditions.push(
+          Prisma.sql`co."customerId" = ${req.query.customerId}::text`,
+        );
       }
       const days = Number(req.query.days);
       if (days && !isNaN(days)) {
@@ -1211,13 +1221,15 @@ export const getAllOrders = async (req: Request, res: Response) => {
           .map((s) => s.trim())
           .filter(Boolean);
         if (statuses.length === 1) {
-          conditions.push(Prisma.sql`co."orderStatus" = ${statuses[0]}::"OrderStatus"`);
+          conditions.push(
+            Prisma.sql`co."orderStatus" = ${statuses[0]}::"OrderStatus"`,
+          );
         } else if (statuses.length > 1) {
           conditions.push(
             Prisma.sql`co."orderStatus" IN (${Prisma.join(
               statuses.map((s) => Prisma.sql`${s}::"OrderStatus"`),
-              ", "
-            )})`
+              ", ",
+            )})`,
           );
         }
       }
@@ -1241,13 +1253,15 @@ export const getAllOrders = async (req: Request, res: Response) => {
           });
         }
         if (values.length === 1) {
-          conditions.push(Prisma.sql`co.bezahlt = ${values[0]}::"paymnentStatus"`);
+          conditions.push(
+            Prisma.sql`co.bezahlt = ${values[0]}::"paymnentStatus"`,
+          );
         } else if (values.length > 1) {
           conditions.push(
             Prisma.sql`co.bezahlt IN (${Prisma.join(
               values.map((v) => Prisma.sql`${v}::"paymnentStatus"`),
-              ", "
-            )})`
+              ", ",
+            )})`,
           );
         }
       }
@@ -1262,7 +1276,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
             LOWER(COALESCE(co.einlagentyp, '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(co."versorgung_note", '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(co."kundenName", '')::text) LIKE LOWER(${term}::text)
-          )`
+          )`,
         );
       });
       if (cursor) {
@@ -1331,7 +1345,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
       const hasNextPage = rows.length > limit;
       const pageRows = hasNextPage ? rows.slice(0, limit) : rows;
-      const nextCursor = hasNextPage ? (pageRows[pageRows.length - 1]?.id ?? null) : null;
+      const nextCursor = hasNextPage
+        ? (pageRows[pageRows.length - 1]?.id ?? null)
+        : null;
 
       const data = pageRows.map((row) => ({
         id: row.id,
@@ -1386,13 +1402,14 @@ export const getAllOrders = async (req: Request, res: Response) => {
                 })()
               : row.versorgung
             : null,
-        employee: row.accountName != null || row.employeeName != null
-          ? {
-              accountName: row.accountName ?? undefined,
-              employeeName: row.employeeName ?? undefined,
-              email: row.emp_email ?? undefined,
-            }
-          : null,
+        employee:
+          row.accountName != null || row.employeeName != null
+            ? {
+                accountName: row.accountName ?? undefined,
+                employeeName: row.employeeName ?? undefined,
+                email: row.emp_email ?? undefined,
+              }
+            : null,
       }));
 
       return res.status(200).json({
@@ -2060,12 +2077,23 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { orderNotes, statusNote } = req.body;
+    const { orderNotes, statusNote, versorgung_note } = req.body;
 
     if (!id) {
       return res
         .status(400)
         .json({ success: false, message: "Order ID is required" });
+    }
+
+    const existing = await prisma.customerOrders.findUnique({
+      where: { id },
+      select: { id: true, partnerId: true },
+    });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+    if (req.user?.role === "PARTNER" && existing.partnerId !== req.user?.id) {
+      return res.status(403).json({ success: false, message: "Not allowed to update this order" });
     }
 
     const data: Record<string, any> = {};
@@ -2083,11 +2111,18 @@ export const updateOrder = async (req: Request, res: Response) => {
           ? String(statusNote).trim()
           : null;
     }
+    if (versorgung_note !== undefined) {
+      data.versorgung_note =
+        versorgung_note != null && String(versorgung_note).trim() !== ""
+          ? String(versorgung_note).trim()
+          : null;
+    }
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one of orderNotes or statusNote is required",
+        message:
+          "At least one of orderNotes, statusNote, or versorgung_note is required",
       });
     }
 

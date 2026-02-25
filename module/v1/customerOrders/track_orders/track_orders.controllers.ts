@@ -1747,6 +1747,7 @@ export const getOrderStatusNote = async (req: Request, res: Response) => {
       where: { id: orderId },
       select: {
         statusNote: true,
+        versorgung_note: true,
         orderNumber: true,
         product: {
           select: {
