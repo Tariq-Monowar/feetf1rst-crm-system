@@ -1128,12 +1128,13 @@ export const getAllOrders = async (req: Request, res: Response) => {
     if (
       type !== "rady_insole" &&
       type !== "milling_block" &&
-      type !== "sonstiges"
+      type !== "sonstiges" &&
+      type !== "all"
     ) {
       return res.status(400).json({
         success: false,
         message: "Invalid type",
-        validTypes: ["rady_insole", "milling_block", "sonstiges"],
+        validTypes: ["rady_insole", "milling_block", "sonstiges", "all"],
       });
     }
 
@@ -1187,7 +1188,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       if (effectivePartnerId) {
         conditions.push(Prisma.sql`co."partnerId" = ${effectivePartnerId}::text`);
       }
-      if (type === "sonstiges") {
+      if (type === "all") {
+        // no type/orderCategory filter — return all types
+      } else if (type === "sonstiges") {
         conditions.push(Prisma.sql`co."orderCategory" = 'sonstiges'`);
       } else {
         conditions.push(Prisma.sql`co.type = ${type}::"StoreType"`);
@@ -1404,9 +1407,11 @@ export const getAllOrders = async (req: Request, res: Response) => {
     }
 
     const where: any =
-      type === "sonstiges"
-        ? { orderCategory: "sonstiges" }
-        : { type, orderCategory: { not: "sonstiges" } };
+      type === "all"
+        ? {}
+        : type === "sonstiges"
+          ? { orderCategory: "sonstiges" }
+          : { type, orderCategory: { not: "sonstiges" } };
 
     if (req.query.customerId) {
       where.customerId = req.query.customerId;
