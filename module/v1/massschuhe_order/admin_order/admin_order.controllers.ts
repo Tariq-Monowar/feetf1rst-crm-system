@@ -842,6 +842,8 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
             name: true,
             busnessName: true,
             image: true,
+            email: true,
+            phone: true,
           },
         },
         customer: {
