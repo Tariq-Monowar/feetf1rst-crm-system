@@ -71,43 +71,21 @@ export const manageDeliveryDates = async (req: Request, res: Response) => {
   }
 };
 
-// /** PUT: set/update delivery date for a category (one date per category — upsert) */
-// export const setDeliveryDate = async (req: Request, res: Response) => {
-//   try {
-//     const { category, day } = req.body as {
-//       category?: (typeof VALID_CATEGORIES)[number];
-//       day?: number;
-//     };
 
-//     if (category == null || !VALID_CATEGORIES.includes(category)) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Valid category is required",
-//         validCategories: VALID_CATEGORIES,
-//       });
-//     }
+export const getDeliveryDates = async (req: Request, res: Response) => {
+  try {
 
-//     if (
-//       day != null &&
-//       (typeof day !== "number" || day < 0 || !Number.isInteger(day))
-//     ) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "day must be a non-negative integer",
-//       });
-//     }
+    const deliveryDates = await prisma.custom_shafts_delivery_dates.findMany();
 
-//     const record = await prisma.custom_shafts_delivery_dates.upsert({
-//       where: { category },
-//       create: { category, day: day ?? null },
-//       update: { day: day ?? null },
-//     });
-
-//     return res.status(200).json({ success: true, data: record });
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Internal server error" });
-//   }
-// };
+    return res.status(200).json({
+      success: true,
+      data: deliveryDates,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
