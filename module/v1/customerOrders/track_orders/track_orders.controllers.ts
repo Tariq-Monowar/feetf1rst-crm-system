@@ -1543,11 +1543,20 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
 export const getBarcodeLabel = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    const type = req.query.type as "left" | "right" | undefined;
 
     if (!orderId) {
       return res.status(400).json({
         success: false,
         message: "Order ID is required",
+      });
+    }
+
+    if (type && type !== "left" && type !== "right") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. Use left or right.",
+        validTypes: ["left", "right"],
       });
     }
 
@@ -1649,6 +1658,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         wohnort: order.wohnort,
         createdAt: order.createdAt,
         totalPrice: order.totalPrice,
+        type: type ?? null,
       },
     });
   } catch (error: any) {
