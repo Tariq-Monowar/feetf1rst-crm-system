@@ -224,7 +224,9 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     const cursor = req.query.cursor as string | undefined;
     const status = req.query.status as string | undefined;
     const orderFor = req.query.orderFor as string | undefined;
-    const search = (req.query.search as string)?.trim();
+    const search = (req.query.search as string)
+      ?.trim()
+      ?.replace(/\s+/g, " ");
 
     // Validate status filter
     if (status) {
@@ -256,15 +258,19 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     if (orderFor) conditions.push(Prisma.sql`aot."orderFor" = ${orderFor}::"transitions_for"`);
 
     if (search) {
-      const searchTerm = `%${search}%`;
-      conditions.push(
-        Prisma.sql`(
-          LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${searchTerm}::text) OR
-          LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${searchTerm}::text) OR
-          LOWER(COALESCE(aot."orderNumber"::text, '')) LIKE LOWER(${searchTerm}::text) OR
-          LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${searchTerm}::text)
-        )`
-      );
+      const tokens = search.split(" ").filter(Boolean);
+      const searchConditions = tokens.map((token) => {
+        const term = `%${token}%`;
+        return Prisma.sql`(
+          LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(aot."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${term}::text)
+        )`;
+      });
+      if (searchConditions.length) {
+        conditions.push(Prisma.join(searchConditions, " AND "));
+      }
     }
 
     // Single-query cursor: keyset pagination with (createdAt, id) for stable ordering - no extra round-trip
