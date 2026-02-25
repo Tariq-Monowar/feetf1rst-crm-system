@@ -25,8 +25,8 @@ import exercises from "./exercises/exercises.routes";
 import customerHistory from "./customers-history/customersHistory.routes";
 
 import customerOrders from "./customerOrders/customerOrders.routes";
-import trackOrders from "./customerOrders/track_orders/track_orders.routes"
-import manageOrders from "./customerOrders/manage_orders/manage_orders.routes"
+import trackOrders from "./customerOrders/track_orders/track_orders.routes";
+import manageOrders from "./customerOrders/manage_orders/manage_orders.routes";
 import sonstiges_order from "./customerOrders/sonstiges_order/sonstiges_order.routes";
 import previousOrders from "./customerOrders/previous_orders/previous_orders.routes";
 
@@ -37,6 +37,7 @@ import bestellubersicht from "./bestellubersicht/Bestellubersicht.routes";
 
 import custom_shafts from "./admin_order/custom_shafts.routes";
 import admin_product from "./admin_order/admin_product/admin_product.routes";
+import delivery_dates from "./admin_order/delivery_dates/delivery_dates.routes";
 
 import customer_files from "./customer_files/customer_files.routes";
 import massschuhe_order from "./massschuhe_order/massschuhe_order.routes";
@@ -65,10 +66,8 @@ const moduleRoutes = [
   { path: "/employees", route: employees },
   { path: "/employees/auth", route: employeeAuth },
 
-
   { path: "/customers", route: customers },
   { path: "/customers/extra-info", route: extra_info },
-
 
   { path: "/einlagen-finder", route: einlagenFinder },
   { path: "/exercises", route: exercises },
@@ -90,13 +89,12 @@ const moduleRoutes = [
   { path: "/bestellubersicht", route: bestellubersicht },
 
   /*
-  * এই রাউটের কাজ হচ্ছে, অ্যা্যাডমিন প্রডাক্ট বানাবে
-  * পার্টনার সেই পোডাক্ট কিনবে অ্যাাডমিনের কাছে থেকে
-  */
+   * এই রাউটের কাজ হচ্ছে, অ্যা্যাডমিন প্রডাক্ট বানাবে
+   * পার্টনার সেই পোডাক্ট কিনবে অ্যাাডমিনের কাছে থেকে
+   */
   { path: "/custom_shafts", route: custom_shafts },
   { path: "/admin_product", route: admin_product },
-
-
+  { path: "/custom_shafts/delivery-dates", route: delivery_dates },
 
   { path: "/customer-files", route: customer_files },
 
