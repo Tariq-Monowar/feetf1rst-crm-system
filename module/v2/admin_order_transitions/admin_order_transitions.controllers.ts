@@ -259,10 +259,10 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       const searchTerm = `%${search}%`;
       conditions.push(
         Prisma.sql`(
-          c.vorname ILIKE ${searchTerm} OR
-          c.nachname ILIKE ${searchTerm} OR
-          aot."orderNumber" ILIKE ${searchTerm} OR
-          cs."orderNumber" ILIKE ${searchTerm}
+          LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${searchTerm}::text) OR
+          LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${searchTerm}::text) OR
+          LOWER(COALESCE(aot."orderNumber"::text, '')) LIKE LOWER(${searchTerm}::text) OR
+          LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${searchTerm}::text)
         )`
       );
     }
@@ -311,13 +311,12 @@ export const getAllTransitions = async (req: Request, res: Response) => {
     const transitionsData = hasMore ? transitions.slice(0, limit) : transitions;
 
     const data = transitionsData.map((row) => {
-      const isKomplettfertigung = row.custom_shafts_catagoary === "Komplettfertigung";
       const custom_shafts = row.cs_id
         ? {
             id: row.cs_id,
             orderNumber: row.cs_orderNumber,
-            invoice: row.cs_invoice,
-            invoice2: isKomplettfertigung ? row.cs_invoice2 : undefined,
+            invoice: row.cs_invoice ?? null,
+            invoice2: row.cs_invoice2 ?? null,
             status: row.cs_status,
             order_status: row.cs_order_status,
             other_customer_name: row.cs_other_customer_name,
