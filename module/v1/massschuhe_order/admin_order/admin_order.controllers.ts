@@ -767,7 +767,7 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    // // Always ignore canceled orders
+    // Always ignore canceled orders
     whereCondition.order_status = { not: "canceled" };
 
     if (status) {

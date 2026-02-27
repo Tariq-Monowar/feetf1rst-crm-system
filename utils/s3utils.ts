@@ -93,7 +93,6 @@ export const uploadFileToS3 = async (
   contentType?: string
 ): Promise<string> => {
   try {
-    // Sanitize filename
     const sanitizedName = fileName.replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
     const key = `${Date.now()}-${sanitizedName}`;
 

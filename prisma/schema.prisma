@@ -1756,8 +1756,12 @@ model shoe_order_step {
   orderId String?
   order   shoe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
-  status      String?
-  isCompleted Boolean? @default(false)
+  status String?
+
+  isCompleted Boolean?  @default(false)
+  complatedAt DateTime?
+  /** When this step actually started (can be before scheduled); used for time-spent calculation. */
+  startedAt   DateTime?
 
   // step 1
   files files[]
@@ -1971,6 +1975,13 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -1994,6 +2005,13 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2122,10 +2140,8 @@ enum custom_shafts_status {
 
 // deleveary date or finish date (one row per category — upsert by category)
 model custom_shafts_delivery_dates {
-  id String @id @default(uuid())
-
-  day Int?
-
+  id       String                  @id @default(uuid())
+  day      Int?
   category custom_shafts_catagoary @unique
 }
 
@@ -2654,3 +2670,13 @@ enum vat_country {
 // SN+ordernumber (it's insole but orderCategory is sonstiges)
 // EN+ordernumber  (it's insole but orderCategory is insole)
 // MS+ordernumber (it's shoe order)
+
+model database_backup {
+  //usie cuid
+  id String @id @default(cuid())
+
+  backupFile String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

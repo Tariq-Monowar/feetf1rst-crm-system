@@ -1,0 +1,52 @@
+import { exec } from "child_process";
+import { PrismaClient } from "@prisma/client";
+import { uploadFileToS3 } from "./utils/s3file";
+
+const prisma = new PrismaClient();
+
+const DB_URL = process.env.DATABASE_URL; // postgresql://postgres:root@localhost:5432/feetf1rst
+const DB_NAME = DB_URL.split("/").pop(); // feetf1rst
+
+async function backupDatabase() {
+  try {
+    const date = new Date().toISOString().slice(0, 10);
+    const dumpFile = `/tmp/${DB_NAME}_${date}.dump`;
+
+    console.log("Starting database backup...");
+
+    // Step 1: pg_dump
+    await new Promise<void>((resolve, reject) => {
+      exec(`pg_dump -U postgres -F c -d ${DB_NAME} -f ${dumpFile}`, (err, stdout, stderr) => {
+        if (err) {
+          console.error("Error during pg_dump:", stderr);
+          reject(err);
+        } else {
+          console.log("Database dumped successfully:", stdout);
+          resolve();
+        }
+      });
+    });
+
+    // Step 2: Upload to S3
+    const s3Url = await uploadFileToS3(Buffer.from(await fs.promises.readFile(dumpFile)), `${DB_NAME}_${date}.dump`);
+
+    // Step 3: Save record in database
+    await prisma.database_backup.create({
+      data: {
+        backupFile: s3Url,
+      },
+    });
+
+    console.log("Backup uploaded to S3 and record saved:", s3Url);
+
+    // Step 4: Remove local dump
+    await fs.promises.unlink(dumpFile);
+  } catch (error) {
+    console.error("Backup failed:", error);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// Call this function, or schedule via cron
+backupDatabase();

@@ -2085,17 +2085,6 @@ export const updateOrder = async (req: Request, res: Response) => {
         .json({ success: false, message: "Order ID is required" });
     }
 
-    const existing = await prisma.customerOrders.findUnique({
-      where: { id },
-      select: { id: true, partnerId: true },
-    });
-    if (!existing) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-    if (req.user?.role === "PARTNER" && existing.partnerId !== req.user?.id) {
-      return res.status(403).json({ success: false, message: "Not allowed to update this order" });
-    }
-
     const data: Record<string, any> = {};
 
     if (orderNotes !== undefined) {
@@ -2134,6 +2123,10 @@ export const updateOrder = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error("Update Order Error:", error);
+    //order not found
+    if (error.code === "P2025") {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",

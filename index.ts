@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { appointmentReminderCron, dailyReport } from "./cron/weekly_report";
+import { scheduleDailyDatabaseBackup } from "./cron/database_backup";
 import app, { allowedOrigins } from "./app";
 
 const prisma = new PrismaClient();
@@ -68,6 +69,7 @@ server.listen(PORT, async () => {
     console.log("Redis connected...");
     dailyReport();
     appointmentReminderCron();
+    scheduleDailyDatabaseBackup();
   } catch (err) {
     console.error("Database connection error:", err);
   }

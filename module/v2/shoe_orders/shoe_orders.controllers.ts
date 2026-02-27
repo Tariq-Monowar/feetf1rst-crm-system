@@ -59,11 +59,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       halbprobe,
 
       /**
-       * half_sample_required: if false → skip steps 4 & 5.
-       * if true → need steps 4 & 5, get extra input:
-       *   step 4: preparation_date, notes
-       *   step 5: fitting_date, adjustments, customer_reviews
-       *   save with isCompleted true
+       * half_sample_required: if true → steps 4 & 5 with data (preparation_date, notes; fitting_date, adjustments, customer_reviews), isCompleted false.
+       * if false → steps 4 & 5 created with no data, isCompleted true (skipped).
        */
       half_sample_required,
 
@@ -279,14 +276,14 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       //   },
       // });
 
-      // Step 4 & 5: when half_sample_required is true
+      // Step 4 & 5: when half_sample_required is true → take data, isCompleted false; when false → no data, isCompleted true
       if (halfSampleRequired) {
         await tx.shoe_order_step.create({
           data: {
             orderId: order.id,
             status: "Halbprobenerstellung",
-            isCompleted: true,
-            auto_print: true,
+            isCompleted: false,
+        
             preparation_date: new Date(preparation_date),
             notes: step4_notes ?? undefined,
           },
@@ -295,41 +292,76 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           data: {
             orderId: order.id,
             status: "Halbprobe_durchführen",
-            isCompleted: true,
-            auto_print: true,
+            isCompleted: false,
+           
             fitting_date: new Date(fitting_date),
             adjustments: adjustments ?? undefined,
             customer_reviews: customer_reviews ?? undefined,
           },
         });
+      } else {
+        await tx.shoe_order_step.create({
+          data: {
+            orderId: order.id,
+            status: "Halbprobenerstellung",
+            isCompleted: true,
+            auto_print: true,
+          },
+        });
+        await tx.shoe_order_step.create({
+          data: {
+            orderId: order.id,
+            status: "Halbprobe_durchführen",
+            isCompleted: true,
+            auto_print: true,
+          },
+        });
       }
 
-      // Step 2: when has_trim_strips is false
+      // Step 2: when has_trim_strips is false → take data, isCompleted false; when true → no data, isCompleted true
       if (!hasTrimStrips) {
+        await tx.shoe_order_step.create({
+          data: {
+            orderId: order.id,
+            status: "Leistenerstellung",
+            isCompleted: false,
+       
+            leistentyp: step2Leistentyp?.trim() ?? undefined,
+            material: step2_material ?? undefined,
+            notes: step2_notes ?? undefined,
+          },
+        });
+      } else {
         await tx.shoe_order_step.create({
           data: {
             orderId: order.id,
             status: "Leistenerstellung",
             isCompleted: true,
             auto_print: true,
-            leistentyp: step2Leistentyp?.trim() ?? undefined,
-            material: step2_material ?? undefined,
-            notes: step2_notes ?? undefined,
           },
         });
       }
 
-      // Step 3: when bedding_required is true
+      // Step 3: when bedding_required is true → take data, isCompleted false; when false → no data, isCompleted true
       if (beddingRequired) {
+        await tx.shoe_order_step.create({
+          data: {
+            orderId: order.id,
+            status: "Bettungserstellung",
+            isCompleted: false,
+       
+            material: step3_material ?? undefined,
+            thickness: step3_thickness ?? undefined,
+            notes: step3_notes ?? undefined,
+          },
+        });
+      } else {
         await tx.shoe_order_step.create({
           data: {
             orderId: order.id,
             status: "Bettungserstellung",
             isCompleted: true,
             auto_print: true,
-            material: step3_material ?? undefined,
-            thickness: step3_thickness ?? undefined,
-            notes: step3_notes ?? undefined,
           },
         });
       }
@@ -380,6 +412,348 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     });
   }
 };
+
+//--------KEEP---------
+// export const createShoeOrder = async (req: Request, res: Response) => {
+//   try {
+//     const {
+//       quantity,
+//       branch_location,
+//       pick_up_location,
+//       payment_status,
+//       order_note,
+//       medical_diagnosis,
+//       detailed_diagnosis,
+//       total_price,
+//       price,
+//       vat_rate,
+//       store_location,
+//       employeeId,
+//       kva,
+//       halbprobe,
+
+//       /**
+//        * half_sample_required: if false → skip steps 4 & 5.
+//        * if true → need steps 4 & 5, get extra input:
+//        *   step 4: preparation_date, notes
+//        *   step 5: fitting_date, adjustments, customer_reviews
+//        *   save with isCompleted true
+//        */
+//       half_sample_required,
+
+//       /**
+//        * has_trim_strips: if true → skip step 2.
+//        * if false → get extra input:
+//        *   step 2: material, leistentyp, notes
+//        */
+//       has_trim_strips,
+
+//       /**
+//        * bedding_required: if false → skip step 3.
+//        * if true → get extra input:
+//        *   step 3: material, thickness, notes
+//        */
+//       bedding_required,
+
+//       supply_note,
+
+//       /**
+//        * insurances: array of { price, description (json), vat_country }
+//        */
+//       insurances,
+
+//       customerId,
+
+//       // Step 4 & 5 data (when half_sample_required is true)
+//       preparation_date,
+//       notes: step4_notes,
+//       fitting_date,
+//       adjustments,
+//       customer_reviews,
+
+//       // Step 2 data (when has_trim_strips is false); accept step2_leistentyp or leistentyp
+//       step2_material,
+//       step2_leistentyp,
+//       step2_notes,
+//       leistentyp: body_leistentyp,
+
+//       // Step 3 data (when bedding_required is true)
+//       step3_material,
+//       step3_thickness,
+//       step3_notes,
+
+//       deposit_provision,
+//       foot_analysis_price,
+//     } = req.body;
+
+//     const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
+
+//     const partnerId = req.user?.id;
+//     if (!partnerId) {
+//       return res.status(401).json({ success: false, message: "Unauthorized" });
+//     }
+
+//     const requiredFields = [
+//       "customerId",
+//       "total_price",
+//       "payment_status",
+//       "quantity",
+//       "branch_location",
+//       "pick_up_location",
+//     ];
+//     for (const field of requiredFields) {
+//       if (req.body[field] == null || req.body[field] === "") {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: `${field} is required` });
+//       }
+//     }
+
+//     //valit payment_status
+//     const validPaymentStatuses = [
+//       "Privat_Bezahlt",
+//       "Privat_offen",
+//       "Krankenkasse_Ungenehmigt",
+//       "Krankenkasse_Genehmigt",
+//     ];
+//     if (
+//       payment_status != null &&
+//       payment_status !== "" &&
+//       !validPaymentStatuses.includes(payment_status)
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid payment status",
+//         validStatuses: validPaymentStatuses,
+//       });
+//     }
+
+//     const branchLocation = parseJsonField(branch_location);
+//     const pickUpLocation = parseJsonField(pick_up_location);
+//     const storeLocation = parseJsonField(store_location);
+//     const footAnalysisPrice = parseJsonField(foot_analysis_price);
+
+//     let insurancesArr: Array<{
+//       price?: number;
+//       description?: Prisma.InputJsonValue;
+//       vat_country?: string;
+//     }> = [];
+//     if (insurances != null) {
+//       const parsed =
+//         typeof insurances === "string"
+//           ? (() => {
+//               try {
+//                 return JSON.parse(insurances) as unknown;
+//               } catch {
+//                 return null;
+//               }
+//             })()
+//           : insurances;
+//       insurancesArr = Array.isArray(parsed)
+//         ? (parsed as typeof insurancesArr)
+//         : [];
+//     }
+
+//     const halfSampleRequired =
+//       half_sample_required === true || half_sample_required === "true";
+//     const hasTrimStrips =
+//       has_trim_strips === true || has_trim_strips === "true";
+//     const beddingRequired =
+//       bedding_required === true || bedding_required === "true";
+
+//     // Validate conditional data when required
+//     if (halfSampleRequired) {
+//       // Need steps 4 & 5 data when half sample is required
+//       if (preparation_date == null || fitting_date == null) {
+//         return res.status(400).json({
+//           success: false,
+//           message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date,  and for step 5: fitting_date are required`,
+//         });
+//       }
+//     }
+
+//     if (!hasTrimStrips) {
+//       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
+//       if (step2_material == null || step2Leistentyp == null || step2Leistentyp === "") {
+//         return res.status(400).json({
+//           success: false,
+//           message:
+//             "When has_trim_strips is false, step2_material and step2_leistentyp (or leistentyp) are required",
+//         });
+//       }
+//     }
+
+//     if (beddingRequired) {
+//       // Need step 3 data
+//       if (step3_material == null || step3_thickness == null) {
+//         return res.status(400).json({
+//           success: false,
+//           message:
+//             "When bedding_required is true, step3_material and step3_thickness are required",
+//         });
+//       }
+//     }
+
+//     // Verify customer exists and belongs to partner
+//     const customer = await prisma.customers.findFirst({
+//       where: { id: customerId, partnerId },
+//     });
+//     if (!customer) {
+//       return res.status(404).json({
+//         success: false,
+//         message:
+//           "Customer not found. Ensure customerId exists and belongs to your account.",
+//       });
+//     }
+
+//     const newOrder = await prisma.$transaction(async (tx) => {
+//       const orderNumber = await getNextShoeOrderNumberForPartner(tx, partnerId);
+
+//       const order = await tx.shoe_order.create({
+//         data: {
+//           orderNumber,
+//           quantity: Number(quantity) || undefined,
+//           branch_location: (branchLocation ?? undefined) as
+//             | Prisma.InputJsonValue
+//             | undefined,
+//           pick_up_location: (pickUpLocation ?? undefined) as
+//             | Prisma.InputJsonValue
+//             | undefined,
+//           payment_status: payment_status ?? undefined,
+//           order_note: order_note ?? undefined,
+//           medical_diagnosis: medical_diagnosis ?? undefined,
+//           detailed_diagnosis: detailed_diagnosis ?? undefined,
+//           total_price: Number(total_price) ?? undefined,
+//           vat_rate: vat_rate != null ? Number(vat_rate) : undefined,
+//           store_location: (storeLocation ?? undefined) as
+//             | Prisma.InputJsonValue
+//             | undefined,
+//           employeeId: employeeId ?? undefined,
+//           kva: kva === true || kva === "true",
+//           halbprobe: halbprobe === true || halbprobe === "true",
+//           half_sample_required: halfSampleRequired,
+//           has_trim_strips: hasTrimStrips,
+//           bedding_required: beddingRequired,
+//           supply_note: supply_note ?? undefined,
+//           customerId: customerId ?? undefined,
+//           partnerId,
+//           deposit_provision: Number(deposit_provision),
+//           foot_analysis_price: footAnalysisPrice ?? undefined,
+//           price: Number(price) ?? undefined,
+//         },
+//       });
+
+//       // // Step 1: Auftragserstellung
+//       // await tx.shoe_order_step.create({
+//       //   data: {
+//       //     orderId: order.id,
+//       //     status: "Auftragserstellung",
+//       //     isCompleted: false,
+//       //     auto_print: true,
+//       //   },
+//       // });
+
+//       // Step 4 & 5: when half_sample_required is true
+//       if (halfSampleRequired) {
+//         await tx.shoe_order_step.create({
+//           data: {
+//             orderId: order.id,
+//             status: "Halbprobenerstellung",
+//             isCompleted: true,
+//             auto_print: true,
+//             preparation_date: new Date(preparation_date),
+//             notes: step4_notes ?? undefined,
+//           },
+//         });
+//         await tx.shoe_order_step.create({
+//           data: {
+//             orderId: order.id,
+//             status: "Halbprobe_durchführen",
+//             isCompleted: true,
+//             auto_print: true,
+//             fitting_date: new Date(fitting_date),
+//             adjustments: adjustments ?? undefined,
+//             customer_reviews: customer_reviews ?? undefined,
+//           },
+//         });
+//       }
+
+//       // Step 2: when has_trim_strips is false
+//       if (!hasTrimStrips) {
+//         await tx.shoe_order_step.create({
+//           data: {
+//             orderId: order.id,
+//             status: "Leistenerstellung",
+//             isCompleted: true,
+//             auto_print: true,
+//             leistentyp: step2Leistentyp?.trim() ?? undefined,
+//             material: step2_material ?? undefined,
+//             notes: step2_notes ?? undefined,
+//           },
+//         });
+//       }
+
+//       // Step 3: when bedding_required is true
+//       if (beddingRequired) {
+//         await tx.shoe_order_step.create({
+//           data: {
+//             orderId: order.id,
+//             status: "Bettungserstellung",
+//             isCompleted: true,
+//             auto_print: true,
+//             material: step3_material ?? undefined,
+//             thickness: step3_thickness ?? undefined,
+//             notes: step3_notes ?? undefined,
+//           },
+//         });
+//       }
+
+//       // Insurances
+//       if (insurancesArr.length > 0) {
+//         await tx.shoe_order_insurance.createMany({
+//           data: insurancesArr.map((ins) => ({
+//             orderId: order.id,
+//             price: ins.price != null ? Number(ins.price) : undefined,
+//             description:
+//               (ins.description as Prisma.InputJsonValue) ?? undefined,
+//             vat_country: ins.vat_country ?? undefined,
+//           })),
+//         });
+//       }
+
+//       return order;
+//     });
+
+//     const orderWithRelations = await prisma.shoe_order.findUnique({
+//       where: { id: newOrder.id },
+//       include: {
+//         shoeOrderStep: true,
+//         insurances: true,
+//         customer: {
+//           select: {
+//             id: true,
+//             vorname: true,
+//             nachname: true,
+//             customerNumber: true,
+//           },
+//         },
+//       },
+//     });
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Shoe order created successfully",
+//       data: orderWithRelations,
+//     });
+//   } catch (error: any) {
+//     console.error("Create Shoe Order Error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message:
+//         error.message || "Something went wrong while creating shoe order",
+//     });
+//   }
+// };
 
 export const getAllShoeOrders = async (req: Request, res: Response) => {
   try {
@@ -573,6 +947,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       fitting_date,
       adjustments,
       customer_reviews,
+      started_at,
     } = body;
 
     // multer.fields({ name: "files" }) → req.files.files is array of S3 file objects (each has .location)
@@ -597,7 +972,11 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       where: { id, partnerId },
       select: {
         id: true,
-        shoeOrderStep: { where: { status }, take: 1 },
+        shoeOrderStep: {
+          where: { status },
+          take: 1,
+          select: { id: true, startedAt: true },
+        },
       },
     });
     if (!order) {
@@ -648,6 +1027,12 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           : undefined,
     };
 
+    // Actual start time: from body (if work started before scheduled) or now
+    const startedAtValue =
+      started_at !== undefined && started_at !== ""
+        ? new Date(started_at)
+        : new Date();
+
     let stepId: string;
 
     if (existingStep) {
@@ -656,6 +1041,10 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         isCompleted: true,
         ...stepPayload,
       };
+      // Set startedAt on first update if not already set (actual starting time)
+      if (existingStep.startedAt == null) {
+        updateData.startedAt = startedAtValue;
+      }
       Object.keys(updateData).forEach(
         (k) =>
           (updateData as any)[k] === undefined && delete (updateData as any)[k],
@@ -667,12 +1056,13 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status
+      // Create new step for this status; record actual start time
       const newStep = await prisma.shoe_order_step.create({
         data: {
           orderId: id,
           status,
           isCompleted: true,
+          startedAt: startedAtValue,
           ...stepPayload,
         },
       });
@@ -948,7 +1338,12 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
         shoeOrderStep: {
           where: { auto_print: false },
           orderBy: { createdAt: "asc" },
-          select: { id: true, status: true, createdAt: true },
+          select: {
+            id: true,
+            status: true,
+            createdAt: true,
+            startedAt: true,
+          },
         },
       },
     });
@@ -960,17 +1355,20 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
       });
     }
 
-    // time spent per status (only auto_print false steps)
+    // time spent per status (only auto_print false steps); use startedAt when set (actual start), else createdAt
     const steps = order.shoeOrderStep || [];
     const now = new Date();
     const timeSpentByStatus = steps.map((step, i) => {
-      const startedAt = step.createdAt;
+      const stepStartedAt = step.startedAt ?? step.createdAt;
       const nextStep = steps[i + 1];
-      const endedAt = nextStep ? nextStep.createdAt : now;
-      const durationMs = endedAt.getTime() - startedAt.getTime();
+      const nextStartedAt = nextStep
+        ? (nextStep.startedAt ?? nextStep.createdAt)
+        : null;
+      const endedAt = nextStartedAt ?? now;
+      const durationMs = endedAt.getTime() - stepStartedAt.getTime();
       return {
         status: step.status,
-        startedAt,
+        startedAt: stepStartedAt,
         endedAt,
         durationMs,
         durationHours: Math.round((durationMs / (1000 * 60 * 60)) * 100) / 100,
