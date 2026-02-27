@@ -9,7 +9,7 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
     const {
       service_name,
       sonstiges_category,
-      versorgung,
+      diagnosis,
       net_price,
       vatRate,
       quantity = 1,
@@ -72,7 +72,7 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
             ? new Date(fertigstellungBis)
             : null,
           bezahlt,
-          versorgung: versorgung ?? null,
+          diagnosis: diagnosis ?? null,
         },
         select: { id: true },
       });
