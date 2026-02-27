@@ -9,6 +9,7 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
     const {
       service_name,
       sonstiges_category,
+      versorgung,
       net_price,
       vatRate,
       quantity = 1,
@@ -24,10 +25,19 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
       bezahlt,
     } = req.body;
 
-    const required = ["vatRate", "versorgung_note", "employeeId", "total_price", "customerId", "bezahlt"];
+    const required = [
+      "vatRate",
+      "versorgung_note",
+      "employeeId",
+      "total_price",
+      "customerId",
+      "bezahlt",
+    ];
     for (const field of required) {
       if (req.body[field] == null || req.body[field] === "") {
-        return res.status(400).json({ success: false, message: `${field} is required` });
+        return res
+          .status(400)
+          .json({ success: false, message: `${field} is required` });
       }
     }
 
@@ -58,8 +68,11 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
           wohnort: wohnort ?? null,
           auftragsDatum: auftragsDatum ? new Date(auftragsDatum) : null,
           geschaeftsstandort: geschaeftsstandort ?? null,
-          fertigstellungBis: fertigstellungBis ? new Date(fertigstellungBis) : null,
+          fertigstellungBis: fertigstellungBis
+            ? new Date(fertigstellungBis)
+            : null,
           bezahlt,
+          versorgung: versorgung ?? null,
         },
         select: { id: true },
       });

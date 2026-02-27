@@ -233,8 +233,8 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // screenerId is optional when customer has foot data (fusslange1, fusslange2)
     const required = privetSupply
-      ? ["customerId", "bezahlt", "geschaeftsstandort"]
-      : ["customerId", "versorgungId", "bezahlt", "geschaeftsstandort"];
+      ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
+      : ["customerId", "versorgungId", "bezahlt", "geschaeftsstandort", "totalPrice"];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
     const okStatus = [
@@ -246,14 +246,11 @@ export const createOrder = async (req: Request, res: Response) => {
     if (!okStatus.includes(bezahlt))
       return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
-    if (totalPriceFromClient == null || totalPriceFromClient === "") {
-      return bad(400, "totalPrice is required");
-    }
     const totalPrice = Number(totalPriceFromClient);
     if (Number.isNaN(totalPrice)) {
       return bad(400, "totalPrice must be a valid number");
     }
-
+    
     let vat_country: string | undefined;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
