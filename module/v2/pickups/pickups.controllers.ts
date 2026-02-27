@@ -224,7 +224,7 @@ export const getPickupByOrderId = async (req: Request, res: Response) => {
         const s = steps[i];
         const currAt = s.createdAt.getTime();
         timeline.push({
-          statusFrom: i === 0 ? null : steps[i - 1].status ?? null,
+          statusFrom: i === 0 ? null : (steps[i - 1].status ?? null),
           statusTo: s.status ?? null,
           changedAt: s.createdAt,
           durationMs: currAt - prevAt,
@@ -342,7 +342,11 @@ export const getAllPickup = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
     const limit = parseInt(req.query.limit as string) || 10;
     const cursor = req.query.cursor as string | undefined;
-    const type = req.query.productType as "insole" | "shoes" | "all" | undefined;
+    const type = req.query.productType as
+      | "insole"
+      | "shoes"
+      | "all"
+      | undefined;
 
     if (type === "insole") {
       const whereCondition: any = {
@@ -597,8 +601,24 @@ export const getPickupCalculation = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0,
+      0,
+      0,
+      0,
+    );
+    const endOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999,
+    );
 
     // readyToPickup = same as get-all-pickup: ready (Abholbereit_Versandt / Abholbereit) AND unpaid (Privat_offen)
     const rows = await prisma.$queryRaw<any>(Prisma.sql`
@@ -791,8 +811,6 @@ export const getPickupPrice = async (req: Request, res: Response) => {
         orderNumber: `#${order.orderNumber}`,
         totalPrice: order.Versorgungen?.supplyStatus?.price ?? 0,
         vatRate: order.Versorgungen?.supplyStatus?.vatRate ?? 0,
-        profitPercentage:
-          order.Versorgungen?.supplyStatus?.profitPercentage ?? 0,
       };
 
       return res.status(200).json({
@@ -803,9 +821,32 @@ export const getPickupPrice = async (req: Request, res: Response) => {
     }
 
     if (type === "shoes") {
+      const order = await prisma.shoe_order.findFirst({
+        where: { id: orderId, partnerId },
+        select: {
+          orderNumber: true,
+          total_price: true,
+          vat_rate: true,
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      const data = {
+        orderNumber: `#${order.orderNumber ?? ""}`,
+        totalPrice: order.total_price ?? 0,
+        vatRate: order.vat_rate ?? 0,
+      };
+
       return res.status(200).json({
         success: true,
-        message: "not implemented yet",
+        message: "Product price fetched successfully",
+        data,
       });
     }
     return res.status(400).json({
@@ -912,18 +953,21 @@ export const posReceipt = async (req: Request, res: Response) => {
       const vatAmount = total - subtotal;
       const unitPrice = qty > 0 ? total / qty : total;
 
-      const location = order.geschaeftsstandort as { title?: string; description?: string } | null;
+      const location = order.geschaeftsstandort as {
+        title?: string;
+        description?: string;
+      } | null;
       const address = location?.description ?? location?.title ?? "";
 
-      const customerName = [order.customer?.vorname, order.customer?.nachname]
-        .filter(Boolean)
-        .join(" ") || "–";
+      const customerName =
+        [order.customer?.vorname, order.customer?.nachname]
+          .filter(Boolean)
+          .join(" ") || "–";
 
       const productName =
         order.Versorgungen?.supplyStatus?.name ??
         "Maßeinlagen – Orthopädische Einlagen";
 
-     
       const receipt = {
         company: {
           companyName: order.partner?.busnessName ?? "",
@@ -1005,12 +1049,16 @@ export const posReceipt = async (req: Request, res: Response) => {
       const vatAmount = total - subtotal;
       const unitPrice = qty > 0 ? total / qty : total;
 
-      const location = order.store_location as { title?: string; description?: string } | null;
+      const location = order.store_location as {
+        title?: string;
+        description?: string;
+      } | null;
       const address = location?.description ?? location?.title ?? "";
 
-      const customerName = [order.customer?.vorname, order.customer?.nachname]
-        .filter(Boolean)
-        .join(" ") || "–";
+      const customerName =
+        [order.customer?.vorname, order.customer?.nachname]
+          .filter(Boolean)
+          .join(" ") || "–";
 
       const receipt = {
         company: {
@@ -1065,8 +1113,7 @@ export const handcashPayment = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
     const type = req.query.type as "insole" | "shoes";
     const pickupRaw = req.query.pickup;
-    const pickupStr =
-      Array.isArray(pickupRaw) ? pickupRaw[0] : pickupRaw;
+    const pickupStr = Array.isArray(pickupRaw) ? pickupRaw[0] : pickupRaw;
     const isPickup =
       pickupStr === "true" || String(pickupStr || "").toLowerCase() === "true";
 
@@ -1201,9 +1248,10 @@ export const handcashPayment = async (req: Request, res: Response) => {
         });
       }
 
-      const updateData: { payment_status: "Privat_Bezahlt"; status?: string } = {
-        payment_status: "Privat_Bezahlt",
-      };
+      const updateData: { payment_status: "Privat_Bezahlt"; status?: string } =
+        {
+          payment_status: "Privat_Bezahlt",
+        };
       // When pickup=true and order is Abholbereit → mark as picked up (Ausgeführt)
       if (isPickup && order.status === "Abholbereit") {
         updateData.status = "Ausgeführt";
