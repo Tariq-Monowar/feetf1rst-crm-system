@@ -227,6 +227,7 @@ export const createOrder = async (req: Request, res: Response) => {
       addonPrices = 0,
       insuranceTotalPrice = 0,
       key,
+      totalPrice: totalPriceFromClient,
     } = body;
     const privetSupply = key;
 
@@ -244,6 +245,14 @@ export const createOrder = async (req: Request, res: Response) => {
     ];
     if (!okStatus.includes(bezahlt))
       return bad(400, "Invalid payment status", { validStatuses: okStatus });
+
+    if (totalPriceFromClient == null || totalPriceFromClient === "") {
+      return bad(400, "totalPrice is required");
+    }
+    const totalPrice = Number(totalPriceFromClient);
+    if (Number.isNaN(totalPrice)) {
+      return bad(400, "totalPrice must be a valid number");
+    }
 
     let vat_country: string | undefined;
     if (
@@ -459,15 +468,9 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, msg);
     }
 
-    // STEP 3: Price = (foot analysis + insole) × quantity, then apply discount
+    // STEP 3: Use totalPrice from client without recalculation
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
-    const basePrice =
-      Number(fussanalysePreis || 0) + Number(einlagenversorgungPreis || 0);
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
-    const totalPrice =
-      Math.round(
-        basePrice * orderQuantity * (1 - discountPercent / 100) * 100,
-      ) / 100;
 
     const footLengthMm = Math.max(
       Number(customer.fusslange1),

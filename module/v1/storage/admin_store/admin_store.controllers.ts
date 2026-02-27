@@ -43,6 +43,7 @@ export const createAdminStore = async (req, res) => {
       artikelnummer,
       eigenschaften,
       groessenMengen,
+      features,
     } = req.body;
 
     const type = (req.query?.type as string) ?? "rady_insole";
@@ -81,6 +82,22 @@ export const createAdminStore = async (req, res) => {
 
     const image = req.file?.location || null;
 
+    let parsedFeatures;
+    if (features !== undefined && features !== null && features !== "") {
+      try {
+        parsedFeatures = parseJsonSafely(features);
+      } catch (parseError: any) {
+        if (req.file?.location) {
+          deleteFileFromS3(req.file.location);
+        }
+        return res.status(400).json({
+          success: false,
+          message: "Invalid features format. It must be a valid JSON object",
+          error: parseError.message,
+        });
+      }
+    }
+
     let parsedGroessenMengen;
     try {
       parsedGroessenMengen = parseJsonSafely(groessenMengen);
@@ -106,6 +123,7 @@ export const createAdminStore = async (req, res) => {
         eigenschaften,
         groessenMengen: parsedGroessenMengen,
         type: type as StoreType,
+        features: parsedFeatures,
       },
     });
 
@@ -159,6 +177,7 @@ export const updateAdminStore = async (req, res) => {
       artikelnummer,
       eigenschaften,
       groessenMengen,
+      features,
     } = req.body;
 
     // Check if admin store exists
@@ -194,7 +213,22 @@ export const updateAdminStore = async (req, res) => {
     if (eigenschaften !== undefined) {
       updateData.eigenschaften = eigenschaften;
     }
-
+    if (features !== undefined && features !== null && features !== "") {
+      try {
+        updateData.features = parseJsonSafely(features);
+      } catch (parseError: any) {
+        if (req.file?.location) {
+          deleteFileFromS3(req.file.location);
+        }
+        return res.status(400).json({
+          success: false,
+          message: "Invalid features format. It must be a valid JSON object",
+          error: parseError.message,
+        });
+      }
+    } else if (features === null || features === "") {
+      updateData.features = null;
+    }
     // Handle groessenMengen if provided
     if (groessenMengen !== undefined) {
       try {
@@ -297,7 +331,7 @@ export const getAllAdminStore = async (req, res) => {
           OR: ["brand", "productName", "artikelnummer", "eigenschaften"].map(
             (field) => ({
               [field]: { contains: search, mode: "insensitive" },
-            })
+            }),
           ),
         }
       : {};
@@ -337,6 +371,8 @@ export const getAllAdminStore = async (req, res) => {
         artikelnummer: true,
         eigenschaften: true,
         groessenMengen: true,
+        features: true,
+        type: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { stores: true } },
@@ -449,7 +485,9 @@ export const trackStorage = async (req, res) => {
     const cursor = req.query.cursor as string | undefined;
     const limitParam = parseInt(req.query.limit as string, 10);
     const limit =
-      Number.isNaN(limitParam) || limitParam < 1 ? 10 : Math.min(limitParam, 100);
+      Number.isNaN(limitParam) || limitParam < 1
+        ? 10
+        : Math.min(limitParam, 100);
     const type = (req.query.type as string)?.trim() || "rady_insole";
     const search = (req.query.search as string)?.trim();
 
@@ -460,15 +498,19 @@ export const trackStorage = async (req, res) => {
       });
     }
 
-    const conditions: Prisma.Sql[] = [Prisma.sql`t.type = ${type}::"StoreType"`];
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`t.type = ${type}::"StoreType"`,
+    ];
     if (search) {
       const term = `%${search}%`;
       conditions.push(
-        Prisma.sql`(t.produktname ILIKE ${term} OR t.hersteller ILIKE ${term})`
+        Prisma.sql`(t.produktname ILIKE ${term} OR t.hersteller ILIKE ${term})`,
       );
     }
     if (cursor) {
-      conditions.push(Prisma.sql`t."parcessAt" < ${new Date(cursor)}::timestamp`);
+      conditions.push(
+        Prisma.sql`t."parcessAt" < ${new Date(cursor)}::timestamp`,
+      );
     }
     const whereClause = Prisma.join(conditions, " AND ");
 
@@ -561,7 +603,7 @@ export const getTrackStoragePrice = async (req, res) => {
 
     const totalPrice = adminStoreTracking.reduce(
       (acc, curr) => acc + curr.price,
-      0
+      0,
     );
 
     res.status(200).json({

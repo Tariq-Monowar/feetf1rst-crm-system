@@ -25,6 +25,7 @@ const router = express.Router();
  * তাকে অ্যাাডমিনের কাছ থেকে কিনতে হয়
 */
 // ক্লাইন্ট এখন বলছে পার্টনার নিজে নিজে স্টক ক্রিইয়েট করতে আপারবে কিন্তু ঈমেজ অ্যাাড করতে পারবে না
+//client abar bolche image add korte prbe
 router.post("/create", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), upload.single("image"), createStorage);
 
 /*

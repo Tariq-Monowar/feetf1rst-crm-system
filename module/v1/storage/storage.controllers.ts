@@ -181,6 +181,7 @@ export const createStorage = async (req: Request, res: Response) => {
       purchase_price,
       selling_price,
       adminStoreId,
+      features,
     } = req.body;
 
     const userId = req.user.id;
@@ -250,6 +251,22 @@ export const createStorage = async (req: Request, res: Response) => {
       return;
     }
 
+    // Minimal parse for optional features JSON (create only)
+    let parsedFeatures = features;
+    if (typeof parsedFeatures === "string") {
+      try {
+        const trimmed = parsedFeatures.trim();
+        parsedFeatures = trimmed ? JSON.parse(trimmed) : null;
+      } catch (e: any) {
+        cleanupFile();
+        return res.status(400).json({
+          success: false,
+          message:
+            "features must be a valid JSON string when provided on create",
+        });
+      }
+    }
+
     // Clean groessenMengen before saving:
     // - keep quantity/length/mindestmenge
     // - drop warningStatus (it's calculated in responses)
@@ -284,6 +301,7 @@ export const createStorage = async (req: Request, res: Response) => {
       image,
       userId,
       type: type as StoreType,
+      features: parsedFeatures ?? null,
       // Note: adminStoreId is NOT included when create_status is "by_self"
     };
 
@@ -358,6 +376,7 @@ export const buyStorage = async (req, res) => {
       selling_price = 0,
       groessenMengen: bodyGroessenMengen,
       price,
+      features: bodyFeatures,
     } = req.body;
 
     const missingField = ["admin_store_id"].find((field) => !req.body[field]);
@@ -416,6 +435,12 @@ export const buyStorage = async (req, res) => {
     const priceFinal =
       req.body.price !== undefined ? (price ?? 0) : (adminStore.price ?? 0);
 
+    // features: body override or fallback to admin_store
+    const featuresFinal =
+      bodyFeatures !== undefined && bodyFeatures !== null && bodyFeatures !== ""
+        ? bodyFeatures
+        : (adminStore as any).features ?? null;
+
     // Create Stores record: body overrides when provided, else admin_store
     const createdStore = await prisma.stores.create({
       data: {
@@ -430,6 +455,7 @@ export const buyStorage = async (req, res) => {
         userId: userId,
         adminStoreId: admin_store_id,
         type: storeType,
+        features: featuresFinal,
       },
     });
 
@@ -447,6 +473,7 @@ export const buyStorage = async (req, res) => {
         price: priceFinal,
         image: adminStore.image,
         type: storeType,
+        features: featuresFinal,
       },
     });
 

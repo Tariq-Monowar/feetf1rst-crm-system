@@ -1217,6 +1217,8 @@ model admin_store {
 
   type StoreType @default(rady_insole)
 
+  features Json?
+
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
   adminStoreTrackings admin_store_tracking[]
@@ -1256,6 +1258,8 @@ model admin_store_tracking {
   /// Article number / SKU
   artikelnummer String
 
+
+
   /// Storage location / warehouse location এটা আসবে ইউজার মডেলের hauptstandort[] এই অ্যাারে অফ স্ট্রিং থেকে
   lagerort String?
 
@@ -1268,6 +1272,8 @@ model admin_store_tracking {
   price Float?
   image String?
   type  StoreType @default(rady_insole)
+
+  features Json?
 
   parcessAt     DateTime     @default(now())
   adminStore    admin_store? @relation(fields: [admin_storeId], references: [id])
@@ -1326,6 +1332,8 @@ model Stores {
 
   /// এই স্টাটাস ডিপেন্ড করে mindestbestand এর উপর যদি mindestbestand এর উপরে থাকে তাহলে এটা "Voller Bestand" এই স্ট্রিং দিবে যদি mindestbestand এর নিচে থাকে তাহলে এটা "Niedriger Bestand" এই স্ট্রিং দিবে
   Status String?
+
+  features Json?
 
   create_status CreateStatus? @default(by_admin)
 
@@ -1760,7 +1768,9 @@ model shoe_order_step {
 
   isCompleted Boolean?  @default(false)
   complatedAt DateTime?
-  /** When this step actually started (can be before scheduled); used for time-spent calculation. */
+  /**
+   * When this step actually started (can be before scheduled); used for time-spent calculation.
+   */
   startedAt   DateTime?
 
   // step 1
@@ -1982,6 +1992,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2005,6 +2016,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
