@@ -1403,6 +1403,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         orderCategory: true,
         service_name: true,
         sonstiges_category: true,
+        diagnosis: true,
 
         insoleStandards: {
           select: {
@@ -1499,6 +1500,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             ? {
                 service_name: order.service_name ?? null,
                 sonstiges_category: order.sonstiges_category ?? null,
+                diagnosis: order.diagnosis ?? null,
               }
             : {
                 insoleStandards: order.insoleStandards.map((standard) => ({
