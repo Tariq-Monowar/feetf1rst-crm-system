@@ -27,7 +27,6 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
 
     const required = [
       "vatRate",
-      "versorgung_note",
       "employeeId",
       "total_price",
       "customerId",
