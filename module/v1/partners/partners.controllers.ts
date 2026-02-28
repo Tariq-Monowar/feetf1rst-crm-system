@@ -37,7 +37,7 @@ const generateNextPartnerAccountNumber = async (): Promise<string> => {
 
 const buildBarcodeLabel = (
   busnessName: string,
-  accountNumber: string
+  accountNumber: string,
 ): string => {
   const prefix = (busnessName || "")
     .trim()
@@ -55,16 +55,27 @@ export const createPartnership = async (req: Request, res: Response) => {
       mainLocation,
       locationDescription,
       vat_number,
+      mentorId,
     } = req.body;
 
     const missingFields = ["email", "busnessName", "mainLocation"].filter(
-      (field) => !req.body[field]
+      (field) => !req.body[field],
     );
     if (missingFields.length > 0) {
       res.status(400).json({
         message: `Missing required fields: ${missingFields.join(", ")}`,
       });
       return;
+    }
+
+    if (mentorId) {
+      const mentor = await prisma.mentors.findUnique({
+        where: { id: mentorId },
+      });
+      if (!mentor) {
+        res.status(404).json({ message: "Mentor not found" });
+        return;
+      }
     }
 
     const newImage = req.file;
@@ -91,6 +102,7 @@ export const createPartnership = async (req: Request, res: Response) => {
 
     const partnership = await prisma.user.create({
       data: {
+        mentorId: mentorId || undefined,
         email,
         role: "PARTNER",
         partnerId: accountNumber,
@@ -135,19 +147,20 @@ export const createPartnership = async (req: Request, res: Response) => {
       `${SET_PASSWORD_KEY_PREFIX}${partnership.id}`,
       "1",
       "EX",
-      SET_PASSWORD_TTL_SEC
+      SET_PASSWORD_TTL_SEC,
     );
 
-    const link = process.env.NODE_ENV === "development"
-      ? `${process.env.APP_URL_DEVELOPMENT}/set-password/${partnership.id}`
-      : `${process.env.APP_URL_PRODUCTION}/set-password/${partnership.id}`;
+    const link =
+      process.env.NODE_ENV === "development"
+        ? `${process.env.APP_URL_DEVELOPMENT}/set-password/${partnership.id}`
+        : `${process.env.APP_URL_PRODUCTION}/set-password/${partnership.id}`;
 
     sendPartnershipWelcomeEmail(
       email,
       link,
       partnership.busnessName ?? undefined,
       partnership.accountInfos?.[0]?.vat_number ?? null,
-      partnership.storeLocations?.[0]?.address ?? undefined
+      partnership.storeLocations?.[0]?.address ?? undefined,
     );
 
     const loginUrl = "https://feetf1rst.tech/login";
@@ -163,9 +176,11 @@ export const createPartnership = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Partnership creation error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Something went wrong", error });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
   }
 };
 
@@ -352,23 +367,34 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
           ? vat_number != null && String(vat_number).trim() !== ""
             ? String(vat_number).trim()
             : null
-          : primaryAccountInfo?.vat_number ?? null;
+          : (primaryAccountInfo?.vat_number ?? null);
       const vatCountryValue =
         vat_country !== undefined
           ? vat_country != null && String(vat_country).trim() !== ""
             ? String(vat_country).trim()
             : null
-          : primaryAccountInfo?.vat_country ?? null;
+          : (primaryAccountInfo?.vat_country ?? null);
 
-      const currentBankInfo = (primaryAccountInfo?.bankInfo as Record<string, unknown>) || {};
-      const bankInfoUpdate: { bankName?: string | null; bankNumber?: string | null } = {};
+      const currentBankInfo =
+        (primaryAccountInfo?.bankInfo as Record<string, unknown>) || {};
+      const bankInfoUpdate: {
+        bankName?: string | null;
+        bankNumber?: string | null;
+      } = {};
       if (bankName !== undefined) bankInfoUpdate.bankName = bankName ?? null;
-      if (bankNumber !== undefined) bankInfoUpdate.bankNumber = bankNumber ?? null;
+      if (bankNumber !== undefined)
+        bankInfoUpdate.bankNumber = bankNumber ?? null;
       const mergedBankInfo =
         Object.keys(bankInfoUpdate).length > 0
           ? {
-              bankName: bankInfoUpdate.bankName ?? (currentBankInfo.bankName as string) ?? null,
-              bankNumber: bankInfoUpdate.bankNumber ?? (currentBankInfo.bankNumber as string) ?? null,
+              bankName:
+                bankInfoUpdate.bankName ??
+                (currentBankInfo.bankName as string) ??
+                null,
+              bankNumber:
+                bankInfoUpdate.bankNumber ??
+                (currentBankInfo.bankNumber as string) ??
+                null,
             }
           : null;
 
@@ -471,8 +497,32 @@ export const getAllPartners = async (req: Request, res: Response) => {
         skip,
         take: limit,
         orderBy: { createdAt: "desc" },
-        include: {
-          accountInfos: true,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          busnessName: true,
+          image: true,
+          createdAt: true,
+          accountInfos: {
+            select: {
+              vat_number: true,
+              vat_country: true,
+              bankInfo: true,
+              barcodeLabel: true,
+            },
+          },
+          mentor: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              email: true,
+              timeline: true,
+              phone: true,
+            },
+          },
         },
       }),
       prisma.user.count({
@@ -540,12 +590,44 @@ export const getPartnerById = async (req: Request, res: Response) => {
 
     const partner = await prisma.user.findUnique({
       where: { id, role: "PARTNER" },
-      include: {
-        accountInfos: true,
+      // include: {
+      //   accountInfos: true,
+      //   storeLocations: {
+      //     where: { isPrimary: true },
+      //     take: 1,
+      //     orderBy: { createdAt: "asc" },
+      //   },
+      // },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        busnessName: true,
+        image: true,
+        createdAt: true,
+        accountInfos: {
+          select: {
+            vat_number: true,
+            vat_country: true,
+            bankInfo: true,
+            barcodeLabel: true,
+          },
+        },
         storeLocations: {
-          where: { isPrimary: true },
-          take: 1,
-          orderBy: { createdAt: "asc" },
+          select: {
+            address: true,
+            description: true,
+            isPrimary: true,
+          },
+        },
+        mentor: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            email: true,
+          },
         },
       },
     });
@@ -644,7 +726,7 @@ export const setPasswordLink = async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { id: updatedPartner.id, email: updatedPartner.email, role: "PARTNER" },
-      process.env.JWT_SECRET as string
+      process.env.JWT_SECRET as string,
     );
 
     res.status(200).json({
@@ -664,7 +746,7 @@ export const setPasswordLink = async (req: Request, res: Response) => {
 
 export const updatePartnerByAdmin = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const { id } = req.params;
   const {
@@ -749,15 +831,15 @@ export const updatePartnerByAdmin = async (
 
     // Parse hauptstandort from string or array
     const parsedHauptstandort: string[] | undefined = Array.isArray(
-      hauptstandort
+      hauptstandort,
     )
       ? (hauptstandort as string[])
       : typeof hauptstandort === "string" && hauptstandort.trim().length > 0
-      ? hauptstandort
-          .split(",")
-          .map((s: string) => s.trim())
-          .filter(Boolean)
-      : undefined;
+        ? hauptstandort
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : undefined;
 
     // Validate role if provided
     const allowedRoles = new Set(["ADMIN", "USER", "PARTNER"]);
@@ -798,11 +880,11 @@ export const updatePartnerByAdmin = async (
           bankName:
             bankName !== undefined
               ? bankName
-              : (currentBankInfo.bankName as string) ?? null,
+              : ((currentBankInfo.bankName as string) ?? null),
           bankNumber:
             bankNumber !== undefined
               ? bankNumber
-              : (currentBankInfo.bankNumber as string) ?? null,
+              : ((currentBankInfo.bankNumber as string) ?? null),
         };
       }
       if (vat_number !== undefined)
@@ -987,7 +1069,7 @@ export const changePasswordSendOtp = async (req: Request, res: Response) => {
 
 export const forgotPasswordSendOtp = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const { email } = req.body;
 
@@ -1026,7 +1108,7 @@ export const forgotPasswordSendOtp = async (
 
 export const forgotPasswordVerifyOtp = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const { email, otp } = req.body;
 
@@ -1064,7 +1146,7 @@ export const forgotPasswordVerifyOtp = async (
 
 export const resetPassword = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   const { email, password } = req.body;
 
@@ -1128,7 +1210,7 @@ export const changePassword = async (req: Request, res: Response) => {
 
     const isPasswordValid = await bcrypt.compare(
       currentPassword,
-      user.password
+      user.password,
     );
 
     if (!isPasswordValid) {
