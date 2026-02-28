@@ -1,7 +1,6 @@
 import nodemailer from "nodemailer";
 import fs from "fs";
 import dotenv from "dotenv";
-import https from "https";
 import { downloadFileFromS3 } from "./s3utils";
 import {
   adminLoginNotificationEmail,
@@ -12,6 +11,10 @@ import {
   invoiceEmailTemplate,
   partnershipWelcomeEmail,
 } from "../constants/email_message";
+import {
+  customShaftOrderEmailTemplate,
+  CustomShaftOrderEmailPayload,
+} from "../constants/order_email";
 
 dotenv.config();
 
@@ -26,8 +29,7 @@ const getMailTransporter = () =>
     },
   });
 
-const getMailFrom = () =>
-  `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`;
+const getMailFrom = () => `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`;
 
 export const generateOTP = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -36,7 +38,7 @@ export const generateOTP = (): string => {
 export const sendEmail = async (
   to: string,
   subject: string,
-  htmlContent: string
+  htmlContent: string,
 ): Promise<void> => {
   const mailTransporter = getMailTransporter();
   await mailTransporter.sendMail({
@@ -49,7 +51,7 @@ export const sendEmail = async (
 
 export const sendForgotPasswordOTP = async (
   email: string,
-  otp: string
+  otp: string,
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "OTP Code for Password Reset", htmlContent);
@@ -57,27 +59,10 @@ export const sendForgotPasswordOTP = async (
 
 export const sendTwoFactorOtp = async (
   email: string,
-  otp: string
+  otp: string,
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "Two-Factor Authentication OTP", htmlContent);
-};
-
-const downloadImage = (url: string): Promise<Buffer> => {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download image: ${response.statusCode}`));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk) => chunks.push(chunk));
-        response.on("end", () => resolve(Buffer.concat(chunks)));
-        response.on("error", reject);
-      })
-      .on("error", reject);
-  });
 };
 
 export const sendPartnershipWelcomeEmail = async (
@@ -85,7 +70,7 @@ export const sendPartnershipWelcomeEmail = async (
   setPasswordLink: string,
   busnessName?: string | null,
   vatNumber?: string | null,
-  mainLocation?: string | null
+  mainLocation?: string | null,
 ): Promise<void> => {
   try {
     const htmlContent = partnershipWelcomeEmail(
@@ -93,38 +78,14 @@ export const sendPartnershipWelcomeEmail = async (
       setPasswordLink,
       busnessName,
       vatNumber,
-      mainLocation
+      mainLocation,
     );
-    const logoUrl = "https://i.ibb.co/Dftw5sbd/feet-first-white-logo-2-1.png";
-    let logoBuffer: Buffer | null = null;
-
-    try {
-      logoBuffer = await downloadImage(logoUrl);
-    } catch (error) {
-      console.warn(
-        "Failed to download logo image, sending email without embedded image:",
-        error
-      );
-    }
-
-    const mailOptions: nodemailer.SendMailOptions = {
+    await getMailTransporter().sendMail({
       from: getMailFrom(),
       to: email,
       subject: "Willkommen bei FeetF1rst - Ihr Software Zugang ist jetzt aktiv",
       html: htmlContent,
-    };
-
-    if (logoBuffer) {
-      mailOptions.attachments = [
-        {
-          filename: "feetf1rst-logo.png",
-          content: logoBuffer,
-          cid: "feetf1rst-logo",
-        },
-      ];
-    }
-
-    await getMailTransporter().sendMail(mailOptions);
+    });
   } catch (error) {
     console.error("Error in sendPartnershipWelcomeEmail:", error);
     throw new Error("Failed to send partnership welcome email.");
@@ -136,7 +97,7 @@ export const sendNewSuggestionEmail = async (
   email: string,
   phone: string,
   firma: string,
-  suggestion: string
+  suggestion: string,
 ): Promise<void> => {
   const htmlContent = newSuggestionEmail(name, email, phone, firma, suggestion);
   await sendEmail("info@feetf1rst.com", "New Suggestion Received", htmlContent);
@@ -146,26 +107,26 @@ export const sendImprovementEmail = async (
   company: string,
   phone: string,
   reason: string,
-  message: string
+  message: string,
 ): Promise<void> => {
   const htmlContent = newImprovementEmail(company, phone, reason, message);
   await sendEmail(
     "info@feetf1rst.com",
     "New Improvement Suggestion Received",
-    htmlContent
+    htmlContent,
   );
 };
 
 export const sendAdminLoginNotification = async (
   adminEmail: string,
   adminName: string,
-  ipAddress: string
+  ipAddress: string,
 ): Promise<void> => {
   const htmlContent = adminLoginNotificationEmail(
     adminEmail,
     adminName,
     new Date(),
-    ipAddress
+    ipAddress,
   );
   await sendEmail(adminEmail, "New admin panel login detected", htmlContent);
 };
@@ -183,7 +144,10 @@ const getPdfBuffer = async (pdf: {
   throw new Error("PDF file path or S3 location is required");
 };
 
-export const sendPdfToEmail = async (email: string, pdf: any): Promise<void> => {
+export const sendPdfToEmail = async (
+  email: string,
+  pdf: any,
+): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
     const htmlContent = sendPdfToEmailTamplate(pdf);
@@ -210,7 +174,7 @@ export const sendPdfToEmail = async (email: string, pdf: any): Promise<void> => 
 export const sendInvoiceEmail = async (
   toEmail: string,
   pdf: any,
-  options?: { customerName?: string; total?: number }
+  options?: { customerName?: string; total?: number },
 ): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
@@ -221,7 +185,7 @@ export const sendInvoiceEmail = async (
 
     const htmlContent = invoiceEmailTemplate(
       options?.customerName || "Customer",
-      options?.total
+      options?.total,
     );
 
     await getMailTransporter().sendMail({
@@ -241,4 +205,14 @@ export const sendInvoiceEmail = async (
     console.error("Error in sendInvoiceEmail:", error);
     throw new Error("Failed to send invoice email.");
   }
+};
+
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "info@feetf1rst.com"; //"tqmhosain@gmail.com";
+
+export const sendCustomShaftOrderNotification = async (
+  payload: CustomShaftOrderEmailPayload,
+): Promise<void> => {
+  const htmlContent = customShaftOrderEmailTemplate(payload);
+  const subject = `FeetF1rst Neue Bestellung – ${payload.category}`;
+  await sendEmail(CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL, subject, htmlContent);
 };

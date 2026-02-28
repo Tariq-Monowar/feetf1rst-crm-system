@@ -11,8 +11,19 @@ import {
   generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { sendCustomShaftOrderNotification } from "../../../utils/emailService.utils";
 
 const prisma = new PrismaClient();
+
+const formatOrderCreatedAt = (d: Date) =>
+  d.toLocaleDateString("de-DE", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export const createMaßschaftKollektion = async (
   req: Request,
@@ -631,6 +642,7 @@ export const createTustomShafts = async (req, res) => {
     maßschaft_kollektion: {
       select: { id: true, name: true, price: true, image: true },
     },
+    user: { select: { name: true, email: true, busnessName: true, image: true } },
   };
 
   try {
@@ -696,6 +708,28 @@ export const createTustomShafts = async (req, res) => {
         },
       });
     }
+
+    // Notify admin by email (fire-and-forget, partner from create select)
+    const customerDisplay = otherName
+      ? otherName
+      : customer
+        ? `Kunde #${customer.customerNumber}`
+        : "—";
+    sendCustomShaftOrderNotification({
+      orderId: customShaft.id,
+      partnerName: customShaft.user?.busnessName || customShaft.user?.name || "Partner",
+      partnerEmail: customShaft.user?.email || "",
+      partnerImage: customShaft.user?.image ?? null,
+      category,
+      totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
+      customerDisplay,
+      kollektionName: customShaft.maßschaft_kollektion?.name ?? null,
+      isCustomModels: Boolean(isCustomModels),
+      isBodenkonstruktion: false,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) =>
+      console.error("Order notification email failed:", err)
+    );
 
     res.status(201).json({
       success: true,
@@ -867,6 +901,7 @@ export const createCustomBodenkonstruktionOrder = async (
         bodenkonstruktion_json: true,
         deliveryDate: true,
         isCustomBodenkonstruktion: true,
+        user: { select: { name: true, email: true, busnessName: true, image: true } },
       },
     });
 
@@ -885,6 +920,30 @@ export const createCustomBodenkonstruktionOrder = async (
         note: "Custom Bodenkonstruktion send to admin",
       },
     });
+
+    // Notify admin by email (fire-and-forget, partner from create select)
+    const deliveryDateFormatted = parsedDeliveryDate
+      ? parsedDeliveryDate.toLocaleDateString("de-DE", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : null;
+    const partnerUser = (data as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: (data as any).id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category: "Bodenkonstruktion",
+      totalPrice: parsedTotalPrice,
+      customerDisplay: other_customer_name || "—",
+      isBodenkonstruktion: true,
+      deliveryDate: deliveryDateFormatted,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) =>
+      console.error("Order notification email failed:", err)
+    );
 
     return res.status(200).json({
       success: true,

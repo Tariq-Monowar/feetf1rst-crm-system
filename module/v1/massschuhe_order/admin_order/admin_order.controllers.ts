@@ -5,9 +5,20 @@ import {
   generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { sendCustomShaftOrderNotification } from "../../../../utils/emailService.utils";
 
 // Removed getImageUrl - images are now S3 URLs
 const prisma = new PrismaClient();
+
+const formatOrderCreatedAt = (d: Date) =>
+  d.toLocaleDateString("de-DE", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
   const files = req.files as any;
@@ -110,6 +121,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         catagoary: true,
         status: true,
         Halbprobenerstellung_json: true,
+        user: { select: { name: true, email: true, busnessName: true, image: true } },
       },
     });
 
@@ -136,6 +148,19 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         note: "Halbprobenerstellung send to admin",
       },
     });
+
+    const partnerUser = (data as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: data.id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category: "Halbprobenerstellung",
+      totalPrice: parsedTotalPrice,
+      customerDisplay: "—",
+      isBodenkonstruktion: false,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     // Format response nicely for frontend
     return res.status(200).json({
@@ -453,6 +478,7 @@ export const sendToAdminOrder_2 = async (req, res) => {
             image: true,
           },
         },
+        user: { select: { name: true, email: true, busnessName: true, image: true } },
       },
     });
 
@@ -520,6 +546,21 @@ export const sendToAdminOrder_2 = async (req, res) => {
         },
       });
     }
+
+    const partnerUser = (customShaft as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: customShaft.id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category,
+      totalPrice: parsedTotalPrice,
+      customerDisplay: "—",
+      kollektionName: customShaft.maßschaft_kollektion?.name ?? null,
+      isCustomModels: Boolean(isCustomModels),
+      isBodenkonstruktion: false,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     /*
      * ============================================
@@ -672,6 +713,7 @@ export const sendToAdminOrder_3 = async (req, res) => {
         catagoary: true,
         status: true,
         bodenkonstruktion_json: true,
+        user: { select: { name: true, email: true, busnessName: true, image: true } },
       },
     });
 
@@ -698,6 +740,19 @@ export const sendToAdminOrder_3 = async (req, res) => {
         note: "Bodenkonstruktion send to admin",
       },
     });
+
+    const partnerUser = (data as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: data.id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category: "Bodenkonstruktion",
+      totalPrice: parsedTotalPrice,
+      customerDisplay: "—",
+      isBodenkonstruktion: true,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     return res.status(200).json({
       success: true,
