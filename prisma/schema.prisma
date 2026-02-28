@@ -29,8 +29,12 @@ model User {
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
 
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt
+
+  mentorId String?
+  mentor   mentors? @relation(fields: [mentorId], references: [id], onDelete: SetNull)
+
   suggestions      SuggestionFeetf1rst[]
   sentMessages     Message[]             @relation("sent_messages")
   receivedMessages Message[]             @relation("received_messages")
@@ -80,6 +84,7 @@ model User {
   stockMaterials              stock_material[]
   shoeOrders                  shoe_order[]
   diagnosisStatuses           diagnosis_status[]
+  routes                      Route[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -859,6 +864,13 @@ model customer_versorgungen {
   @@index([customerId])
   @@index([createdAt])
 }
+
+/**
+ * order er modde same time insurance and privet paymnent ache
+ * if it's austia the must pay private 43.00
+ * and addon allowse private paymnent
+ * other price is insurance paymnent if status is insurance
+ */
 
 model customerOrders {
   id String @id @default(uuid())
@@ -2028,6 +2040,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2051,6 +2065,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2436,6 +2452,56 @@ model employee_feature_access {
   @@index([partnerId])
 }
 
+//  {
+//     title: "Einstellungen",
+//     action: true,
+//     path: "/dashboard/settings",
+//     nested: [
+//       {
+//         title: "Grundeinstellungen",
+//         action: true,
+//         path: "/dashboard/settings-profile",
+//         nested: []
+//       },
+//       {
+//         title: "Backup Einstellungen",
+//         action: true,
+//         path: "/dashboard/settings-profile/backup",
+//         nested: []
+//       },
+//     ],
+//    {
+//      title: "Account Settings",
+//      action: true,
+//      path: "/dashboard/account-settings",
+//      nested: [],
+//    },
+//   },
+/// Nested route tree per partner. Use parentId for nesting (e.g. Einstellungen -> Grundeinstellungen).
+/// featureKey links to FeatureAccess field name for access control.
+model Route {
+  id         String  @id @default(uuid())
+  title      String
+  path       String
+  action     Boolean @default(true)
+  sortOrder  Int     @default(0)
+  featureKey String?
+  parentId   String?
+  parent     Route?  @relation("RouteChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Route[] @relation("RouteChildren")
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([parentId])
+  @@index([sortOrder])
+  @@map("routes")
+}
+
 model notification {
   id String @id @default(uuid())
 
@@ -2726,6 +2792,23 @@ enum vat_country {
 // SN+ordernumber (it's insole but orderCategory is sonstiges)
 // EN+ordernumber  (it's insole but orderCategory is insole)
 // MS+ordernumber (it's shoe order)
+
+model mentors {
+  id String @id @default(cuid())
+
+  image    String?
+  position String?
+  name     String?
+  email    String?
+  timeline String?
+  phone    String?
+
+  partners User[] @relation
+
+  createdAt DateTime @default(now())
+
+  @@map("mentors")
+}
 
 model database_backup {
   //usie cuid

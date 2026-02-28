@@ -1169,6 +1169,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
       orderCategory: true,
       service_name: true,
       sonstiges_category: true,
+      diagnosis: true,
+      ausführliche_diagnose: true,
       customer: {
         select: {
           id: true,
@@ -1313,6 +1315,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
           orderCategory: string | null;
           service_name: string | null;
           sonstiges_category: string | null;
+          diagnosis: string | null;
+          ausführliche_diagnose: string | null;
           cust_id: string | null;
           vorname: string | null;
           nachname: string | null;
@@ -1331,6 +1335,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt, co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."service_name", co."sonstiges_category",
+          co.diagnosis, co."ausführliche_diagnose",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
           e."accountName", e."employeeName", e.email AS emp_email,
           (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
@@ -1368,6 +1373,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
         orderCategory: row.orderCategory,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
+        diagnosis: row.diagnosis ?? null,
+        ausführliche_diagnose: row.ausführliche_diagnose ?? null,
         customer: row.cust_id
           ? {
               id: row.cust_id,
