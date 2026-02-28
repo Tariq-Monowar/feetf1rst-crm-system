@@ -2393,6 +2393,9 @@ model FeatureAccess {
   finanzen_and_kasse         Boolean @default(true)
   einnahmen_and_rechnungen   Boolean @default(true)
   statistiken                Boolean @default(true)
+  warenwirtschaft            Boolean @default(true)
+
+
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2443,6 +2446,7 @@ model employee_feature_access {
   finanzen_and_kasse         Boolean @default(false)
   einnahmen_and_rechnungen   Boolean @default(false)
   statistiken                Boolean @default(false)
+  warenwirtschaft            Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

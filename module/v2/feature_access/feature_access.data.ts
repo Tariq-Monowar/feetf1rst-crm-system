@@ -246,4 +246,10 @@ export const featureAccessData = [
     path: "/dashboard/statistiken",
     nested: [],
   },
+  {
+    title: "Warenwirtschaft",
+    action: true,
+    path: "/dashboard/warenwirtschaft",
+    nested: [],
+  },
 ];

@@ -31,6 +31,7 @@ const defaultFeatureAccessData = {
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
   statistiken: true,
+  warenwirtschaft: true,
 };
 
 const FEATURE_KEYS = Object.keys(
@@ -149,6 +150,7 @@ const getOrCreateFeatureAccess = async (partnerId: string) => {
     "finanzen_and_kasse",
     "einnahmen_and_rechnungen",
     "statistiken",
+    "warenwirtschaft",
   ];
 
   const missingFields = newFields.filter(
@@ -344,6 +346,11 @@ function convertToJSONFormat(featureAccess: any) {
       field: "statistiken",
       title: "Statistiken",
       path: "/dashboard/statistiken",
+    },
+    {
+      field: "warenwirtschaft",
+      title: "Warenwirtschaft",
+      path: "/dashboard/warenwirtschaft",
     },
   ];
 
