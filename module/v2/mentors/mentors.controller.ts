@@ -115,6 +115,12 @@ export const deleteMentor = async (req: Request, res: Response) => {
       return;
     }
 
+    // Unassign all partners from this mentor before delete
+    await prisma.user.updateMany({
+      where: { mentorId: id },
+      data: { mentorId: null },
+    });
+
     await prisma.mentors.delete({
       where: { id },
     });
@@ -202,7 +208,7 @@ export const getAllMentors = async (req: Request, res: Response) => {
       const cursorCondition = { createdAt: { lt: cursorMentor.createdAt } };
       if (whereCondition.OR) {
         whereCondition.AND = [
-          { OR: (whereCondition.OR as object[]) },
+          { OR: whereCondition.OR as object[] },
           cursorCondition,
         ];
         delete whereCondition.OR;
@@ -238,6 +244,192 @@ export const getAllMentors = async (req: Request, res: Response) => {
     });
   } catch (error: unknown) {
     console.error("Get All Mentors Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Assign mentor to partner(s). Also used to update assignment (set new mentorId for partners).
+ * Body: { mentorId: string, partnerIds: string[] } – partnerIds are User ids (e.g. PARTNER users).
+ */
+export const assignMentorToPartners = async (req: Request, res: Response) => {
+  try {
+    const { mentorId, partnerId } = req.body as {
+      mentorId?: string;
+      partnerId?: string;
+    };
+
+    const missingFields = ["mentorId", "partnerId"].filter(
+      (field) => !req.body[field],
+    );
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+      return;
+    }
+
+    const mentor = await prisma.mentors.findUnique({
+      where: { id: mentorId },
+      select: { id: true },
+    });
+
+    if (!mentor) {
+      res.status(404).json({
+        success: false,
+        message: "Mentor not found",
+      });
+      return;
+    }
+
+    const updateResult = await prisma.user.update({
+      where: { id: partnerId },
+      data: { mentorId },
+      select: { id: true, mentorId: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Mentor assigned to partners successfully",
+      data: updateResult,
+    });
+  } catch (error: unknown) {
+    console.error("Assign Mentor To Partners Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Unassign mentor from one partner. Body: { partnerId: string }.
+ */
+export const unassignMentorFromPartners = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { partnerId } = req.body as { partnerId?: string };
+
+    if (!partnerId) {
+      res.status(400).json({
+        success: false,
+        message: "partnerId is required",
+      });
+      return;
+    }
+
+    const updateResult = await prisma.user.update({
+      where: { id: partnerId },
+      data: { mentorId: null },
+      select: { id: true, mentorId: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Mentor unassigned from partner successfully",
+      data: updateResult,
+    });
+  } catch (error: unknown) {
+    console.error("Unassign Mentor From Partners Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Get partners assigned to a mentor. Params: mentorId (e.g. /partners/:mentorId).
+ */
+export const getPartnersByMentor = async (req: Request, res: Response) => {
+  try {
+    const mentorId = req.params.mentorId as string | undefined;
+
+    if (!mentorId) {
+      res.status(400).json({
+        success: false,
+        message: "mentorId is required in params",
+      });
+      return;
+    }
+
+    const mentor = await prisma.mentors.findUnique({
+      where: { id: mentorId },
+      select: { id: true, name: true },
+    });
+
+    if (!mentor) {
+      res.status(404).json({
+        success: false,
+        message: "Mentor not found",
+      });
+      return;
+    }
+
+    const partners = await prisma.user.findMany({
+      where: { mentorId },
+      select: {
+        id: true,
+        name: true,
+        image: true,
+        phone: true,
+        email: true,
+        busnessName: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Partners fetched successfully",
+      data: partners,
+    });
+  } catch (error: unknown) {
+    console.error("Get Partners By Mentor Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getMyMentor = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id as string;
+
+    const mentor = await prisma.user.findUnique({
+      where: { id: partnerId },
+      select: {
+        mentor: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            position: true,
+            email: true,
+            timeline: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "My mentor fetched successfully",
+      data: mentor,
+    });
+  } catch (error) {
+    console.error("Get My Mentor Error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
