@@ -19,6 +19,7 @@ import order_feedback from "./order_feedback/order_feedback.routes";
 import government_vat from "./government_vat/government_vat.routes";
 import leave_application from "./leave_application/leave_application.routes";
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
+import order_notes from "./order_notes/order_notes.routes";
 
 const router = express.Router();
 
@@ -42,6 +43,7 @@ const moduleRoutes = [
   { path: "/government-vat", route: government_vat },
   { path: "/leave-application", route: leave_application },
   { path: "/shoe-orders", route: shoe_orders },
+  { path: "/order-notes", route: order_notes },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {
