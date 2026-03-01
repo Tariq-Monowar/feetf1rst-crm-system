@@ -31,7 +31,8 @@
     "all_data:update:milling_block": "ts-node scripts/all_data-stores.ts update milling_block",
     "all:employees": "ts-node scripts/all-employees.ts",
     "clean:leave-application": "ts-node scripts/clean-leave-application.ts",
-    "allaing:partnerId": "ts-node scripts/align-partnerId.ts"
+    "allaing:partnerId": "ts-node scripts/align-partnerId.ts",
+    "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts"
   },
   "keywords": [],
   "author": "",
@@ -40,7 +41,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.964.0",
     "@aws-sdk/lib-storage": "^3.1000.0",
-    "@prisma/client": "^6.12.0",
+    "@prisma/client": "^6.19.0",
     "@smithy/node-http-handler": "^4.4.12",
     "@swc/core": "^1.10.12",
     "@types/bcryptjs": "^2.4.6",

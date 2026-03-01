@@ -964,16 +964,26 @@ model customerOrders {
    * all prise
    * ------------------------------------------------
    */
-  fußanalyse             Float?
-  einlagenversorgung      Float?
-  totalPrice              Float
-  discount                Float?
-  addonPrices             Float? @default(0)
-  insuranceTotalPrice     Float? @default(0)
+  totalPrice  Float
+
+  //private prise ------------------------
+  addonPrices Float?
+  discount    Float?
+  privatePrice Float?
+
+  //insurance prise ------------------------
+  insuranceTotalPrice Float?
+
+  fußanalyse        Float?
+  einlagenversorgung Float?
+
   fussanalysePreis        Float?
   einlagenversorgungPreis Float?
 
   //======================FOR Sonstiges (bibid or other service)===========================
+  //paymnent type
+  paymnentType paymnentType?
+
   service_name       String?
   sonstiges_category String?
   // Employees relation with employee
@@ -989,6 +999,7 @@ model customerOrders {
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+
   ordersFeedbacks ordersFeedback[]
   insoleStandards insole_standard[]
   orderNotesList  order_notes[]
@@ -2081,6 +2092,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2104,6 +2118,9 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**

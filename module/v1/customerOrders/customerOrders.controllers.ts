@@ -226,6 +226,7 @@ export const createOrder = async (req: Request, res: Response) => {
       pickUpLocation,
       addonPrices = 0,
       insuranceTotalPrice = 0,
+      privatePrice: privatePriceFromBody,
       key,
       totalPrice: totalPriceFromClient,
     } = body;
@@ -250,7 +251,18 @@ export const createOrder = async (req: Request, res: Response) => {
     if (Number.isNaN(totalPrice)) {
       return bad(400, "totalPrice must be a valid number");
     }
-    
+
+    // Payment type: insurance | private | broth (same logic as shoe_orders)
+    const num = (v: unknown) =>
+      v != null && v !== "" && !Number.isNaN(Number(v));
+    const ins = num(insuranceTotalPrice);
+    const priv = num(privatePriceFromBody);
+    const addon = num(addonPrices);
+    let payment_type: "insurance" | "private" | "broth" = "private";
+    if (ins && (priv || addon)) payment_type = "broth";
+    else if (ins) payment_type = "insurance";
+    else if (priv || addon) payment_type = "private";
+
     let vat_country: string | undefined;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
@@ -569,6 +581,12 @@ export const createOrder = async (req: Request, res: Response) => {
           insuranceTotalPrice != null && insuranceTotalPrice !== ""
             ? Number(insuranceTotalPrice) || 0
             : 0,
+        paymnentType: payment_type,
+        ...(privatePriceFromBody != null &&
+          privatePriceFromBody !== "" &&
+          !Number.isNaN(Number(privatePriceFromBody)) && {
+            privatePrice: Number(privatePriceFromBody),
+          }),
       };
       if (effectiveVersorgungId)
         orderData.Versorgungen = { connect: { id: effectiveVersorgungId } };
