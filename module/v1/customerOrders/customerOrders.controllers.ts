@@ -1202,7 +1202,13 @@ export const getAllOrders = async (req: Request, res: Response) => {
           customerNumber: true,
         },
       },
-      product: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          versorgung: true,
+        },
+      },
       versorgung: true,
       employee: {
         select: { accountName: true, employeeName: true, email: true },
