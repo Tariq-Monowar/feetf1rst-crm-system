@@ -1809,3 +1809,28 @@ export const getOrderStatusNote = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getWaitingForVersorgungsStartCount = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+
+    const count = await prisma.customerOrders.count({
+      where: { orderStatus: "Warten_auf_Versorgungsstart", partnerId: userId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: count,
+    });
+  } catch (error) {
+    console.error("Get Waiting For Versorgungs Start Count Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};

@@ -447,13 +447,17 @@ export const createTustomShafts = async (req, res) => {
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message:
-          "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
-      });
+    const missing = [];
+    if (!hasCustomVerschlussart) missing.push("custom_models_verschlussart");
+    if (!hasCustomPrice) missing.push("custom_models_price");
+    if (!hasCustomImage) missing.push("custom_models_image");
+    return res.status(400).json({
+      success: false,
+      message:
+        "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
+      missingRequired: missing,
+      hint: "You sent some custom model fields (e.g. name, gender, description) but all three of verschlussart, price, and image are required. Either provide all three or omit custom model fields.",
+    });
   }
 
   const hasAddr = b.courier_address;
@@ -464,8 +468,9 @@ export const createTustomShafts = async (req, res) => {
 
   const anyCourier = hasAddr || hasCompany || hasPhone || hasEmail || hasPrice;
   const allCourier = hasAddr && hasCompany && hasPhone && hasEmail && hasPrice;
+  const isCourierContactFlag = req.query.isCourierContact === "yes";
 
-  if (anyCourier && !allCourier) {
+  if (anyCourier && !allCourier && !isCourierContactFlag) {
     cleanupFiles();
     return res
       .status(400)
@@ -583,6 +588,15 @@ export const createTustomShafts = async (req, res) => {
   const category =
     json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
 
+  const deliveryDateRaw = b.deliveryDate;
+  const deliveryDate =
+    deliveryDateRaw != null && String(deliveryDateRaw).trim() !== ""
+      ? (() => {
+          const d = new Date(deliveryDateRaw);
+          return isNaN(d.getTime()) ? null : d;
+        })()
+      : null;
+
   const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
   const shaftData = {
     user: { connect: { id } },
@@ -604,6 +618,7 @@ export const createTustomShafts = async (req, res) => {
     status: "Neu",
     catagoary: category,
     isCustomeModels: Boolean(isCustomModels),
+    ...(deliveryDate && { deliveryDate }),
   };
 
   if (b.customerId)
@@ -643,6 +658,7 @@ export const createTustomShafts = async (req, res) => {
       select: { id: true, name: true, price: true, image: true },
     },
     user: { select: { name: true, email: true, busnessName: true, image: true } },
+    deliveryDate: true,
   };
 
   try {

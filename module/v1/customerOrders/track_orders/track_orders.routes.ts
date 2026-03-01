@@ -12,7 +12,8 @@ import {
   getBarcodeLabel,
   getNewOrderHistory,
   getPriceDetails,
-  getOrderStatusNote
+  getOrderStatusNote,
+  getWaitingForVersorgungsStartCount
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -76,6 +77,12 @@ router.get(
   "/status-note/:orderId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getOrderStatusNote,
+);
+
+router.get(
+  "/waiting-for-versorgungsstart/count",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getWaitingForVersorgungsStartCount,
 );
 
 export default router;

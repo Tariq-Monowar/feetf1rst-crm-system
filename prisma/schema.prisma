@@ -873,14 +873,15 @@ model customer_versorgungen {
  */
 
 model customerOrders {
-  id String @id @default(uuid())
+  /**
+   * ------------------------------------------------
+   * main data (order data)
+   * ------------------------------------------------
+   */
+  id          String @id @default(uuid())
+  orderNumber Int
 
-  orderNumber Int // Unique per partner, not globally
-
-  fußanalyse        Float?
-  einlagenversorgung Float?
-  totalPrice         Float
-  diagnosis          String?
+  diagnosis String?
 
   // orderStatus  String?
   statusUpdate DateTime?
@@ -895,8 +896,6 @@ model customerOrders {
   schuhmodell_wählen String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
   kostenvoranschlag   Boolean? @default(false)
 
-  discount Float?
-
   // Privet          String? // Bezahlt - string naw
   // bezahltInsurance       String? // Bezahlt - string naw
 
@@ -909,14 +908,10 @@ model customerOrders {
 
   geschaeftsstandort Json? // { title: string, description?: string }
   pickUpLocation     Json? // { title: string, description?: string }
-  addonPrices        Float? @default(0) // { title: string, description?: string }
 
   mitarbeiter       String?
   fertigstellungBis DateTime? // pickup date
   versorgung        String?
-
-  fussanalysePreis        Float?
-  einlagenversorgungPreis Float?
 
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
@@ -926,8 +921,7 @@ model customerOrders {
   versorgung_note String?
   statusNote      String?
 
-  bezahlt             paymnentStatus?
-  insuranceTotalPrice Float?          @default(0)
+  bezahlt paymnentStatus?
 
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
   priority    Priority?   @default(Normal)
@@ -964,6 +958,20 @@ model customerOrders {
   customerOrdersHistories customerOrdersHistory[]
   StoresHistory           StoresHistory[]          @relation("OrderStoresHistory")
   customerOrderInsurances customerOrderInsurance[]
+
+  /**
+   * ------------------------------------------------
+   * all prise
+   * ------------------------------------------------
+   */
+  fußanalyse             Float?
+  einlagenversorgung      Float?
+  totalPrice              Float
+  discount                Float?
+  addonPrices             Float? @default(0)
+  insuranceTotalPrice     Float? @default(0)
+  fussanalysePreis        Float?
+  einlagenversorgungPreis Float?
 
   //======================FOR Sonstiges (bibid or other service)===========================
   service_name       String?
@@ -1676,20 +1684,28 @@ model shoe_order {
   priority    Priority? @default(Normal)
   quantity    Int?
 
-  branch_location  Json? // { title: string, description?: string }
-  pick_up_location Json? // { title: string, description?: string }
-  payment_status   paymnentStatus?
-  price            Float?
-  order_note       String?
-  status_note      String?
+  /**
+   * --------------
+   * LOCATIONS
+   * { title: string, description?: string }
+   * ----------------
+   */
+  branch_location  Json?
+  pick_up_location Json?
 
-  //Ärztliche Diagnose (1st fields)
-  medical_diagnosis  String?
-  // Ausführliche Diagnose (2nd fields)
-  detailed_diagnosis String?
+  /**
+   * --------------
+   * PAYMENT insurance or private
+   * ----------------
+   */
+  payment_status paymnentStatus?
+  payment_type   paymnentType?
 
-  deposit_provision   Float?
-  foot_analysis_price Json?
+  insurance_price Float?
+
+  private_price Float?
+  addon_price   Float?
+  discount      Float?
 
   /**
    * 3rd fields
@@ -1703,6 +1719,17 @@ model shoe_order {
    * if it's insurance i dont need this field
    */
   vat_rate Float?
+
+  order_note  String?
+  status_note String?
+
+  //Ärztliche Diagnose (1st fields)
+  medical_diagnosis  String?
+  // Ausführliche Diagnose (2nd fields)
+  detailed_diagnosis String?
+
+  deposit_provision   Float?
+  foot_analysis_price Json?
 
   store_location Json? // { title: string, description?: string }
 
@@ -1768,6 +1795,12 @@ model shoe_order {
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
+}
+
+enum paymnentType {
+  insurance
+  private
+  broth
 }
 
 enum shoe_order_status {
@@ -2042,6 +2075,12 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2065,6 +2104,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2394,8 +2439,6 @@ model FeatureAccess {
   einnahmen_and_rechnungen   Boolean @default(true)
   statistiken                Boolean @default(true)
   warenwirtschaft            Boolean @default(true)
-
-
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

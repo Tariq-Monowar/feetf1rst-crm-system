@@ -51,7 +51,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       medical_diagnosis,
       detailed_diagnosis,
       total_price,
-      price,
+
       vat_rate,
       store_location,
       employeeId,
@@ -107,9 +107,23 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
       deposit_provision,
       foot_analysis_price,
+
+      insurance_price,
+      private_price,
+      addon_price,
     } = req.body;
 
     const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
+
+    const num = (v: unknown) => (v != null && v !== "" && !isNaN(Number(v)));
+    const ins = num(insurance_price);
+    const priv = num(private_price);
+    const addon = num(addon_price);
+
+    let payment_type: "insurance" | "private" | "broth" | undefined;
+    if (ins && !priv && !addon) payment_type = "insurance";
+    else if (ins) payment_type = "broth";
+    else if (priv || addon) payment_type = "private";
 
     const partnerId = req.user?.id;
     if (!partnerId) {
@@ -243,6 +257,10 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             | Prisma.InputJsonValue
             | undefined,
           payment_status: payment_status ?? undefined,
+          payment_type: payment_type ?? undefined,
+          insurance_price: ins ? Number(insurance_price) : undefined,
+          private_price: priv ? Number(private_price) : undefined,
+          ...(addon && { addon_price: Number(addon_price) }),
           order_note: order_note ?? undefined,
           medical_diagnosis: medical_diagnosis ?? undefined,
           detailed_diagnosis: detailed_diagnosis ?? undefined,
@@ -262,7 +280,6 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           partnerId,
           deposit_provision: Number(deposit_provision),
           foot_analysis_price: footAnalysisPrice ?? undefined,
-          price: Number(price) ?? undefined,
         },
       });
 
@@ -1285,7 +1302,7 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
         payment_status: true,
         total_price: true,
         //cash payment
-        price: true,
+
         vat_rate: true,
 
         foot_analysis_price: true,

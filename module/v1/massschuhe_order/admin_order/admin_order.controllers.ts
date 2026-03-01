@@ -246,10 +246,16 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
+    const missing = [];
+    if (!hasCustomVerschlussart) missing.push("custom_models_verschlussart");
+    if (!hasCustomPrice) missing.push("custom_models_price");
+    if (!hasCustomImage) missing.push("custom_models_image");
     return res.status(400).json({
       success: false,
       message:
         "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
+      missingRequired: missing,
+      hint: "You sent some custom model fields (e.g. name, gender, description) but all three of verschlussart, price, and image are required. Either provide all three or omit custom model fields.",
     });
   }
   if (hasAnyCourier && !hasAllCourier) {
