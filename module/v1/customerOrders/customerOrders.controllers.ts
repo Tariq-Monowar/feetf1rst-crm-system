@@ -1189,6 +1189,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       sonstiges_category: true,
       diagnosis: true,
       ausführliche_diagnose: true,
+      privatePrice: true,
+      insuranceTotalPrice: true,
+ 
       customer: {
         select: {
           id: true,
@@ -1335,6 +1338,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
           sonstiges_category: string | null;
           diagnosis: string | null;
           ausführliche_diagnose: string | null;
+          privateprice: number | null;
+          insurancetotalprice: number | null;
           cust_id: string | null;
           vorname: string | null;
           nachname: string | null;
@@ -1354,6 +1359,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."service_name", co."sonstiges_category",
           co.diagnosis, co."ausführliche_diagnose",
+          co."privatePrice", co."insuranceTotalPrice",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
           e."accountName", e."employeeName", e.email AS emp_email,
           (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
@@ -1393,6 +1399,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
         sonstiges_category: row.sonstiges_category,
         diagnosis: row.diagnosis ?? null,
         ausführliche_diagnose: row.ausführliche_diagnose ?? null,
+        privatePrice: (row as any).privateprice ?? (row as any).privatePrice ?? null,
+        insuranceTotalPrice: (row as any).insurancetotalprice ?? (row as any).insuranceTotalPrice ?? null,
         customer: row.cust_id
           ? {
               id: row.cust_id,
