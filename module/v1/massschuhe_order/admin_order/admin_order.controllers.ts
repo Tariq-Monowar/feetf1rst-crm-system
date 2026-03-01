@@ -121,7 +121,9 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         catagoary: true,
         status: true,
         Halbprobenerstellung_json: true,
-        user: { select: { name: true, email: true, busnessName: true, image: true } },
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
       },
     });
 
@@ -478,7 +480,9 @@ export const sendToAdminOrder_2 = async (req, res) => {
             image: true,
           },
         },
-        user: { select: { name: true, email: true, busnessName: true, image: true } },
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
       },
     });
 
@@ -713,7 +717,9 @@ export const sendToAdminOrder_3 = async (req, res) => {
         catagoary: true,
         status: true,
         bodenkonstruktion_json: true,
-        user: { select: { name: true, email: true, busnessName: true, image: true } },
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
       },
     });
 
@@ -896,15 +902,36 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
             id: true,
             name: true,
             busnessName: true,
+            partnerId: true,
             image: true,
             email: true,
             phone: true,
+            storeLocations: {
+              where: { isPrimary: true },
+              take: 1,
+              select: { id: true, address: true },
+            },
+            accountInfos: {
+              select: {
+                vat_number: true,
+                bankInfo: true,
+              },
+            },
+            mentor: {
+              select: {
+                name: true,
+                email: true,
+                phone: true,
+              },
+            },
           },
         },
         customer: {
           select: {
             id: true,
             customerNumber: true,
+            vorname: true,
+            nachname: true,
           },
         },
         maßschaft_kollektion: {
