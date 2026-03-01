@@ -18,11 +18,13 @@ import {
 
 dotenv.config();
 
+/*-----------------------
+  MAIL TRANSPORTER
+------------------------*/
+
 const getMailTransporter = () =>
   nodemailer.createTransport({
     service: "gmail",
-    // port: 587,
-    // secure: false,
     auth: {
       user: process.env.NODE_MAILER_USER || "",
       pass: process.env.NODE_MAILER_PASSWORD || "",
@@ -31,6 +33,10 @@ const getMailTransporter = () =>
 
 const getMailFrom = () => `"Feetf1rst" <${process.env.NODE_MAILER_USER}>`;
 
+/*-----------------------
+  OTP & GENERIC SEND
+------------------------*/
+
 export const generateOTP = (): string => {
   return Math.floor(1000 + Math.random() * 9000).toString();
 };
@@ -38,10 +44,9 @@ export const generateOTP = (): string => {
 export const sendEmail = async (
   to: string,
   subject: string,
-  htmlContent: string,
+  htmlContent: string
 ): Promise<void> => {
-  const mailTransporter = getMailTransporter();
-  await mailTransporter.sendMail({
+  await getMailTransporter().sendMail({
     from: getMailFrom(),
     to,
     subject,
@@ -49,9 +54,13 @@ export const sendEmail = async (
   });
 };
 
+/*-----------------------
+  PASSWORD & 2FA OTP
+------------------------*/
+
 export const sendForgotPasswordOTP = async (
   email: string,
-  otp: string,
+  otp: string
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "OTP Code for Password Reset", htmlContent);
@@ -59,18 +68,22 @@ export const sendForgotPasswordOTP = async (
 
 export const sendTwoFactorOtp = async (
   email: string,
-  otp: string,
+  otp: string
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "Two-Factor Authentication OTP", htmlContent);
 };
+
+/*-----------------------
+  PARTNERSHIP WELCOME
+------------------------*/
 
 export const sendPartnershipWelcomeEmail = async (
   email: string,
   setPasswordLink: string,
   busnessName?: string | null,
   vatNumber?: string | null,
-  mainLocation?: string | null,
+  mainLocation?: string | null
 ): Promise<void> => {
   try {
     const htmlContent = partnershipWelcomeEmail(
@@ -78,7 +91,7 @@ export const sendPartnershipWelcomeEmail = async (
       setPasswordLink,
       busnessName,
       vatNumber,
-      mainLocation,
+      mainLocation
     );
     await getMailTransporter().sendMail({
       from: getMailFrom(),
@@ -92,12 +105,16 @@ export const sendPartnershipWelcomeEmail = async (
   }
 };
 
+/*-----------------------
+  SUGGESTION & IMPROVEMENT
+------------------------*/
+
 export const sendNewSuggestionEmail = async (
   name: string,
   email: string,
   phone: string,
   firma: string,
-  suggestion: string,
+  suggestion: string
 ): Promise<void> => {
   const htmlContent = newSuggestionEmail(name, email, phone, firma, suggestion);
   await sendEmail("info@feetf1rst.com", "New Suggestion Received", htmlContent);
@@ -107,51 +124,58 @@ export const sendImprovementEmail = async (
   company: string,
   phone: string,
   reason: string,
-  message: string,
+  message: string
 ): Promise<void> => {
   const htmlContent = newImprovementEmail(company, phone, reason, message);
   await sendEmail(
     "info@feetf1rst.com",
     "New Improvement Suggestion Received",
-    htmlContent,
+    htmlContent
   );
 };
+
+/*-----------------------
+  ADMIN LOGIN NOTIFICATION
+------------------------*/
 
 export const sendAdminLoginNotification = async (
   adminEmail: string,
   adminName: string,
-  ipAddress: string,
+  ipAddress: string
 ): Promise<void> => {
   const htmlContent = adminLoginNotificationEmail(
     adminEmail,
     adminName,
     new Date(),
-    ipAddress,
+    ipAddress
   );
   await sendEmail(adminEmail, "New admin panel login detected", htmlContent);
 };
+
+/*-----------------------
+  PDF HELPERS
+------------------------*/
 
 const getPdfBuffer = async (pdf: {
   location?: string;
   path?: string;
 }): Promise<Buffer> => {
-  if (pdf.location) {
-    return downloadFileFromS3(pdf.location);
-  }
-  if (pdf.path) {
-    return fs.readFileSync(pdf.path);
-  }
+  if (pdf.location) return downloadFileFromS3(pdf.location);
+  if (pdf.path) return fs.readFileSync(pdf.path);
   throw new Error("PDF file path or S3 location is required");
 };
 
+/*-----------------------
+  SEND PDF TO EMAIL
+------------------------*/
+
 export const sendPdfToEmail = async (
   email: string,
-  pdf: any,
+  pdf: { location?: string; path?: string; originalname?: string }
 ): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
     const htmlContent = sendPdfToEmailTamplate(pdf);
-
     await getMailTransporter().sendMail({
       from: getMailFrom(),
       to: email,
@@ -171,23 +195,26 @@ export const sendPdfToEmail = async (
   }
 };
 
+/*-----------------------
+  INVOICE EMAIL
+------------------------*/
+
+const INVOICE_MAX_SIZE_BYTES = 20 * 1024 * 1024;
+
 export const sendInvoiceEmail = async (
   toEmail: string,
-  pdf: any,
-  options?: { customerName?: string; total?: number },
+  pdf: { location?: string; path?: string; originalname?: string },
+  options?: { customerName?: string; total?: number }
 ): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
-    const maxSize = 20 * 1024 * 1024;
-    if (pdfBuffer.length > maxSize) {
+    if (pdfBuffer.length > INVOICE_MAX_SIZE_BYTES) {
       throw new Error("Invoice PDF is too large to email (>20MB).");
     }
-
     const htmlContent = invoiceEmailTemplate(
       options?.customerName || "Customer",
-      options?.total,
+      options?.total
     );
-
     await getMailTransporter().sendMail({
       from: getMailFrom(),
       to: toEmail,
@@ -207,10 +234,14 @@ export const sendInvoiceEmail = async (
   }
 };
 
-const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "info@feetf1rst.com"; //"tqmhosain@gmail.com";
+/*-----------------------
+  CUSTOM SHAFT ORDER
+------------------------*/
+
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "info@feetf1rst.com";
 
 export const sendCustomShaftOrderNotification = async (
-  payload: CustomShaftOrderEmailPayload,
+  payload: CustomShaftOrderEmailPayload
 ): Promise<void> => {
   const htmlContent = customShaftOrderEmailTemplate(payload);
   const subject = `FeetF1rst Neue Bestellung – ${payload.category}`;

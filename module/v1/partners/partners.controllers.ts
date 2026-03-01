@@ -304,10 +304,9 @@ export const updatePartnerProfile = async (req: Request, res: Response) => {
   }
 };
 
-// Admin only: update partner info from User + accountInfo (phone, busnessName, email, image, vat_number, vat_country, bankInfo). No location. Partial update.
 export const updatePartnerInfo = async (req: Request, res: Response) => {
   try {
-    const { id } = req.user;
+    const userId = String(req.user.id);
     const {
       name,
       email,
@@ -317,12 +316,12 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
       vat_country,
       bankName,
       bankNumber,
+      bic,
     } = req.body;
-
     const newImage = req.file;
 
     const existingUser = await prisma.user.findUnique({
-      where: { id: String(id) },
+      where: { id: userId },
       include: { accountInfos: { take: 1 } },
     });
 
@@ -335,99 +334,86 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
       deleteFileFromS3(existingUser.image);
     }
 
-    const userData: {
-      email?: string;
-      phone?: string;
-      busnessName?: string;
-      image?: string;
-    } = {};
+    const userData = {} as any;
     if (email !== undefined) userData.email = email;
     if (phone !== undefined) userData.phone = phone;
     if (busnessName !== undefined) userData.busnessName = busnessName;
     if (newImage) userData.image = newImage.location;
-
     if (Object.keys(userData).length > 0) {
-      await prisma.user.update({
-        where: { id: String(id) },
-        data: userData,
+      await prisma.user.update({ where: { id: userId }, data: userData });
+    }
+
+    const hasAccountInfoPayload =
+      [vat_number, vat_country, bankName, bankNumber, bic, name].some(
+        (v) => v !== undefined
+      );
+
+    if (!hasAccountInfoPayload) {
+      const updated = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          busnessName: true,
+          image: true,
+          accountInfos: {
+            select: { vat_number: true, vat_country: true, bankInfo: true },
+          },
+        },
+      });
+      return res.status(200).json({
+        success: true,
+        message: "Partner info updated successfully",
+        user: updated,
       });
     }
 
-    const accountInfoFieldsSent =
-      vat_number !== undefined ||
-      vat_country !== undefined ||
-      bankName !== undefined ||
-      bankNumber !== undefined ||
-      name !== undefined;
+    const primary = existingUser.accountInfos?.[0];
+    const trimOrNull = (v) =>
+      v != null && String(v).trim() !== "" ? String(v).trim() : null;
+    const vatValue =
+      vat_number !== undefined ? trimOrNull(vat_number) : (primary?.vat_number ?? null);
+    const vatCountryValue =
+      vat_country !== undefined
+        ? trimOrNull(vat_country)
+        : (primary?.vat_country ?? null);
 
-    if (accountInfoFieldsSent) {
-      const primaryAccountInfo = existingUser.accountInfos?.[0];
-      const vatValue =
-        vat_number !== undefined
-          ? vat_number != null && String(vat_number).trim() !== ""
-            ? String(vat_number).trim()
-            : null
-          : (primaryAccountInfo?.vat_number ?? null);
-      const vatCountryValue =
-        vat_country !== undefined
-          ? vat_country != null && String(vat_country).trim() !== ""
-            ? String(vat_country).trim()
-            : null
-          : (primaryAccountInfo?.vat_country ?? null);
-
-      const currentBankInfo =
-        (primaryAccountInfo?.bankInfo as Record<string, unknown>) || {};
-      const bankInfoUpdate: {
-        bankName?: string | null;
-        bankNumber?: string | null;
-      } = {};
-      if (bankName !== undefined) bankInfoUpdate.bankName = bankName ?? null;
-      if (bankNumber !== undefined)
-        bankInfoUpdate.bankNumber = bankNumber ?? null;
-      const mergedBankInfo =
-        Object.keys(bankInfoUpdate).length > 0
-          ? {
-              bankName:
-                bankInfoUpdate.bankName ??
-                (currentBankInfo.bankName as string) ??
-                null,
-              bankNumber:
-                bankInfoUpdate.bankNumber ??
-                (currentBankInfo.bankNumber as string) ??
-                null,
-            }
-          : null;
-
-      if (primaryAccountInfo) {
-        const updateData: {
-          vat_number?: string | null;
-          vat_country?: string | null;
-          bankInfo?: { bankName: string | null; bankNumber: string | null };
-        } = {};
-        if (vat_number !== undefined) updateData.vat_number = vatValue;
-        if (vat_country !== undefined) updateData.vat_country = vatCountryValue;
-        if (mergedBankInfo) updateData.bankInfo = mergedBankInfo;
-
-        if (Object.keys(updateData).length > 0) {
-          await prisma.accountInfo.update({
-            where: { id: primaryAccountInfo.id },
-            data: updateData,
-          });
+    const currentBank = (primary?.bankInfo || {}) as any;
+    const hasBankPayload = [bankName, bankNumber, bic].some((v) => v !== undefined);
+    const bankInfo = hasBankPayload
+      ? {
+          bankName: bankName ?? currentBank.bankName ?? null,
+          bankNumber: bankNumber ?? currentBank.bankNumber ?? null,
+          bic: bic ?? currentBank.bic ?? null,
         }
-      } else {
-        await prisma.accountInfo.create({
-          data: {
-            userId: String(id),
-            vat_number: vatValue,
-            vat_country: vatCountryValue,
-            ...(mergedBankInfo && { bankInfo: mergedBankInfo }),
-          },
+      : null;
+
+    if (primary) {
+      const data = {} as any;
+      if (vat_number !== undefined) data.vat_number = vatValue;
+      if (vat_country !== undefined) data.vat_country = vatCountryValue;
+      if (bankInfo) data.bankInfo = bankInfo;
+      if (Object.keys(data).length > 0) {
+        await prisma.accountInfo.update({
+          where: { id: primary.id },
+          data,
         });
       }
+    } else {
+      await prisma.accountInfo.create({
+        data: {
+          userId,
+          vat_number: vatValue,
+          vat_country: vatCountryValue,
+          ...(bankInfo && { bankInfo }),
+        },
+      });
     }
 
     const updated = await prisma.user.findUnique({
-      where: { id: String(id) },
+      where: { id: userId },
       select: {
         id: true,
         name: true,
