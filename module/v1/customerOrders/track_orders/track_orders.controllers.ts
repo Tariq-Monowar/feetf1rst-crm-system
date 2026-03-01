@@ -1484,12 +1484,12 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       }
     }
 
-    if (!customerScreenerFile) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer screener file not found",
-      });
-    }
+    // if (!customerScreenerFile) {
+    //   return res.status(404).json({
+    //     success: false,
+    //     message: "Customer screener file not found",
+    //   });
+    // }
 
     return res.status(200).json({
       success: true,
@@ -1527,9 +1527,9 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
               size: storeInfo.matchedSize,
             }
           : null,
-        // Images are already S3 URLs, use directly
-        picture_23: customerScreenerFile.picture_23 || null,
-        picture_24: customerScreenerFile.picture_24 || null,
+        // Images are already S3 URLs, use directly (screener file may not exist)
+        picture_23: customerScreenerFile?.picture_23 ?? null,
+        picture_24: customerScreenerFile?.picture_24 ?? null,
       },
     });
   } catch (error: any) {

@@ -111,6 +111,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       insurance_price,
       private_price,
       addon_price,
+      discount,
     } = req.body;
 
     const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
@@ -119,9 +120,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     const ins = num(insurance_price);
     const priv = num(private_price);
     const addon = num(addon_price);
+    const hasDiscount = num(discount);
 
     let payment_type: "insurance" | "private" | "broth" | undefined;
-    if (ins && !priv && !addon) payment_type = "insurance";
+    if (hasDiscount) payment_type = "private";
+    else if (ins && !priv && !addon) payment_type = "insurance";
     else if (ins) payment_type = "broth";
     else if (priv || addon) payment_type = "private";
 
@@ -280,6 +283,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           partnerId,
           deposit_provision: Number(deposit_provision),
           foot_analysis_price: footAnalysisPrice ?? undefined,
+          discount: hasDiscount ? Number(discount) : undefined,
         },
       });
 
