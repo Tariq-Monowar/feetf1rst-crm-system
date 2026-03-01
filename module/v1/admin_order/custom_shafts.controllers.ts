@@ -27,7 +27,7 @@ const formatOrderCreatedAt = (d: Date) =>
 
 export const createMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
 
@@ -98,7 +98,7 @@ export const createMaßschaftKollektion = async (
 
 export const getAllMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -193,7 +193,7 @@ export const getAllMaßschaftKollektion = async (
 
 export const updateMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
   const { id } = req.params;
@@ -296,7 +296,7 @@ export const updateMaßschaftKollektion = async (
 
 export const getMaßschaftKollektionById = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -472,12 +472,10 @@ export const createTustomShafts = async (req, res) => {
 
   if (anyCourier && !allCourier && !isCourierContactFlag) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "If providing courier contact, all fields are required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "If providing courier contact, all fields are required",
+    });
   }
 
   const isCustomModels = !!requiredCustomModel;
@@ -489,12 +487,10 @@ export const createTustomShafts = async (req, res) => {
   });
   if (!userExists) {
     cleanupFiles();
-    return res
-      .status(401)
-      .json({
-        success: false,
-        message: "User not found. Please log in again.",
-      });
+    return res.status(401).json({
+      success: false,
+      message: "User not found. Please log in again.",
+    });
   }
 
   const versenden = toJson(b.versenden);
@@ -502,12 +498,10 @@ export const createTustomShafts = async (req, res) => {
 
   if (!b.customerId && !otherName) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Either customerId or other_customer_name is required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Either customerId or other_customer_name is required",
+    });
   }
 
   let customer = null;
@@ -527,13 +521,11 @@ export const createTustomShafts = async (req, res) => {
   if (!isCustomModels) {
     if (!b.mabschaftKollektionId) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "maßschaftKollektionId is required when not using custom models",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "maßschaftKollektionId is required when not using custom models",
+      });
     }
     const kollektion = await prisma.maßschaft_kollektion.findUnique({
       where: { id: b.mabschaftKollektionId },
@@ -557,22 +549,18 @@ export const createTustomShafts = async (req, res) => {
     const addr = toJson(b.courier_address);
     if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courier_address must be a JSON object",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courier_address must be a JSON object",
+      });
     }
     const price = toNum(b.courier_price);
     if (!price || price <= 0) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courier_price must be a valid number greater than 0",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courier_price must be a valid number greater than 0",
+      });
     }
     courierData = {
       address: addr,
@@ -657,7 +645,9 @@ export const createTustomShafts = async (req, res) => {
     maßschaft_kollektion: {
       select: { id: true, name: true, price: true, image: true },
     },
-    user: { select: { name: true, email: true, busnessName: true, image: true } },
+    user: {
+      select: { name: true, email: true, busnessName: true, image: true },
+    },
     deliveryDate: true,
   };
 
@@ -733,7 +723,8 @@ export const createTustomShafts = async (req, res) => {
         : "—";
     sendCustomShaftOrderNotification({
       orderId: customShaft.id,
-      partnerName: customShaft.user?.busnessName || customShaft.user?.name || "Partner",
+      partnerName:
+        customShaft.user?.busnessName || customShaft.user?.name || "Partner",
       partnerEmail: customShaft.user?.email || "",
       partnerImage: customShaft.user?.image ?? null,
       category,
@@ -743,9 +734,7 @@ export const createTustomShafts = async (req, res) => {
       isCustomModels: Boolean(isCustomModels),
       isBodenkonstruktion: false,
       createdAt: formatOrderCreatedAt(new Date()),
-    }).catch((err) =>
-      console.error("Order notification email failed:", err)
-    );
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     res.status(201).json({
       success: true,
@@ -774,26 +763,22 @@ export const createTustomShafts = async (req, res) => {
       });
     }
     if (err.code === "P2003") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid customer ID or Maßschaft Kollektion ID provided",
-        });
-    }
-    res
-      .status(500)
-      .json({
+      return res.status(400).json({
         success: false,
-        message: "Something went wrong",
-        error: err.message,
+        message: "Invalid customer ID or Maßschaft Kollektion ID provided",
       });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err.message,
+    });
   }
 };
 
 export const createCustomBodenkonstruktionOrder = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
   const { id } = req.user;
@@ -917,7 +902,9 @@ export const createCustomBodenkonstruktionOrder = async (
         bodenkonstruktion_json: true,
         deliveryDate: true,
         isCustomBodenkonstruktion: true,
-        user: { select: { name: true, email: true, busnessName: true, image: true } },
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
       },
     });
 
@@ -957,9 +944,7 @@ export const createCustomBodenkonstruktionOrder = async (
       isBodenkonstruktion: true,
       deliveryDate: deliveryDateFormatted,
       createdAt: formatOrderCreatedAt(new Date()),
-    }).catch((err) =>
-      console.error("Order notification email failed:", err)
-    );
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     return res.status(200).json({
       success: true,
@@ -1416,7 +1401,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1443,7 +1428,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           } else {
             // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
@@ -1459,7 +1444,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           }
         }
@@ -1481,7 +1466,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1919,7 +1904,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin. Customer: ${order.customer.vorname} ${order.customer.nachname} (Customer Number: ${order.customer.customerNumber})`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
+            `/dashboard/custom-shafts/${order.id}`,
           );
         } else {
           await notificationSend(
@@ -1928,7 +1913,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
+            `/dashboard/custom-shafts/${order.id}`,
           );
         }
       }
@@ -1973,9 +1958,9 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the partner ${order.user?.name}.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
-          )
-        )
+            `/dashboard/custom-shafts/${order.id}`,
+          ),
+        ),
       );
 
       return res.status(200).json({
@@ -2008,7 +1993,11 @@ export const getDamianCount = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get Damian Count Error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };
 
@@ -2028,6 +2017,47 @@ export const manageDamianCount = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: row });
   } catch (error: any) {
     console.error("Manage Damian Count Error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const updateDeliveryDateByAdmin = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    const { deliveryDate } = req.body;
+    const existingCustomShaft = await prisma.custom_shafts.findUnique({
+      where: { id },
+    });
+    if (!existingCustomShaft) {
+      return res.status(404).json({
+        success: false,
+        message: "Custom shaft not found",
+      });
+    }
+    const updatedCustomShaft = await prisma.custom_shafts.update({
+      where: { id },
+      data: {
+        deliveryDate: deliveryDate,
+      },
+    });
+    return res.status(200).json({
+      success: true,
+      message: "Delivery date updated successfully",
+      data: updatedCustomShaft,
+    });
+  } catch (error: any) {
+    console.error("Update Delivery Date By Admin Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };
