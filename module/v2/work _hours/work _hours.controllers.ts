@@ -245,7 +245,6 @@ export const getAllWorkTypes = async (req: Request, res: Response) => {
         image: true,
         partnerId: true,
         createdAt: true,
-        updatedAt: true,
       },
     });
 

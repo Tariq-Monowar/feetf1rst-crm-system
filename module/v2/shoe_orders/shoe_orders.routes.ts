@@ -10,6 +10,7 @@ import {
   getShoeOrderStatusNote,
   getShoeOrderDetails,
   removeShoeOrderFile,
+  updateShoeOrderPriority,
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
@@ -52,6 +53,12 @@ router.delete(
   "/remove-file/:fileId",
   verifyUser("PARTNER", "EMPLOYEE"),
   removeShoeOrderFile,
+);
+
+router.patch(
+  "/update-priority/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  updateShoeOrderPriority,
 );
 
 export default router;

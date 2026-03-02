@@ -1797,7 +1797,7 @@ model shoe_order {
 
   //relation with employee
 
-  status String? @default("Auftragserstellung")
+  status   String?   @default("Auftragserstellung")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2102,6 +2102,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2125,6 +2126,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -2906,11 +2908,10 @@ model work_types {
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime     @default(now())
+  workHours work_hours[]
 
   @@index([createdAt])
-  @@index([updatedAt])
 }
 
 model work_hours {
@@ -2919,6 +2920,16 @@ model work_hours {
   employeeId String
   employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  date  DateTime
-  hours Int
+  date  DateTime?
+  hours Int?
+
+  workTypeId String
+  workType   work_types @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([workTypeId])
+  @@index([createdAt])
 }

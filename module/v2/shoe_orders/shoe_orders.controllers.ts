@@ -116,7 +116,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
     const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
 
-    const num = (v: unknown) => (v != null && v !== "" && !isNaN(Number(v)));
+    const num = (v: unknown) => v != null && v !== "" && !isNaN(Number(v));
     const ins = num(insurance_price);
     const priv = num(private_price);
     const addon = num(addon_price);
@@ -214,7 +214,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
     if (!hasTrimStrips) {
       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
-      if (step2_material == null || step2Leistentyp == null || step2Leistentyp === "") {
+      if (
+        step2_material == null ||
+        step2Leistentyp == null ||
+        step2Leistentyp === ""
+      ) {
         return res.status(400).json({
           success: false,
           message:
@@ -304,7 +308,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobenerstellung",
             isCompleted: false,
-        
+
             preparation_date: new Date(preparation_date),
             notes: step4_notes ?? undefined,
           },
@@ -314,7 +318,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobe_durchführen",
             isCompleted: false,
-           
+
             fitting_date: new Date(fitting_date),
             adjustments: adjustments ?? undefined,
             customer_reviews: customer_reviews ?? undefined,
@@ -346,7 +350,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Leistenerstellung",
             isCompleted: false,
-       
+
             leistentyp: step2Leistentyp?.trim() ?? undefined,
             material: step2_material ?? undefined,
             notes: step2_notes ?? undefined,
@@ -370,7 +374,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Bettungserstellung",
             isCompleted: false,
-       
+
             material: step3_material ?? undefined,
             thickness: step3_thickness ?? undefined,
             notes: step3_notes ?? undefined,
@@ -801,9 +805,10 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const search = (typeof searchParam === "string" && searchParam.trim())
-      ? searchParam.trim().replace(/\s+/g, " ")
-      : "";
+    const search =
+      typeof searchParam === "string" && searchParam.trim()
+        ? searchParam.trim().replace(/\s+/g, " ")
+        : "";
 
     if (search) {
       const tokens = search.split(" ").filter(Boolean);
@@ -820,7 +825,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
             LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(so."orderNumber"::text, '')) LIKE LOWER(${term}::text)
-          )`
+          )`,
         );
       });
       if (cursor) {
@@ -828,7 +833,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
           Prisma.sql`(so."orderNumber", so.id) < (
             SELECT "orderNumber", id FROM "shoe_order"
             WHERE id = ${cursor}::text AND "partnerId" = ${partnerId}::text
-          )`
+          )`,
         );
       }
       const whereClause = Prisma.join(conditions, " AND ");
@@ -1179,7 +1184,12 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       prisma.shoe_order_step.findMany({
         where: { orderId: id },
         orderBy: { createdAt: "asc" },
-        select: { status: true, isCompleted: true, auto_print: true, createdAt: true },
+        select: {
+          status: true,
+          isCompleted: true,
+          auto_print: true,
+          createdAt: true,
+        },
       }),
     ]);
 
@@ -1463,7 +1473,7 @@ export const removeShoeOrderFile = async (req: Request, res: Response) => {
 
     if (fileUrlToDelete) {
       deleteFileFromS3(fileUrlToDelete).catch((err) =>
-        console.error("S3 cleanup after file remove:", err)
+        console.error("S3 cleanup after file remove:", err),
       );
     }
 
@@ -1476,6 +1486,46 @@ export const removeShoeOrderFile = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while removing file",
+    });
+  }
+};
+
+export const updateShoeOrderPriority = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const existingOrder = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: { priority: true },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const currentPriority = existingOrder.priority ?? "Normal";
+    const newPriority = currentPriority === "Dringend" ? "Normal" : "Dringend";
+
+    const order = await prisma.shoe_order.update({
+      where: { id },
+      data: { priority: newPriority },
+      select: { priority: true, id: true, status: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shoe order priority updated successfully",
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Priority Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order priority",
     });
   }
 };

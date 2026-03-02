@@ -32,7 +32,9 @@
     "all:employees": "ts-node scripts/all-employees.ts",
     "clean:leave-application": "ts-node scripts/clean-leave-application.ts",
     "allaing:partnerId": "ts-node scripts/align-partnerId.ts",
-    "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts"
+    "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts",
+    "allnormal": "ts-node scripts/all-normal-shoe-orders.ts",
+    "sync:shoe-order-priority": "ts-node scripts/sync-shoe-order-priority-column.ts"
   },
   "keywords": [],
   "author": "",
