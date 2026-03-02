@@ -17,6 +17,7 @@ import {
   cancelAdminOrder,
   getDamianCount,
   manageDamianCount,
+  updateDeliveryDateByAdmin
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -147,6 +148,13 @@ router.delete(
   "/mabschaft_kollektion/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteMaßschaftKollektion
+);
+
+//update deleveary date
+router.patch(
+  "/update-delivery-date/:id",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  updateDeliveryDateByAdmin
 );
 
 

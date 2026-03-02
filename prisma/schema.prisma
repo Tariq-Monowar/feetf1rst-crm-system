@@ -29,8 +29,12 @@ model User {
   hauptstandort String[] // Hauptstandort, main location
   // weitereStandorte String[] // Other locations
 
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt
+
+  mentorId String?
+  mentor   mentors? @relation(fields: [mentorId], references: [id], onDelete: SetNull)
+
   suggestions      SuggestionFeetf1rst[]
   sentMessages     Message[]             @relation("sent_messages")
   receivedMessages Message[]             @relation("received_messages")
@@ -81,6 +85,7 @@ model User {
   shoeOrders                  shoe_order[]
   diagnosisStatuses           diagnosis_status[]
   posReceipts                 pos_receipt[]
+  routes                      Route[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -862,15 +867,23 @@ model customer_versorgungen {
   @@index([createdAt])
 }
 
+/**
+ * order er modde same time insurance and privet paymnent ache
+ * if it's austia the must pay private 43.00
+ * and addon allowse private paymnent
+ * other price is insurance paymnent if status is insurance
+ */
+
 model customerOrders {
-  id String @id @default(uuid())
+  /**
+   * ------------------------------------------------
+   * main data (order data)
+   * ------------------------------------------------
+   */
+  id          String @id @default(uuid())
+  orderNumber Int
 
-  orderNumber Int // Unique per partner, not globally
-
-  fußanalyse        Float?
-  einlagenversorgung Float?
-  totalPrice         Float
-  diagnosis          String?
+  diagnosis String?
 
   // orderStatus  String?
   statusUpdate DateTime?
@@ -885,8 +898,6 @@ model customerOrders {
   schuhmodell_wählen String? //জুতার মডেল নির্বাচন করুন ম্যানুয়ালি লিখুন (ব্র্যান্ড + মডেল + সাইজ)
   kostenvoranschlag   Boolean? @default(false)
 
-  discount Float?
-
   // Privet          String? // Bezahlt - string naw
   // bezahltInsurance       String? // Bezahlt - string naw
 
@@ -899,14 +910,10 @@ model customerOrders {
 
   geschaeftsstandort Json? // { title: string, description?: string }
   pickUpLocation     Json? // { title: string, description?: string }
-  addonPrices        Float? @default(0) // { title: string, description?: string }
 
   mitarbeiter       String?
   fertigstellungBis DateTime? // pickup date
   versorgung        String?
-
-  fussanalysePreis        Float?
-  einlagenversorgungPreis Float?
 
   barcodeLabel     String?
   barcodeCreatedAt DateTime?
@@ -916,8 +923,7 @@ model customerOrders {
   versorgung_note String?
   statusNote      String?
 
-  bezahlt             paymnentStatus?
-  insuranceTotalPrice Float?          @default(0)
+  bezahlt paymnentStatus?
 
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
   priority    Priority?   @default(Normal)
@@ -955,7 +961,31 @@ model customerOrders {
   StoresHistory           StoresHistory[]          @relation("OrderStoresHistory")
   customerOrderInsurances customerOrderInsurance[]
 
+  /**
+   * ------------------------------------------------
+   * all prise
+   * ------------------------------------------------
+   */
+  totalPrice  Float
+
+  //private prise ------------------------
+  addonPrices Float?
+  discount    Float?
+  privatePrice Float?
+
+  //insurance prise ------------------------
+  insuranceTotalPrice Float?
+
+  fußanalyse        Float?
+  einlagenversorgung Float?
+
+  fussanalysePreis        Float?
+  einlagenversorgungPreis Float?
+
   //======================FOR Sonstiges (bibid or other service)===========================
+  //paymnent type
+  paymnentType paymnentType?
+
   service_name       String?
   sonstiges_category String?
   // Employees relation with employee
@@ -971,8 +1001,10 @@ model customerOrders {
 
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+
   ordersFeedbacks ordersFeedback[]
   insoleStandards insole_standard[]
+  orderNotesList  order_notes[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner
   @@index([customerId])
@@ -1155,6 +1187,31 @@ model insole_standard {
   customerOrders   customerOrders @relation(fields: [customerOrdersId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+}
+
+model order_notes {
+  id String @id @default(uuid())
+
+  insoleOrderId String?
+  insoleOrder   customerOrders? @relation(fields: [insoleOrderId], references: [id], onDelete: SetNull)
+
+  shoeOrderId String?
+  shoeOrder   shoe_order? @relation(fields: [shoeOrderId], references: [id], onDelete: SetNull)
+
+  note   String
+  status String?
+
+  isImportant Boolean @default(false)
+
+  type OrderType @default(insole)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OrderType {
+  insole
+  shoe
 }
 
 /**
@@ -1640,20 +1697,28 @@ model shoe_order {
   priority    Priority? @default(Normal)
   quantity    Int?
 
-  branch_location  Json? // { title: string, description?: string }
-  pick_up_location Json? // { title: string, description?: string }
-  payment_status   paymnentStatus?
-  price            Float?
-  order_note       String?
-  status_note      String?
+  /**
+   * --------------
+   * LOCATIONS
+   * { title: string, description?: string }
+   * ----------------
+   */
+  branch_location  Json?
+  pick_up_location Json?
 
-  //Ärztliche Diagnose (1st fields)
-  medical_diagnosis  String?
-  // Ausführliche Diagnose (2nd fields)
-  detailed_diagnosis String?
+  /**
+   * --------------
+   * PAYMENT insurance or private
+   * ----------------
+   */
+  payment_status paymnentStatus?
+  payment_type   paymnentType?
 
-  deposit_provision   Float?
-  foot_analysis_price Json?
+  insurance_price Float?
+
+  private_price Float?
+  addon_price   Float?
+  discount      Float?
 
   /**
    * 3rd fields
@@ -1667,6 +1732,17 @@ model shoe_order {
    * if it's insurance i dont need this field
    */
   vat_rate Float?
+
+  order_note  String?
+  status_note String?
+
+  //Ärztliche Diagnose (1st fields)
+  medical_diagnosis  String?
+  // Ausführliche Diagnose (2nd fields)
+  detailed_diagnosis String?
+
+  deposit_provision   Float?
+  foot_analysis_price Json?
 
   store_location Json? // { title: string, description?: string }
 
@@ -1728,9 +1804,16 @@ model shoe_order {
 
   shoeOrderStep   shoe_order_step[]
   ordersFeedbacks ordersFeedback[]
+  orderNotes      order_notes[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
+}
+
+enum paymnentType {
+  insurance
+  private
+  broth
 }
 
 enum shoe_order_status {
@@ -1995,6 +2078,25 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2018,6 +2120,25 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2336,6 +2457,7 @@ model FeatureAccess {
   finanzen_and_kasse         Boolean @default(true)
   einnahmen_and_rechnungen   Boolean @default(true)
   statistiken                Boolean @default(true)
+  warenwirtschaft            Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2386,6 +2508,7 @@ model employee_feature_access {
   finanzen_and_kasse         Boolean @default(false)
   einnahmen_and_rechnungen   Boolean @default(false)
   statistiken                Boolean @default(false)
+  warenwirtschaft            Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2393,6 +2516,56 @@ model employee_feature_access {
   @@unique([employeeId, partnerId])
   @@index([employeeId])
   @@index([partnerId])
+}
+
+//  {
+//     title: "Einstellungen",
+//     action: true,
+//     path: "/dashboard/settings",
+//     nested: [
+//       {
+//         title: "Grundeinstellungen",
+//         action: true,
+//         path: "/dashboard/settings-profile",
+//         nested: []
+//       },
+//       {
+//         title: "Backup Einstellungen",
+//         action: true,
+//         path: "/dashboard/settings-profile/backup",
+//         nested: []
+//       },
+//     ],
+//    {
+//      title: "Account Settings",
+//      action: true,
+//      path: "/dashboard/account-settings",
+//      nested: [],
+//    },
+//   },
+/// Nested route tree per partner. Use parentId for nesting (e.g. Einstellungen -> Grundeinstellungen).
+/// featureKey links to FeatureAccess field name for access control.
+model Route {
+  id         String  @id @default(uuid())
+  title      String
+  path       String
+  action     Boolean @default(true)
+  sortOrder  Int     @default(0)
+  featureKey String?
+  parentId   String?
+  parent     Route?  @relation("RouteChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Route[] @relation("RouteChildren")
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([parentId])
+  @@index([sortOrder])
+  @@map("routes")
 }
 
 model notification {
@@ -2685,6 +2858,23 @@ enum vat_country {
 // SN+ordernumber (it's insole but orderCategory is sonstiges)
 // EN+ordernumber  (it's insole but orderCategory is insole)
 // MS+ordernumber (it's shoe order)
+
+model mentors {
+  id String @id @default(cuid())
+
+  image    String?
+  position String?
+  name     String?
+  email    String?
+  timeline String?
+  phone    String?
+
+  partners User[] @relation
+
+  createdAt DateTime @default(now())
+
+  @@map("mentors")
+}
 
 model database_backup {
   //usie cuid

@@ -1484,12 +1484,12 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       }
     }
 
-    if (!customerScreenerFile) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer screener file not found",
-      });
-    }
+    // if (!customerScreenerFile) {
+    //   return res.status(404).json({
+    //     success: false,
+    //     message: "Customer screener file not found",
+    //   });
+    // }
 
     return res.status(200).json({
       success: true,
@@ -1527,9 +1527,9 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
               size: storeInfo.matchedSize,
             }
           : null,
-        // Images are already S3 URLs, use directly
-        picture_23: customerScreenerFile.picture_23 || null,
-        picture_24: customerScreenerFile.picture_24 || null,
+        // Images are already S3 URLs, use directly (screener file may not exist)
+        picture_23: customerScreenerFile?.picture_23 ?? null,
+        picture_24: customerScreenerFile?.picture_24 ?? null,
       },
     });
   } catch (error: any) {
@@ -1737,6 +1737,8 @@ export const getPriceDetails = async (req: Request, res: Response) => {
 export const getOrderStatusNote = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
 
     if (!orderId) {
       return res.status(400).json({
@@ -1773,15 +1775,61 @@ export const getOrderStatusNote = async (req: Request, res: Response) => {
       });
     }
 
+    const notesRows = await prisma.order_notes.findMany({
+      where: { insoleOrderId: orderId },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      select: {
+        id: true,
+        note: true,
+        status: true,
+        type: true,
+        createdAt: true,
+      },
+    });
+
+    const notesHasMore = notesRows.length > limit;
+    const notes = notesHasMore ? notesRows.slice(0, limit) : notesRows;
+
     return res.status(200).json({
       success: true,
       data: order,
+      notes: {
+        data: notes,
+        hasMore: notesHasMore,
+      },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get Order Status Note Error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Something went wrong while fetching order status note",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getWaitingForVersorgungsStartCount = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+
+    const count = await prisma.customerOrders.count({
+      where: { orderStatus: "Warten_auf_Versorgungsstart", partnerId: userId },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: count,
+    });
+  } catch (error) {
+    console.error("Get Waiting For Versorgungs Start Count Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
       error: error.message,
     });
   }

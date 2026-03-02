@@ -47,6 +47,10 @@ const upload = multer({
       const fileName = `${Date.now()}-${sanitizedName}`;
       cb(null, fileName);
     },
+    contentType: (req, file, cb) => {
+      // Pass through so S3 doesn't guess; avoids extra work and ensures correct type
+      cb(null, file.mimetype || "application/octet-stream");
+    },
     // With multer-s3, req.file will have:
     // - location: Full S3 URL (e.g., https://bucket.s3.region.amazonaws.com/key)
     // - key: The S3 object key (filename)
@@ -54,8 +58,8 @@ const upload = multer({
     // - originalname: Original filename
   }),
 
-  // Unlimited file size (remove or set limits as needed)
-  // limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  // Optional: uncomment to cap file size (e.g. 20MB) and fail fast on huge uploads
+  // limits: { fileSize: 20 * 1024 * 1024 },
 });
 
 export default upload;

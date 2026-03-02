@@ -189,7 +189,7 @@ export const partnershipWelcomeEmail = (
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                       <tr>
                         <td class="header-logo-cell" style="vertical-align: middle; width: 280px; max-width: 280px;">
-                          <img class="header-logo" src="cid:feetf1rst-logo" alt="FeetF1rst Logo" style="max-width: 280px; width: 100%; height: auto; display: block; pointer-events: none; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;" />
+                          <img class="header-logo" src="https://feetf1rst.s3.eu-central-1.amazonaws.com/1772285576878-unnamed.png" alt="FeetF1rst Logo" style="max-width: 280px; width: 100%; height: auto; display: block; pointer-events: none; user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none;" />
                         </td>
                         <td class="header-text-cell" style="vertical-align: middle; padding-left: 30px; width: auto; text-align: right;">
                           <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width: auto; margin-left: auto;">

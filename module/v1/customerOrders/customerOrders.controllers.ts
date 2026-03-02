@@ -226,6 +226,7 @@ export const createOrder = async (req: Request, res: Response) => {
       pickUpLocation,
       addonPrices = 0,
       insuranceTotalPrice = 0,
+      privatePrice: privatePriceFromBody,
       key,
       totalPrice: totalPriceFromClient,
     } = body;
@@ -250,7 +251,18 @@ export const createOrder = async (req: Request, res: Response) => {
     if (Number.isNaN(totalPrice)) {
       return bad(400, "totalPrice must be a valid number");
     }
-    
+
+    // Payment type: insurance | private | broth (same logic as shoe_orders)
+    const num = (v: unknown) =>
+      v != null && v !== "" && !Number.isNaN(Number(v));
+    const ins = num(insuranceTotalPrice);
+    const priv = num(privatePriceFromBody);
+    const addon = num(addonPrices);
+    let payment_type: "insurance" | "private" | "broth" = "private";
+    if (ins && (priv || addon)) payment_type = "broth";
+    else if (ins) payment_type = "insurance";
+    else if (priv || addon) payment_type = "private";
+
     let vat_country: string | undefined;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
@@ -569,6 +581,12 @@ export const createOrder = async (req: Request, res: Response) => {
           insuranceTotalPrice != null && insuranceTotalPrice !== ""
             ? Number(insuranceTotalPrice) || 0
             : 0,
+        paymnentType: payment_type,
+        ...(privatePriceFromBody != null &&
+          privatePriceFromBody !== "" &&
+          !Number.isNaN(Number(privatePriceFromBody)) && {
+            privatePrice: Number(privatePriceFromBody),
+          }),
       };
       if (effectiveVersorgungId)
         orderData.Versorgungen = { connect: { id: effectiveVersorgungId } };
@@ -1169,6 +1187,11 @@ export const getAllOrders = async (req: Request, res: Response) => {
       orderCategory: true,
       service_name: true,
       sonstiges_category: true,
+      diagnosis: true,
+      ausführliche_diagnose: true,
+      privatePrice: true,
+      insuranceTotalPrice: true,
+ 
       customer: {
         select: {
           id: true,
@@ -1179,7 +1202,13 @@ export const getAllOrders = async (req: Request, res: Response) => {
           customerNumber: true,
         },
       },
-      product: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          versorgung: true,
+        },
+      },
       versorgung: true,
       employee: {
         select: { accountName: true, employeeName: true, email: true },
@@ -1313,6 +1342,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
           orderCategory: string | null;
           service_name: string | null;
           sonstiges_category: string | null;
+          diagnosis: string | null;
+          ausführliche_diagnose: string | null;
+          privateprice: number | null;
+          insurancetotalprice: number | null;
           cust_id: string | null;
           vorname: string | null;
           nachname: string | null;
@@ -1331,6 +1364,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt, co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."service_name", co."sonstiges_category",
+          co.diagnosis, co."ausführliche_diagnose",
+          co."privatePrice", co."insuranceTotalPrice",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
           e."accountName", e."employeeName", e.email AS emp_email,
           (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
@@ -1368,6 +1403,10 @@ export const getAllOrders = async (req: Request, res: Response) => {
         orderCategory: row.orderCategory,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
+        diagnosis: row.diagnosis ?? null,
+        ausführliche_diagnose: row.ausführliche_diagnose ?? null,
+        privatePrice: (row as any).privateprice ?? (row as any).privatePrice ?? null,
+        insuranceTotalPrice: (row as any).insurancetotalprice ?? (row as any).insuranceTotalPrice ?? null,
         customer: row.cust_id
           ? {
               id: row.cust_id,

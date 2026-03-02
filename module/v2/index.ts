@@ -20,6 +20,8 @@ import government_vat from "./government_vat/government_vat.routes";
 import leave_application from "./leave_application/leave_application.routes";
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
 import receipts from "./receipts/receipts.routes";
+import order_notes from "./order_notes/order_notes.routes";
+import mentors from "./mentors/mentors.routes";
 
 const router = express.Router();
 
@@ -44,6 +46,8 @@ const moduleRoutes = [
   { path: "/leave-application", route: leave_application },
   { path: "/shoe-orders", route: shoe_orders },
   { path: "/receipts", route: receipts },
+  { path: "/order-notes", route: order_notes },
+  { path: "/mentors", route: mentors },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

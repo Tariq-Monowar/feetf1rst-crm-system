@@ -1,6 +1,10 @@
 import { DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "stream";
 import s3 from "./s3client";
+
+/** Use multipart upload for files larger than this (faster via parallel parts) */
+const MULTIPART_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB
 
 const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
 
@@ -95,20 +99,36 @@ export const uploadFileToS3 = async (
   try {
     const sanitizedName = fileName.replace(/\s+/g, "_").replace(/[^\w.-]/g, "");
     const key = `${Date.now()}-${sanitizedName}`;
+    const body = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer);
+    const contentLength = body.length;
+    const type = contentType || "application/octet-stream";
 
-    const command = new PutObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-      Body: fileBuffer,
-      ContentType: contentType || "application/octet-stream",
-    });
+    if (contentLength > MULTIPART_THRESHOLD_BYTES) {
+      // Large file: use concurrent multipart upload (faster)
+      const upload = new Upload({
+        client: s3,
+        params: {
+          Bucket: BUCKET_NAME,
+          Key: key,
+          Body: body,
+          ContentType: type,
+        },
+        queueSize: 4,
+        partSize: 5 * 1024 * 1024, // 5MB parts
+      });
+      await upload.done();
+    } else {
+      const command = new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: body,
+        ContentType: type,
+      });
+      await s3.send(command);
+    }
 
-    await s3.send(command);
-
-    // Construct S3 URL
     const region = process.env.AWS_REGION || "us-east-1";
     const s3Url = `https://${BUCKET_NAME}.s3.${region}.amazonaws.com/${key}`;
-
     console.log(`Successfully uploaded file to S3: ${key}`);
     return s3Url;
   } catch (error: any) {

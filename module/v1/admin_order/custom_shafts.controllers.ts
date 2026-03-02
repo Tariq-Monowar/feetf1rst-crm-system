@@ -11,12 +11,23 @@ import {
   generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { sendCustomShaftOrderNotification } from "../../../utils/emailService.utils";
 
 const prisma = new PrismaClient();
 
+const formatOrderCreatedAt = (d: Date) =>
+  d.toLocaleDateString("de-DE", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export const createMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
 
@@ -87,7 +98,7 @@ export const createMaßschaftKollektion = async (
 
 export const getAllMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -182,7 +193,7 @@ export const getAllMaßschaftKollektion = async (
 
 export const updateMaßschaftKollektion = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
   const { id } = req.params;
@@ -285,7 +296,7 @@ export const updateMaßschaftKollektion = async (
 
 export const getMaßschaftKollektionById = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -436,13 +447,17 @@ export const createTustomShafts = async (req, res) => {
 
   if (anyCustomModel && !requiredCustomModel) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message:
-          "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
-      });
+    const missing = [];
+    if (!hasCustomVerschlussart) missing.push("custom_models_verschlussart");
+    if (!hasCustomPrice) missing.push("custom_models_price");
+    if (!hasCustomImage) missing.push("custom_models_image");
+    return res.status(400).json({
+      success: false,
+      message:
+        "custom_models_verschlussart, custom_models_price and custom_models_image are required when using custom models",
+      missingRequired: missing,
+      hint: "You sent some custom model fields (e.g. name, gender, description) but all three of verschlussart, price, and image are required. Either provide all three or omit custom model fields.",
+    });
   }
 
   const hasAddr = b.courier_address;
@@ -453,15 +468,14 @@ export const createTustomShafts = async (req, res) => {
 
   const anyCourier = hasAddr || hasCompany || hasPhone || hasEmail || hasPrice;
   const allCourier = hasAddr && hasCompany && hasPhone && hasEmail && hasPrice;
+  const isCourierContactFlag = req.query.isCourierContact === "yes";
 
-  if (anyCourier && !allCourier) {
+  if (anyCourier && !allCourier && !isCourierContactFlag) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "If providing courier contact, all fields are required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "If providing courier contact, all fields are required",
+    });
   }
 
   const isCustomModels = !!requiredCustomModel;
@@ -473,12 +487,10 @@ export const createTustomShafts = async (req, res) => {
   });
   if (!userExists) {
     cleanupFiles();
-    return res
-      .status(401)
-      .json({
-        success: false,
-        message: "User not found. Please log in again.",
-      });
+    return res.status(401).json({
+      success: false,
+      message: "User not found. Please log in again.",
+    });
   }
 
   const versenden = toJson(b.versenden);
@@ -486,12 +498,10 @@ export const createTustomShafts = async (req, res) => {
 
   if (!b.customerId && !otherName) {
     cleanupFiles();
-    return res
-      .status(400)
-      .json({
-        success: false,
-        message: "Either customerId or other_customer_name is required",
-      });
+    return res.status(400).json({
+      success: false,
+      message: "Either customerId or other_customer_name is required",
+    });
   }
 
   let customer = null;
@@ -511,13 +521,11 @@ export const createTustomShafts = async (req, res) => {
   if (!isCustomModels) {
     if (!b.mabschaftKollektionId) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "maßschaftKollektionId is required when not using custom models",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "maßschaftKollektionId is required when not using custom models",
+      });
     }
     const kollektion = await prisma.maßschaft_kollektion.findUnique({
       where: { id: b.mabschaftKollektionId },
@@ -541,22 +549,18 @@ export const createTustomShafts = async (req, res) => {
     const addr = toJson(b.courier_address);
     if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courier_address must be a JSON object",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courier_address must be a JSON object",
+      });
     }
     const price = toNum(b.courier_price);
     if (!price || price <= 0) {
       cleanupFiles();
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "courier_price must be a valid number greater than 0",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "courier_price must be a valid number greater than 0",
+      });
     }
     courierData = {
       address: addr,
@@ -571,6 +575,15 @@ export const createTustomShafts = async (req, res) => {
   const json2 = toJson(b.Massschafterstellung_json2);
   const category =
     json1 && json2 ? "Komplettfertigung" : "Massschafterstellung";
+
+  const deliveryDateRaw = b.deliveryDate;
+  const deliveryDate =
+    deliveryDateRaw != null && String(deliveryDateRaw).trim() !== ""
+      ? (() => {
+          const d = new Date(deliveryDateRaw);
+          return isNaN(d.getTime()) ? null : d;
+        })()
+      : null;
 
   const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
   const shaftData = {
@@ -593,6 +606,7 @@ export const createTustomShafts = async (req, res) => {
     status: "Neu",
     catagoary: category,
     isCustomeModels: Boolean(isCustomModels),
+    ...(deliveryDate && { deliveryDate }),
   };
 
   if (b.customerId)
@@ -631,6 +645,10 @@ export const createTustomShafts = async (req, res) => {
     maßschaft_kollektion: {
       select: { id: true, name: true, price: true, image: true },
     },
+    user: {
+      select: { name: true, email: true, busnessName: true, image: true },
+    },
+    deliveryDate: true,
   };
 
   try {
@@ -697,6 +715,27 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
+    // Notify admin by email (fire-and-forget, partner from create select)
+    const customerDisplay = otherName
+      ? otherName
+      : customer
+        ? `Kunde #${customer.customerNumber}`
+        : "—";
+    sendCustomShaftOrderNotification({
+      orderId: customShaft.id,
+      partnerName:
+        customShaft.user?.busnessName || customShaft.user?.name || "Partner",
+      partnerEmail: customShaft.user?.email || "",
+      partnerImage: customShaft.user?.image ?? null,
+      category,
+      totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
+      customerDisplay,
+      kollektionName: customShaft.maßschaft_kollektion?.name ?? null,
+      isCustomModels: Boolean(isCustomModels),
+      isBodenkonstruktion: false,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
+
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
@@ -724,26 +763,22 @@ export const createTustomShafts = async (req, res) => {
       });
     }
     if (err.code === "P2003") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid customer ID or Maßschaft Kollektion ID provided",
-        });
-    }
-    res
-      .status(500)
-      .json({
+      return res.status(400).json({
         success: false,
-        message: "Something went wrong",
-        error: err.message,
+        message: "Invalid customer ID or Maßschaft Kollektion ID provided",
       });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err.message,
+    });
   }
 };
 
 export const createCustomBodenkonstruktionOrder = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   const files = req.files as any;
   const { id } = req.user;
@@ -867,6 +902,9 @@ export const createCustomBodenkonstruktionOrder = async (
         bodenkonstruktion_json: true,
         deliveryDate: true,
         isCustomBodenkonstruktion: true,
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
       },
     });
 
@@ -885,6 +923,28 @@ export const createCustomBodenkonstruktionOrder = async (
         note: "Custom Bodenkonstruktion send to admin",
       },
     });
+
+    // Notify admin by email (fire-and-forget, partner from create select)
+    const deliveryDateFormatted = parsedDeliveryDate
+      ? parsedDeliveryDate.toLocaleDateString("de-DE", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : null;
+    const partnerUser = (data as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: (data as any).id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category: "Bodenkonstruktion",
+      totalPrice: parsedTotalPrice,
+      customerDisplay: other_customer_name || "—",
+      isBodenkonstruktion: true,
+      deliveryDate: deliveryDateFormatted,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
 
     return res.status(200).json({
       success: true,
@@ -1341,7 +1401,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1368,7 +1428,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           } else {
             // Only one Massschafterstellung JSON exists, needs Bodenkonstruktion step
@@ -1384,7 +1444,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
              has been updated to the next phase.`,
               massschuheOrder.id,
               false,
-              "/dashboard/massschuhauftraege"
+              "/dashboard/massschuhauftraege",
             );
           }
         }
@@ -1406,7 +1466,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
            has been updated to the next phase.`,
             massschuheOrder.id,
             false,
-            "/dashboard/massschuhauftraege"
+            "/dashboard/massschuhauftraege",
           );
         }
       }
@@ -1844,7 +1904,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin. Customer: ${order.customer.vorname} ${order.customer.nachname} (Customer Number: ${order.customer.customerNumber})`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
+            `/dashboard/custom-shafts/${order.id}`,
           );
         } else {
           await notificationSend(
@@ -1853,7 +1913,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the admin.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
+            `/dashboard/custom-shafts/${order.id}`,
           );
         }
       }
@@ -1898,9 +1958,9 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
             `The order #${order.orderNumber} has been canceled by the partner ${order.user?.name}.`,
             order.id,
             false,
-            `/dashboard/custom-shafts/${order.id}`
-          )
-        )
+            `/dashboard/custom-shafts/${order.id}`,
+          ),
+        ),
       );
 
       return res.status(200).json({
@@ -1933,7 +1993,11 @@ export const getDamianCount = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get Damian Count Error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };
 
@@ -1953,6 +2017,47 @@ export const manageDamianCount = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: row });
   } catch (error: any) {
     console.error("Manage Damian Count Error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const updateDeliveryDateByAdmin = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    const { deliveryDate } = req.body;
+    const existingCustomShaft = await prisma.custom_shafts.findUnique({
+      where: { id },
+    });
+    if (!existingCustomShaft) {
+      return res.status(404).json({
+        success: false,
+        message: "Custom shaft not found",
+      });
+    }
+    const updatedCustomShaft = await prisma.custom_shafts.update({
+      where: { id },
+      data: {
+        deliveryDate: deliveryDate,
+      },
+    });
+    return res.status(200).json({
+      success: true,
+      message: "Delivery date updated successfully",
+      data: updatedCustomShaft,
+    });
+  } catch (error: any) {
+    console.error("Update Delivery Date By Admin Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };

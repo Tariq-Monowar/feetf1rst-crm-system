@@ -27,7 +27,6 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
 
     const required = [
       "vatRate",
-      "versorgung_note",
       "employeeId",
       "total_price",
       "customerId",
@@ -73,6 +72,7 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
             : null,
           bezahlt,
           diagnosis: diagnosis ?? null,
+          privatePrice: total_price != null ? Number(total_price) : null,
         },
         select: { id: true },
       });
