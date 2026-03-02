@@ -85,6 +85,7 @@ model User {
   shoeOrders                  shoe_order[]
   diagnosisStatuses           diagnosis_status[]
   routes                      Route[]
+  workTypes                   work_types[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -337,6 +338,7 @@ model Employees {
   employeeFeatureAccess       employee_feature_access[]
   leave_application           leave_application[]
   shoeOrders                  shoe_order[]
+  workHours                   work_hours[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -964,11 +966,11 @@ model customerOrders {
    * all prise
    * ------------------------------------------------
    */
-  totalPrice  Float
+  totalPrice Float
 
   //private prise ------------------------
-  addonPrices Float?
-  discount    Float?
+  addonPrices  Float?
+  discount     Float?
   privatePrice Float?
 
   //insurance prise ------------------------
@@ -997,8 +999,8 @@ model customerOrders {
   orderCategory OrderCategory @default(insole)
   //============================================================== 
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   ordersFeedbacks ordersFeedback[]
   insoleStandards insole_standard[]
@@ -2095,6 +2097,11 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2118,6 +2125,11 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2882,4 +2894,31 @@ model database_backup {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model work_types {
+  id String @id @default(uuid())
+
+  name        String?
+  description String?
+  image       String?
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model work_hours {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  date  DateTime
+  hours Int
 }

@@ -1703,10 +1703,15 @@ export const getPriceDetails = async (req: Request, res: Response) => {
               select: {
                 price: true,
                 vatRate: true,
-
                 // profitPercentage: true,
               },
             },
+          },
+        },
+        product: {
+          select: {
+            name: true,
+            versorgung: true,
           },
         },
         customerOrderInsurances: {

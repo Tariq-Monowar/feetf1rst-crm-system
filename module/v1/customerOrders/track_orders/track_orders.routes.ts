@@ -72,7 +72,6 @@ router.get(
   getPriceDetails,
 );
 
-
 router.get(
   "/status-note/:orderId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
