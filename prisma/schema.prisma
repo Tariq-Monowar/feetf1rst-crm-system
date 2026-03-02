@@ -80,6 +80,7 @@ model User {
   stockMaterials              stock_material[]
   shoeOrders                  shoe_order[]
   diagnosisStatuses           diagnosis_status[]
+  posReceipts                 pos_receipt[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -332,6 +333,7 @@ model Employees {
   employeeFeatureAccess       employee_feature_access[]
   leave_application           leave_application[]
   shoeOrders                  shoe_order[]
+  posReceipts                 pos_receipt[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -2692,4 +2694,47 @@ model database_backup {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ===================== POS Receipt (Fiskaly TSE) ======================
+model pos_receipt {
+  id String @id @default(uuid())
+
+  orderId   String
+  orderType String // "insole" | "shoes"
+
+  paymentMethod String // "CASH" | "NON_CASH"
+
+  amount    Float
+  vatRate   Float
+  vatAmount Float
+  subtotal  Float
+
+  // Fiskaly TSE signature fields
+  fiskalyTxId                String?
+  fiskalyTxNumber            Int?
+  fiskalyTssSerialNumber     String?
+  fiskalyClientSerialNumber  String?
+  fiskalyTimeStart           DateTime?
+  fiskalyTimeEnd             DateTime?
+  fiskalySignatureValue      String?
+  fiskalySignatureAlgorithm  String?
+  fiskalySignatureCounter    Int?
+  fiskalySignaturePublicKey  String?
+  fiskalyQrCodeData          String?
+
+  // Snapshot of receipt data (company, product, financial)
+  receiptData Json?
+
+  partnerId  String?
+  partner    User?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, orderType])
+  @@index([partnerId])
+  @@index([orderId])
 }
