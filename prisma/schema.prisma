@@ -924,8 +924,6 @@ model customerOrders {
   versorgung_note String?
   statusNote      String?
 
-  bezahlt paymnentStatus?
-
   orderStatus OrderStatus @default(Warten_auf_Versorgungsstart)
   priority    Priority?   @default(Normal)
   type        StoreType   @default(rady_insole)
@@ -985,7 +983,10 @@ model customerOrders {
 
   //======================FOR Sonstiges (bibid or other service)===========================
   //paymnent type
-  paymnentType paymnentType?
+  paymnentType    paymnentType?
+  bezahlt         paymnentStatus?
+  insurance_payed Boolean?        @default(false)
+  private_payed   Boolean?        @default(false)
 
   service_name       String?
   sonstiges_category String?
@@ -2114,6 +2115,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2137,6 +2140,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
