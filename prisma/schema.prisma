@@ -987,10 +987,11 @@ model customerOrders {
 
   //======================FOR Sonstiges (bibid or other service)===========================
   //paymnent type
-  paymnentType    paymnentType?
-  bezahlt         paymnentStatus?
-  insurance_payed Boolean?        @default(false)
-  private_payed   Boolean?        @default(false)
+  paymnentType     paymnentType?
+  bezahlt          paymnentStatus?
+  insurance_status insurance_status? @default(pending)
+  insurance_payed  Boolean?          @default(false)
+  private_payed    Boolean?          @default(false)
 
   service_name       String?
   sonstiges_category String?
@@ -1717,10 +1718,11 @@ model shoe_order {
    * PAYMENT insurance or private
    * ----------------
    */
-  payment_status  paymnentStatus?
-  payment_type    paymnentType?
-  insurance_payed Boolean?        @default(false)
-  private_payed   Boolean?        @default(false)
+  payment_status   paymnentStatus?
+  payment_type     paymnentType?
+  insurance_status insurance_status? @default(pending)
+  insurance_payed  Boolean?          @default(false)
+  private_payed    Boolean?          @default(false)
 
   insurance_price Float?
 
@@ -1821,6 +1823,12 @@ model shoe_order {
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
+}
+
+enum insurance_status {
+  pending
+  approved
+  rejected
 }
 
 enum paymnentType {
@@ -2127,6 +2135,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2150,6 +2161,9 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2986,7 +3000,7 @@ model prescription {
   doctor_location      String?
   establishment_number String? // LANR
 
-  proved_number String? //  PeNr
+  proved_number     String? //  PeNr
   referencen_number String? // Rezeptnummer
 
   // Medical data
