@@ -1690,6 +1690,11 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         discount: true,
         addonPrices: true,
         insuranceTotalPrice: true,
+        private_payed: true,
+        privatePrice: true,
+        insurance_payed: true,
+        paymnentType: true,
+        vatRate: true,
         bezahlt: true,
         orderStatus: true,
         orderCategory: true,
@@ -1722,6 +1727,16 @@ export const getPriceDetails = async (req: Request, res: Response) => {
             vat_country: true,
           },
         },
+        partner: {
+          select: {
+            accountInfos: {
+              select: {
+                vat_country: true,
+              },
+            },
+          },
+        },
+       
       },
     });
 
