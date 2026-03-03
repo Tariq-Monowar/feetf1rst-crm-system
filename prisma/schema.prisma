@@ -2999,6 +2999,7 @@ model prescription {
   prescription_number  String?
   doctor_location      String?
   establishment_number String? // LANR
+  practice_number      String?
 
   proved_number     String? //  PeNr
   referencen_number String? // Rezeptnummer

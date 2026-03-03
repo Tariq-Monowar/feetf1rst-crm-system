@@ -6,6 +6,22 @@ Each row in the response is either **insole** (`customerOrders`) or **shoes** (`
 
 ---
 
+## Database ↔ External (Excel / excl) – Prescription create/update
+
+When **creating or updating prescriptions** (POST/PUT), the API accepts both **database field names** and **external names**:
+
+| External (excl) | Database field        | Notes |
+|-----------------|------------------------|--------|
+| **PeNr**        | `proved_number`        | Same value, either name accepted. |
+| **Datum**       | `prescription_date`    | ISO date or month/year (e.g. `03.2026`, `2026-03`). |
+| **ABZR**        | `prescription_date`    | Time like month and year → mapped to `prescription_date` (first of month). |
+| **Meldung**     | `insurance_provider`   | Same value, either name accepted. |
+| **Patient**     | customer (vorname/nachname) | If **Patient** is sent instead of **customerId**, the customer is resolved by matching **vorname** or **nachname** (case-insensitive). If exactly one customer matches, that customer is used. |
+
+- **Patient**: Customer name = `vorname` and `nachname`. If either matches the given **Patient** string, that customer is used (one match). Prefer **customerId** when you know it to avoid ambiguity when multiple customers share the same first or last name.
+
+---
+
 ## Table header → API field mapping
 
 | # | Table header (Intake) | API path in response | Schema source | In API? |
@@ -14,13 +30,13 @@ Each row in the response is either **insole** (`customerOrders`) or **shoes** (`
 | 2 | **ReNrOD** / Rezeptnummer | `data[].prescription.referencen_number` | `prescription.referencen_number` (Rezeptnummer) | ✅ Yes |
 | 3 | **Filiale** (branch) | — | Insole: `customerOrders.geschaeftsstandort` (Json). Shoes: `shoe_order.branch_location` / `store_location` (Json) | ❌ No |
 | 4 | **Datum** | `data[].prescription.prescription_date` or `data[].createdAt` | `prescription.prescription_date`; order `createdAt` | ✅ Yes (prescription_date + createdAt) |
-| 5 | **ABZR** | — | Not in schema | ❌ No |
+| 5 | **ABZR** | `data[].prescription.prescription_date` (month/year) | Input: map to `prescription_date`. Output: same as Datum. | ✅ Input + output |
 | 6 | **VoNr** | `data[].orderNumber` (possible match) | `customerOrders.orderNumber` / `shoe_order.orderNumber` | ✅ Yes (as order number) |
 | 7 | **FallNr** | — | Not clearly in schema | ❌ No |
 | 8 | **Statistik** | — | Not in schema | ❌ No |
 | 9 | **Versicherter** (insured) | `data[].customer` (vorname, nachname, telefon) | `customers` via relation | ✅ Yes (customer) |
 | 10 | **Patient** | Same as Versicherter: `data[].customer` | Same | ✅ Yes (customer) |
-| 11 | **Meldung** | — | Not in schema | ❌ No |
+| 11 | **Meldung** | `data[].prescription.insurance_provider` | `prescription.insurance_provider` | ✅ Yes |
 | 12 | **Korr.-Beschreibung** | — | Not in schema | ❌ No |
 | 13 | **Korr.-Code** | — | Not in schema | ❌ No |
 | 14 | **Belegverbleib (BV) Beschreibung** | — | Could map to prescription notes / type; not explicitly in response | ❌ No |

@@ -7,11 +7,11 @@ const prisma = new PrismaClient();
 /** Tolerance for price comparison (Excel vs DB) */
 const PRICE_TOLERANCE = 0.01;
 
-/** Possible Excel header names (case-insensitive) for order number */
+/** Possible Excel header names (case-insensitive) for order number. Prefer actual order # (Auftragsnummer) over VoNr/ReNr/PeNr. */
 const ORDER_NUMBER_HEADERS = [
+  "auftragsnummer",
   "ordernumber",
   "order_number",
-  "auftragsnummer",
   "nr",
   "nr.",
   "order no",
@@ -22,8 +22,8 @@ const ORDER_NUMBER_HEADERS = [
   "fallnummer",
   "renrod",
   "rechnungsnummer",
-  "penr",
   "renr",
+  "penr",
 ];
 const TYPE_HEADERS = ["type", "art", "typ", "order type"];
 const PRICE_HEADERS = [
@@ -37,6 +37,17 @@ const PRICE_HEADERS = [
   "summe",
   "abgerechnet",
 ];
+/** Excel: Meldung → prescription.insurance_provider */
+const MELDUNG_HEADERS = ["meldung", "insurance_provider", "krankenkasse", "kk"];
+/** Excel: Korr.-Beschreibung fallback for insurance provider (e.g. "aok bayern") */
+const INSURANCE_PROVIDER_HEADERS = [
+  "korrbeschreibung",
+  "beschreibung",
+];
+/** Excel: Patient (e.g. "3344556677 Mustermann, Max") → strip number, match customer vorname/nachname */
+const PATIENT_HEADERS = ["patient", "patientname", "name", "kunde", "customer"];
+/** Excel: MwSt 20% → customerOrders.vatRate / shoe_order.vat_rate */
+const MWST_HEADERS = ["mwst", "mwst.", "vat", "ust", "steuersatz"];
 
 const INSURANCE_STATUSES = ["pending", "approved", "rejected"] as const;
 
@@ -156,6 +167,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
           private_payed: true,
           insurance_status: true,
           createdAt: true,
+          vatRate: true,
           prescription: {
             select: {
               id: true,
@@ -169,6 +181,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
               prescription_date: true,
               validity_weeks: true,
               establishment_number: true,
+              practice_number: true,
               aid_code: true,
             },
           },
@@ -196,6 +209,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
           insurance_price: true,
           private_payed: true,
           insurance_status: true,
+          vat_rate: true,
           createdAt: true,
           updatedAt: true,
           prescription: {
@@ -210,6 +224,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
               prescription_date: true,
               validity_weeks: true,
               establishment_number: true,
+              practice_number: true,
               aid_code: true,
             },
           },
@@ -238,6 +253,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
       insuranceTotalPrice: order.insurance_price,
       private_payed: order.private_payed,
       insurance_status: order.insurance_status,
+      vatRate: order.vat_rate,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       prescription: order.prescription,
@@ -359,6 +375,55 @@ function excelHeaderKey(str: string): string {
     .replace(/[^\w]/g, "");
 }
 
+/**
+ * Parse Excel Patient / Meldung cell.
+ * Formats: "3344556677 Mustermann, Max" (id + "Nachname, Vorname") or "23232432, test vorname, test nachname" (id, vorname, nachname).
+ */
+function parsePatientName(patientRaw: string | number | undefined): {
+  nachname: string;
+  vorname: string;
+} | null {
+  const s = String(patientRaw ?? "").trim();
+  if (!s) return null;
+  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+  // "23232432, test vorname, test nachname" → id, vorname, nachname
+  if (parts.length >= 3) {
+    return { vorname: parts[1], nachname: parts[2] };
+  }
+  // "3344556677 Mustermann, Max" or "Mustermann, Max" → strip leading digits, then Nachname, Vorname
+  const withoutLeadingNumber = s.replace(/^\d[\d\s]*/, "").trim();
+  const namePart = withoutLeadingNumber || s;
+  const commaIdx = namePart.indexOf(",");
+  if (commaIdx >= 0) {
+    const nachname = namePart.slice(0, commaIdx).trim();
+    const vorname = namePart.slice(commaIdx + 1).trim();
+    return { nachname, vorname };
+  }
+  const spaceParts = namePart.split(/\s+/).filter(Boolean);
+  if (spaceParts.length >= 2) {
+    return { nachname: spaceParts[0], vorname: spaceParts.slice(1).join(" ") };
+  }
+  if (spaceParts.length === 1) return { nachname: spaceParts[0], vorname: "" };
+  return null;
+}
+
+/** Normalize for name comparison (lowercase, collapse spaces). */
+function normalizeName(s: string | null | undefined): string {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/** Parse MwSt from Excel e.g. "20%", "20", "0.2" → 20 (percentage) or 0.2 (decimal). */
+function parseMwStValue(mwstRaw: string | number | undefined): number | null {
+  if (mwstRaw === undefined || mwstRaw === null) return null;
+  const s = String(mwstRaw).replace(/,/g, ".").replace(/%/g, "").trim();
+  const n = parseFloat(s);
+  if (Number.isNaN(n)) return null;
+  return n;
+}
+
 /** Get value from row by trying possible header names */
 function getExcelValue(
   row: Record<string, unknown>,
@@ -385,7 +450,17 @@ function parseChangelogSheet(
   }) as unknown[][];
   if (!raw.length) return [];
 
-  const headerCandidates = ["betrag", "penr", "renrod", "vonr", "filiale"];
+  const headerCandidates = [
+    "betrag",
+    "penr",
+    "renrod",
+    "vonr",
+    "filiale",
+    "meldung",
+    "patient",
+    "mwst",
+    "korrbeschreibung",
+  ];
   let headerRowIndex = 0;
   for (let r = 0; r < Math.min(3, raw.length); r++) {
     const row = raw[r] as unknown[];
@@ -421,6 +496,7 @@ const INSURANCE_INSOLE_SELECT = {
   paymnentType: true,
   totalPrice: true,
   insuranceTotalPrice: true,
+  vatRate: true,
   private_payed: true,
   insurance_status: true,
   createdAt: true,
@@ -456,6 +532,7 @@ const INSURANCE_SHOE_SELECT = {
   payment_type: true,
   total_price: true,
   insurance_price: true,
+  vat_rate: true,
   private_payed: true,
   insurance_status: true,
   createdAt: true,
@@ -493,6 +570,7 @@ function toInsuranceOrderShape(shoe: any) {
     paymnentType: shoe.payment_type,
     totalPrice: shoe.total_price,
     insuranceTotalPrice: shoe.insurance_price,
+    vatRate: shoe.vat_rate,
     private_payed: shoe.private_payed,
     insurance_status: shoe.insurance_status,
     createdAt: shoe.createdAt,
@@ -509,6 +587,7 @@ type ChangelogOrderShape = {
   paymnentType: string | null;
   totalPrice: number | null;
   insuranceTotalPrice: number | null;
+  vatRate: number | null;
   private_payed: boolean | null;
   insurance_status: string | null;
   createdAt: Date;
@@ -551,7 +630,14 @@ export const validateInsuranceChangelog = async (
       });
     }
 
-    const partnerId = req.user?.partnerId as string | undefined;
+    // Optional partnerId from query/body (for ADMIN/EMPLOYEE selecting a partner); else use current user's partner/id
+    const partnerIdFromRequest =
+      (req.query.partnerId as string) ||
+      (req.body?.partnerId as string) ||
+      undefined;
+    const partnerId = (partnerIdFromRequest?.trim() || req.user?.partnerId) as
+      | string
+      | undefined;
     const userId = req.user?.id;
 
     type ApprovedItem = {
@@ -566,6 +652,9 @@ export const validateInsuranceChangelog = async (
       reason:
         | "ORDER_NOT_FOUND"
         | "PRICE_MISMATCH"
+        | "MELDUNG_MISMATCH"
+        | "PATIENT_MISMATCH"
+        | "MWST_MISMATCH"
         | "NOT_INSURANCE_ORDER"
         | "INVALID_ROW";
       message: string;
@@ -583,6 +672,10 @@ export const validateInsuranceChangelog = async (
       const orderNumberRaw = getExcelValue(row, ORDER_NUMBER_HEADERS);
       const typeRaw = getExcelValue(row, TYPE_HEADERS);
       const priceRaw = getExcelValue(row, PRICE_HEADERS);
+      const meldungRaw = getExcelValue(row, MELDUNG_HEADERS);
+      const insuranceProviderRaw = getExcelValue(row, INSURANCE_PROVIDER_HEADERS);
+      const patientRaw = getExcelValue(row, PATIENT_HEADERS);
+      const mwstRaw = getExcelValue(row, MWST_HEADERS);
 
       const orderNumber =
         typeof orderNumberRaw === "number"
@@ -602,13 +695,14 @@ export const validateInsuranceChangelog = async (
         betrag: Number.isNaN(excelPrice) ? null : excelPrice,
       });
 
-      if (Number.isNaN(orderNumber)) {
+      // Match by price (Betrag) only. Betrag must be valid and > 0 (we do not match zero-price orders).
+      if (Number.isNaN(excelPrice) || excelPrice <= 0) {
         rejected.push({
           rowIndex: i + 1,
-          orderNumber: null,
+          orderNumber: Number.isNaN(orderNumber) ? null : orderNumber,
           type: null,
           reason: "INVALID_ROW",
-          message: "Order number missing or invalid in Excel",
+          message: "Betrag (price) missing, zero, or invalid in Excel; cannot match.",
           excelData: cleanExcelData(),
         });
         continue;
@@ -628,15 +722,16 @@ export const validateInsuranceChangelog = async (
         wantShoe = true;
       }
 
+      const priceMin = excelPrice - PRICE_TOLERANCE;
+      const priceMax = excelPrice + PRICE_TOLERANCE;
+      // Only match orders with real insurance amount (Betrag); exclude 0.
       const insoleWhere: any = {
-        orderNumber,
         paymnentType: { in: ["broth", "insurance"] },
-        insuranceTotalPrice: { not: null },
+        insuranceTotalPrice: { gt: 0, gte: priceMin, lte: priceMax },
       };
       const shoeWhere: any = {
-        orderNumber,
         payment_type: { in: ["insurance", "broth"] },
-        insurance_price: { not: null },
+        insurance_price: { gt: 0, gte: priceMin, lte: priceMax },
       };
       if (partnerId) {
         insoleWhere.partnerId = partnerId;
@@ -682,69 +777,170 @@ export const validateInsuranceChangelog = async (
         }
       }
 
+      // If no match and we filtered by partner, try again without partner (search all partners)
+      if (
+        !matched &&
+        (insoleWhere.partnerId || shoeWhere.partnerId)
+      ) {
+        const insoleWhereAny: any = {
+          paymnentType: { in: ["broth", "insurance"] },
+          insuranceTotalPrice: { gt: 0, gte: priceMin, lte: priceMax },
+        };
+        const shoeWhereAny: any = {
+          payment_type: { in: ["insurance", "broth"] },
+          insurance_price: { gt: 0, gte: priceMin, lte: priceMax },
+        };
+        if (wantInsole) {
+          const insoleOrder = await prisma.customerOrders.findFirst({
+            where: insoleWhereAny,
+            select: { id: true, orderNumber: true, insuranceTotalPrice: true },
+          });
+          if (insoleOrder && insoleOrder.insuranceTotalPrice != null) {
+            matched = {
+              id: insoleOrder.id,
+              orderNumber: insoleOrder.orderNumber,
+              type: "insole",
+              dbPrice: insoleOrder.insuranceTotalPrice,
+            };
+          }
+        }
+        if (!matched && wantShoe) {
+          const shoeOrder = await prisma.shoe_order.findFirst({
+            where: shoeWhereAny,
+            select: { id: true, orderNumber: true, insurance_price: true },
+          });
+          if (shoeOrder && shoeOrder.insurance_price != null) {
+            matched = {
+              id: shoeOrder.id,
+              orderNumber: shoeOrder.orderNumber ?? 0,
+              type: "shoes",
+              dbPrice: shoeOrder.insurance_price,
+            };
+          }
+        }
+      }
+
       if (!matched) {
+        const scopeMsg =
+          partnerId || userId
+            ? " for your partner"
+            : " (searched all partners)";
         rejected.push({
           rowIndex: i + 1,
-          orderNumber,
+          orderNumber: Number.isNaN(orderNumber) ? null : orderNumber,
           type: wantInsole && wantShoe ? null : wantInsole ? "insole" : "shoes",
           reason: "ORDER_NOT_FOUND",
-          message:
-            "No matching insurance order found for this order number (and type)",
-          excelPrice: Number.isNaN(excelPrice) ? undefined : excelPrice,
-          excelData: cleanExcelData(),
-        });
-        continue;
-      }
-
-      if (Number.isNaN(excelPrice)) {
-        const fullOrder = await fetchFullOrderForChangelog(
-          matched.id,
-          matched.type,
-        );
-        rejected.push({
-          rowIndex: i + 1,
-          orderNumber: matched.orderNumber,
-          type: matched.type,
-          reason: "PRICE_MISMATCH",
-          message: "Price missing or invalid in Excel; cannot confirm match",
-          dbPrice: matched.dbPrice,
-          order: fullOrder ?? undefined,
-          excelData: cleanExcelData(),
-        });
-        continue;
-      }
-
-      const priceDiff = Math.abs(excelPrice - matched.dbPrice);
-      if (priceDiff > PRICE_TOLERANCE) {
-        const fullOrder = await fetchFullOrderForChangelog(
-          matched.id,
-          matched.type,
-        );
-        rejected.push({
-          rowIndex: i + 1,
-          orderNumber: matched.orderNumber,
-          type: matched.type,
-          reason: "PRICE_MISMATCH",
-          message: `Excel price (${excelPrice}) does not match database price (${matched.dbPrice})`,
+          message: `No insurance order found with Betrag ${excelPrice}${scopeMsg}. Match is by price only.`,
           excelPrice,
-          dbPrice: matched.dbPrice,
-          order: fullOrder ?? undefined,
           excelData: cleanExcelData(),
         });
         continue;
       }
 
+      // Matched by price (Betrag). Fetch full order and run Meldung/Patient/MwSt checks.
       const fullOrder = await fetchFullOrderForChangelog(
         matched.id,
         matched.type,
       );
-      if (fullOrder) {
-        approved.push({
-          rowIndex: i + 1,
-          excelPrice,
-          order: fullOrder,
-        });
+      if (!fullOrder) continue;
+
+      // 1. Meldung → prescription.insurance_provider (or Korr.-Beschreibung as fallback)
+      const excelMeldung =
+        meldungRaw !== undefined &&
+        meldungRaw !== null &&
+        String(meldungRaw).trim() !== ""
+          ? normalizeName(String(meldungRaw))
+          : insuranceProviderRaw !== undefined &&
+              insuranceProviderRaw !== null &&
+              String(insuranceProviderRaw).trim() !== ""
+            ? normalizeName(String(insuranceProviderRaw))
+            : null;
+      if (excelMeldung) {
+        const dbProvider = normalizeName(
+          fullOrder.prescription?.insurance_provider,
+        );
+        if (
+          !dbProvider ||
+          (!dbProvider.includes(excelMeldung) && !excelMeldung.includes(dbProvider))
+        ) {
+          rejected.push({
+            rowIndex: i + 1,
+            orderNumber: matched.orderNumber,
+            type: matched.type,
+            reason: "MELDUNG_MISMATCH",
+            message: `Excel Meldung does not match prescription.insurance_provider (DB: ${fullOrder.prescription?.insurance_provider ?? "—"})`,
+            excelPrice,
+            dbPrice: matched.dbPrice,
+            order: fullOrder,
+            excelData: cleanExcelData(),
+          });
+          continue;
+        }
       }
+
+      // 2. Patient (e.g. "3344556677 Mustermann, Max") → strip number, match customer vorname/nachname
+      const excelPatient = parsePatientName(patientRaw);
+      if (excelPatient && (excelPatient.nachname || excelPatient.vorname)) {
+        const dbNachname = normalizeName(fullOrder.customer?.nachname);
+        const dbVorname = normalizeName(fullOrder.customer?.vorname);
+        const wantNachname = normalizeName(excelPatient.nachname);
+        const wantVorname = normalizeName(excelPatient.vorname);
+        const nachnameMatch =
+          !wantNachname || dbNachname === wantNachname || dbNachname.includes(wantNachname) || wantNachname.includes(dbNachname);
+        const vornameMatch =
+          !wantVorname || dbVorname === wantVorname || dbVorname.includes(wantVorname) || wantVorname.includes(dbVorname);
+        if (!nachnameMatch || !vornameMatch) {
+          rejected.push({
+            rowIndex: i + 1,
+            orderNumber: matched.orderNumber,
+            type: matched.type,
+            reason: "PATIENT_MISMATCH",
+            message: `Excel Patient does not match customer (DB: ${fullOrder.customer?.nachname ?? ""}, ${fullOrder.customer?.vorname ?? ""})`,
+            excelPrice,
+            dbPrice: matched.dbPrice,
+            order: fullOrder,
+            excelData: cleanExcelData(),
+          });
+          continue;
+        }
+      }
+
+      // 3. MwSt 20% = customerOrders.vatRate | shoe_order.vat_rate
+      const excelMwst = parseMwStValue(mwstRaw);
+      if (excelMwst !== null) {
+        const dbVat = (fullOrder as any).vatRate;
+        const dbVatNum =
+          typeof dbVat === "number" ? dbVat : parseFloat(String(dbVat ?? ""));
+        const dbVatPct = !Number.isNaN(dbVatNum)
+          ? dbVatNum <= 1
+            ? dbVatNum * 100
+            : dbVatNum
+          : null;
+        const excelPct = excelMwst <= 1 ? excelMwst * 100 : excelMwst;
+        if (
+          dbVatPct === null ||
+          Math.abs(dbVatPct - excelPct) > 0.5
+        ) {
+          rejected.push({
+            rowIndex: i + 1,
+            orderNumber: matched.orderNumber,
+            type: matched.type,
+            reason: "MWST_MISMATCH",
+            message: `Excel MwSt (${excelMwst}%) does not match order vat (DB: ${dbVat ?? "—"})`,
+            excelPrice,
+            dbPrice: matched.dbPrice,
+            order: fullOrder,
+            excelData: cleanExcelData(),
+          });
+          continue;
+        }
+      }
+
+      approved.push({
+        rowIndex: i + 1,
+        excelPrice,
+        order: fullOrder,
+      });
     }
 
     return res.status(200).json({
