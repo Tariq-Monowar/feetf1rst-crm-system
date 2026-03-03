@@ -229,6 +229,7 @@ export const createOrder = async (req: Request, res: Response) => {
       privatePrice: privatePriceFromBody,
       key,
       totalPrice: totalPriceFromClient,
+      vat_rate,
     } = body;
     const privetSupply = key;
 
@@ -332,6 +333,11 @@ export const createOrder = async (req: Request, res: Response) => {
       material: true,
       diagnosis_status: true,
       storeId: true,
+      supplyStatus: {
+        select: {
+          vatRate: true,
+        },
+      },
     };
 
     const fourWeeksAgo = new Date();
@@ -505,9 +511,21 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, msg);
     }
 
+    // Explicit VAT from client (overrides supplyStatus vatRate if provided)
+    const explicitVatRate =
+      vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
+        ? Number(vat_rate)
+        : undefined;
+
     // STEP 3: Use totalPrice from client without recalculation
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
+
+    const orderVatRate: number | undefined =
+      explicitVatRate ??
+      (typeof versorgung?.supplyStatus?.vatRate === "number"
+        ? versorgung.supplyStatus.vatRate
+        : undefined);
 
     const footLengthMm = Math.max(
       Number(customer.fusslange1),
@@ -622,6 +640,9 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.store = { connect: { id: versorgung.storeId } };
       if (finalEmployeeId)
         orderData.employee = { connect: { id: finalEmployeeId } };
+      if (orderVatRate != null) {
+        orderData.vatRate = orderVatRate;
+      }
       if (validPrescription?.id)
         orderData.prescription = { connect: { id: validPrescription.id } };
       if (fussanalysePreis != null)
