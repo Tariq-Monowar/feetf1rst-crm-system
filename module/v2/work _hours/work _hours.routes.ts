@@ -12,6 +12,7 @@ import {
 const router = express.Router();
 
 /*
+ *---------PARTNER-----------
  * create work type
  * get all work types
  * get single work type
@@ -24,5 +25,12 @@ router.get("/work-type/get-all", verifyUser("ANY"), getAllWorkTypes);
 router.get("/work-type/get-details/:id", verifyUser("ANY"), getWorkTypeDetailsById);
 router.patch("/work-type/update/:id", verifyUser("PARTNER"), upload.single("image"), updateWorkType);
 router.delete("/work-type/delete/:id", verifyUser("PARTNER"), deleteWorkType);
+
+/*
+ *---------EMPLOYEE-----------
+ * get all work types
+ * get single work type
+ */
+ 
 
 export default router;

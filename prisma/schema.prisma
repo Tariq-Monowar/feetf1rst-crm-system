@@ -632,6 +632,7 @@ model customers {
   customModels             custom_models[]
   adminOrderTransitions    admin_order_transitions[]
   shoeOrders               shoe_order[]
+  prescriptions            prescription[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
@@ -1784,7 +1785,8 @@ model shoe_order {
   bedding_required Boolean?
 
   supply_note String?
-  insurances  shoe_order_insurance[]
+
+  insurances shoe_order_insurance[]
 
   // -- RELATIONS
   customerId String?
@@ -1797,7 +1799,7 @@ model shoe_order {
 
   //relation with employee
 
-  status   String?   @default("Auftragserstellung")
+  status String? @default("Auftragserstellung")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2103,6 +2105,12 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2126,6 +2134,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2931,5 +2945,42 @@ model work_hours {
 
   @@index([employeeId])
   @@index([workTypeId])
+  @@index([createdAt])
+}
+
+model prescription {
+  id String @id @default(cuid())
+
+  customerId String
+  customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  //Insurance data
+  insurance_provider String? // "AOK Bayern"
+  insurance_number   String? // "1234567890"
+  prescription_date  DateTime?
+
+  //Doctor's information
+  practice_number      String? // BSNR
+  doctor_location      String?
+  doctor_name          String?
+  establishment_number String? // LANR
+
+  // Medical data
+  medical_diagnosis String?
+  type_of_deposit   String? // Art der Einlage
+  validity_weeks    Int?    @default(4)
+
+  //Cash register and status data
+  cost_bearer_id String?
+  status_number  String?
+  aid_code       String? // BVH / Hilfsmittel / ... / Code
+
+  //chek list
+  is_work_accident Boolean @default(false)
+
+  // Recipe information
+  createdAt DateTime? @default(now())
+
+  @@index([customerId])
   @@index([createdAt])
 }
