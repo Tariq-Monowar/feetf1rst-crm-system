@@ -287,15 +287,7 @@ export const createOrder = async (req: Request, res: Response) => {
             `insurances[${i}] must contain at least price or description`,
           );
       }
-      const partner = await prisma.user.findUnique({
-        where: { id: partnerId },
-        select: { accountInfos: { select: { vat_country: true } } },
-      });
-      if (!partner) return bad(400, "Partner not found");
-      const acc = partner.accountInfos?.find((a: any) => a.vat_country);
-      if (!acc?.vat_country)
-        return bad(400, "Please set the vat country in your account info");
-      vat_country = acc.vat_country;
+      // vat_country is set from partnerForVat after the parallel fetch below
     }
 
     let normalizedInsoleStandards: any[] = [];
@@ -342,47 +334,64 @@ export const createOrder = async (req: Request, res: Response) => {
       storeId: true,
     };
 
-    const [screenerFile, customer, rawShadowOrVersorgung] = await Promise.all([
-      screenerId
-        ? prisma.screener_file.findUnique({
-            where: { id: screenerId },
-            select: { id: true },
-          })
-        : null,
-      prisma.customers.findUnique({
-        where: { id: customerId },
-        select: {
-          fusslange1: true,
-          fusslange2: true,
-          fussbreite1: true,
-          fussbreite2: true,
-          kugelumfang1: true,
-          kugelumfang2: true,
-          rist1: true,
-          rist2: true,
-        },
-      }),
-      privetSupply
-        ? redis.get(privetSupply)
-        : prisma.versorgungen.findUnique({
-            where: { id: versorgungId },
-            select: vSelect,
-          }),
-    ]);
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    const needPartnerVat =
+      bezahlt === "Krankenkasse_Genehmigt" ||
+      bezahlt === "Krankenkasse_Ungenehmigt";
+
+    const [screenerFile, customer, rawShadowOrVersorgung, validPrescription, partnerForVat] =
+      await Promise.all([
+        screenerId
+          ? prisma.screener_file.findUnique({
+              where: { id: screenerId },
+              select: { id: true },
+            })
+          : null,
+        prisma.customers.findUnique({
+          where: { id: customerId },
+          select: {
+            fusslange1: true,
+            fusslange2: true,
+            fussbreite1: true,
+            fussbreite2: true,
+            kugelumfang1: true,
+            kugelumfang2: true,
+            rist1: true,
+            rist2: true,
+          },
+        }),
+        privetSupply
+          ? redis.get(privetSupply)
+          : prisma.versorgungen.findUnique({
+              where: { id: versorgungId },
+              select: vSelect,
+            }),
+        prisma.prescription.findFirst({
+          where: {
+            customerId,
+            prescription_date: { gte: fourWeeksAgo, not: null },
+          },
+          orderBy: { prescription_date: "desc" },
+          select: { id: true },
+        }),
+        needPartnerVat
+          ? prisma.user.findUnique({
+              where: { id: partnerId },
+              select: { accountInfos: { select: { vat_country: true } } },
+            })
+          : Promise.resolve(null),
+      ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
 
-    // Latest prescription for customer: only if prescription_date is not older than 4 weeks
-    const fourWeeksAgo = new Date();
-    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-    const validPrescription = await prisma.prescription.findFirst({
-      where: {
-        customerId,
-        prescription_date: { gte: fourWeeksAgo, not: null },
-      },
-      orderBy: { prescription_date: "desc" },
-      select: { id: true },
-    });
+    if (needPartnerVat) {
+      if (!partnerForVat) return bad(400, "Partner not found");
+      const acc = partnerForVat.accountInfos?.find((a: any) => a.vat_country);
+      if (!acc?.vat_country)
+        return bad(400, "Please set the vat country in your account info");
+      vat_country = acc.vat_country;
+    }
 
     // When no screenerId, customer must have foot data to create order
     if (!screenerId) {
@@ -422,13 +431,39 @@ export const createOrder = async (req: Request, res: Response) => {
           "Shadow supply customer does not match order customerId",
         );
 
-      if (shadow.storeId) {
-        const storeFromDb = await prisma.stores.findUnique({
-          where: { id: shadow.storeId },
-          select: { id: true, groessenMengen: true, type: true },
-        });
-        if (!storeFromDb)
-          return bad(404, "Store not found for this private supply");
+      const createData: any = {
+        name: shadow.name,
+        rohlingHersteller: shadow.rohlingHersteller ?? "",
+        artikelHersteller: shadow.artikelHersteller ?? "",
+        versorgung: shadow.versorgung,
+        material: Array.isArray(shadow.material) ? shadow.material : [],
+        diagnosis_status: Array.isArray(shadow.diagnosis_status)
+          ? shadow.diagnosis_status
+          : [],
+        supplyType: "private",
+      };
+      if (shadow.partnerId)
+        createData.partner = { connect: { id: shadow.partnerId } };
+      if (shadow.storeId)
+        createData.store = { connect: { id: shadow.storeId } };
+      if (shadow.supplyStatusId)
+        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
+
+      const [storeFromDb, createdVersorgung] = await Promise.all([
+        shadow.storeId
+          ? prisma.stores.findUnique({
+              where: { id: shadow.storeId },
+              select: { id: true, groessenMengen: true, type: true },
+            })
+          : Promise.resolve(null),
+        prisma.versorgungen.create({
+          data: createData,
+          select: vSelect,
+        }),
+      ]);
+      versorgung = createdVersorgung;
+
+      if (storeFromDb) {
         const gm = storeFromDb.groessenMengen;
         if (!gm || typeof gm !== "object" || !Object.keys(gm).length)
           return bad(
@@ -451,29 +486,9 @@ export const createOrder = async (req: Request, res: Response) => {
               "No matching size in store for this customer's foot length. Add a suitable size or choose another store.",
             );
         }
+      } else if (shadow.storeId) {
+        return bad(404, "Store not found for this private supply");
       }
-
-      const createData: any = {
-        name: shadow.name,
-        rohlingHersteller: shadow.rohlingHersteller ?? "",
-        artikelHersteller: shadow.artikelHersteller ?? "",
-        versorgung: shadow.versorgung,
-        material: Array.isArray(shadow.material) ? shadow.material : [],
-        diagnosis_status: Array.isArray(shadow.diagnosis_status)
-          ? shadow.diagnosis_status
-          : [],
-        supplyType: "private",
-      };
-      if (shadow.partnerId)
-        createData.partner = { connect: { id: shadow.partnerId } };
-      if (shadow.storeId)
-        createData.store = { connect: { id: shadow.storeId } };
-      if (shadow.supplyStatusId)
-        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
-      versorgung = await prisma.versorgungen.create({
-        data: createData,
-        select: vSelect,
-      });
     } else {
       versorgung = rawShadowOrVersorgung;
       if (!versorgung) return bad(404, "Versorgung not found");

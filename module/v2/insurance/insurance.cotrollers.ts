@@ -17,8 +17,20 @@ export const getInsuranceList = async (req: Request, res: Response) => {
         paymnentType: true,
         totalPrice: true,
         insuranceTotalPrice: true,
+        private_payed: true,
         createdAt: true,
-        updatedAt: true,
+        prescription: {
+          select: {
+            id: true,
+            prescription_number: true,
+            PeNr: true,
+            referencen_number: true,
+            doctor_name: true,
+            doctor_location: true,
+            prescription_date: true,
+            validity_weeks: true,
+          },
+        },
       },
     });
 
@@ -36,6 +48,18 @@ export const getInsuranceList = async (req: Request, res: Response) => {
         insurance_price: true,
         createdAt: true,
         updatedAt: true,
+        prescription: {
+          select: {
+            id: true,
+            prescription_number: true,
+            PeNr: true,
+            referencen_number: true,
+            doctor_name: true,
+            doctor_location: true,
+            prescription_date: true,
+            validity_weeks: true,
+          },
+        },
       },
     });
 

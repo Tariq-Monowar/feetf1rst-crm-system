@@ -11,6 +11,8 @@ export const createPrescription = async (req: Request, res: Response) => {
       insurance_number,
       prescription_date,
       prescription_number,
+      proved_number,
+      referencen_number,
       doctor_location,
       doctor_name,
       establishment_number,
@@ -56,6 +58,8 @@ export const createPrescription = async (req: Request, res: Response) => {
           ? new Date(prescription_date)
           : undefined,
         prescription_number: prescription_number ?? undefined,
+        proved_number: proved_number ?? undefined,
+        referencen_number: referencen_number ?? undefined,
         doctor_location: doctor_location ?? undefined,
         doctor_name: doctor_name ?? undefined,
         establishment_number: establishment_number ?? undefined,
@@ -95,6 +99,8 @@ export const updatePrescription = async (req: Request, res: Response) => {
       insurance_number,
       prescription_date,
       prescription_number,
+      proved_number,
+      referencen_number,
       doctor_location,
       doctor_name,
       establishment_number,
@@ -129,6 +135,9 @@ export const updatePrescription = async (req: Request, res: Response) => {
       updateData.prescription_date = new Date(prescription_date);
     if (prescription_number !== undefined)
       updateData.prescription_number = prescription_number;
+    if (proved_number !== undefined) updateData.PeNr = proved_number;
+    if (referencen_number !== undefined)
+      updateData.referencen_number = referencen_number;
     if (doctor_location !== undefined)
       updateData.doctor_location = doctor_location;
     if (doctor_name !== undefined) updateData.doctor_name = doctor_name;
@@ -301,6 +310,8 @@ export const getAllPrescriptions = async (req: Request, res: Response) => {
         insurance_number: true,
         medical_diagnosis: true,
         prescription_date: true,
+        proved_number: true,
+        referencen_number: true,
         validity_weeks: true,
         createdAt: true,
       },

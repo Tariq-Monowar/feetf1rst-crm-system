@@ -2981,10 +2981,13 @@ model prescription {
   prescription_date  DateTime?
 
   //Doctor's information
-  prescription_number  String? // BSNR
-  doctor_location      String?
   doctor_name          String?
+  prescription_number  String?
+  doctor_location      String?
   establishment_number String? // LANR
+
+  proved_number String? //  PeNr
+  referencen_number String? // Rezeptnummer
 
   // Medical data
   medical_diagnosis String?
