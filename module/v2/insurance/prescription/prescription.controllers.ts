@@ -126,7 +126,8 @@ export const updatePrescription = async (req: Request, res: Response) => {
     }
 
     const updateData: Record<string, unknown> = {};
-    if (customerId !== undefined) updateData.customerId = customerId;
+    if (customerId !== undefined)
+      updateData.customer = { connect: { id: customerId } };
     if (insurance_provider !== undefined)
       updateData.insurance_provider = insurance_provider;
     if (insurance_number !== undefined)
@@ -135,7 +136,7 @@ export const updatePrescription = async (req: Request, res: Response) => {
       updateData.prescription_date = new Date(prescription_date);
     if (prescription_number !== undefined)
       updateData.prescription_number = prescription_number;
-    if (proved_number !== undefined) updateData.PeNr = proved_number;
+    if (proved_number !== undefined) updateData.proved_number = proved_number;
     if (referencen_number !== undefined)
       updateData.referencen_number = referencen_number;
     if (doctor_location !== undefined)
@@ -252,11 +253,21 @@ export const getAllPrescriptions = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string | undefined;
     const customerId = req.query.customerId as string | undefined;
+    const prescriptionDate3Week = (
+      (req.query.prescription_date_3week ?? req.query.prescriptionDate3Week) as string
+    )?.toLowerCase();
 
     const whereCondition: Record<string, unknown> = {};
 
     if (customerId && customerId.trim()) {
       whereCondition.customerId = customerId.trim();
+    }
+
+    // Only prescriptions whose prescription_date is not older than 3 weeks
+    if (prescriptionDate3Week === "yes") {
+      const threeWeeksAgo = new Date();
+      threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+      whereCondition.prescription_date = { gte: threeWeeksAgo };
     }
 
     if (search && search.trim()) {
@@ -297,6 +308,10 @@ export const getAllPrescriptions = async (req: Request, res: Response) => {
         andParts.unshift({ customerId: whereCondition.customerId });
         delete whereCondition.customerId;
       }
+      if (whereCondition.prescription_date) {
+        andParts.unshift({ prescription_date: whereCondition.prescription_date });
+        delete whereCondition.prescription_date;
+      }
       whereCondition.AND = andParts;
     }
 
@@ -325,6 +340,7 @@ export const getAllPrescriptions = async (req: Request, res: Response) => {
       message: "Prescriptions fetched successfully",
       data,
       hasMore,
+      ...(prescriptionDate3Week === "yes" && { prescription_date_3week: "yes" }),
     });
   } catch (error: any) {
     console.error("Get All Prescriptions Error:", error);
