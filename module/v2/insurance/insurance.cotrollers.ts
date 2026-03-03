@@ -44,7 +44,9 @@ function buildSearchCondition(search: string) {
   const term = search.trim();
   const or: any[] = [
     { customer: { vorname: { contains: term, mode: "insensitive" as const } } },
-    { customer: { nachname: { contains: term, mode: "insensitive" as const } } },
+    {
+      customer: { nachname: { contains: term, mode: "insensitive" as const } },
+    },
     { customer: { telefon: { contains: term, mode: "insensitive" as const } } },
     {
       prescription: {
@@ -157,6 +159,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
           prescription: {
             select: {
               id: true,
+              insurance_number: true,
               insurance_provider: true,
               prescription_number: true,
               proved_number: true,
@@ -244,7 +247,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
 
     const combined = [...insoleData, ...shoeData].sort(
       (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
     const hasMore = combined.length > limit;
     const data = hasMore ? combined.slice(0, limit) : combined;
@@ -359,21 +362,27 @@ function excelHeaderKey(str: string): string {
 /** Get value from row by trying possible header names */
 function getExcelValue(
   row: Record<string, unknown>,
-  possibleKeys: string[]
+  possibleKeys: string[],
 ): string | number | undefined {
   const keys = Object.keys(row).map((k) => excelHeaderKey(k));
   for (const want of possibleKeys) {
     const idx = keys.indexOf(want);
     if (idx === -1) continue;
     const raw = Object.values(row)[idx];
-    if (raw !== undefined && raw !== null && raw !== "") return raw as string | number;
+    if (raw !== undefined && raw !== null && raw !== "")
+      return raw as string | number;
   }
   return undefined;
 }
 
 /** Parse Excel sheet: use row containing "Betrag"/"PeNr" as header row so keys are PeNr, ReNrOD, Betrag, etc. */
-function parseChangelogSheet(worksheet: XLSX.WorkSheet): Record<string, unknown>[] {
-  const raw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as unknown[][];
+function parseChangelogSheet(
+  worksheet: XLSX.WorkSheet,
+): Record<string, unknown>[] {
+  const raw = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: "",
+  }) as unknown[][];
   if (!raw.length) return [];
 
   const headerCandidates = ["betrag", "penr", "renrod", "vonr", "filiale"];
@@ -387,7 +396,9 @@ function parseChangelogSheet(worksheet: XLSX.WorkSheet): Record<string, unknown>
     }
   }
 
-  const headerRow = (raw[headerRowIndex] as unknown[]).map((c) => String(c ?? "").trim() || undefined);
+  const headerRow = (raw[headerRowIndex] as unknown[]).map(
+    (c) => String(c ?? "").trim() || undefined,
+  );
   const dataRows = raw.slice(headerRowIndex + 1).filter((row) => {
     const arr = row as unknown[];
     return arr.some((c) => c !== undefined && c !== null && c !== "");
@@ -512,12 +523,16 @@ type ChangelogOrderShape = {
  * Does NOT update DB. Returns approved/rejected with same order shape as getInsuranceList
  * so frontend can display and later use for add/update.
  */
-export const validateInsuranceChangelog = async (req: Request, res: Response) => {
+export const validateInsuranceChangelog = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     if (!req.file?.buffer) {
       return res.status(400).json({
         success: false,
-        message: "No file uploaded. Use multipart field 'file' with an xlsx file.",
+        message:
+          "No file uploaded. Use multipart field 'file' with an xlsx file.",
       });
     }
 
@@ -548,7 +563,11 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
       rowIndex: number;
       orderNumber: number | null;
       type: "insole" | "shoes" | null;
-      reason: "ORDER_NOT_FOUND" | "PRICE_MISMATCH" | "NOT_INSURANCE_ORDER" | "INVALID_ROW";
+      reason:
+        | "ORDER_NOT_FOUND"
+        | "PRICE_MISMATCH"
+        | "NOT_INSURANCE_ORDER"
+        | "INVALID_ROW";
       message: string;
       excelPrice?: number;
       dbPrice?: number;
@@ -596,8 +615,14 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
       }
 
       const typeStr = String(typeRaw || "").toLowerCase();
-      let wantInsole = typeStr.includes("insole") || typeStr.includes("einlage") || typeStr === "insole";
-      let wantShoe = typeStr.includes("shoe") || typeStr.includes("schuh") || typeStr === "shoes";
+      let wantInsole =
+        typeStr.includes("insole") ||
+        typeStr.includes("einlage") ||
+        typeStr === "insole";
+      let wantShoe =
+        typeStr.includes("shoe") ||
+        typeStr.includes("schuh") ||
+        typeStr === "shoes";
       if (!wantInsole && !wantShoe) {
         wantInsole = true;
         wantShoe = true;
@@ -621,7 +646,12 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
         shoeWhere.partnerId = userId;
       }
 
-      let matched: { id: string; orderNumber: number; type: "insole" | "shoes"; dbPrice: number } | null = null;
+      let matched: {
+        id: string;
+        orderNumber: number;
+        type: "insole" | "shoes";
+        dbPrice: number;
+      } | null = null;
 
       if (wantInsole) {
         const insoleOrder = await prisma.customerOrders.findFirst({
@@ -658,7 +688,8 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
           orderNumber,
           type: wantInsole && wantShoe ? null : wantInsole ? "insole" : "shoes",
           reason: "ORDER_NOT_FOUND",
-          message: "No matching insurance order found for this order number (and type)",
+          message:
+            "No matching insurance order found for this order number (and type)",
           excelPrice: Number.isNaN(excelPrice) ? undefined : excelPrice,
           excelData: cleanExcelData(),
         });
@@ -666,7 +697,10 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
       }
 
       if (Number.isNaN(excelPrice)) {
-        const fullOrder = await fetchFullOrderForChangelog(matched.id, matched.type);
+        const fullOrder = await fetchFullOrderForChangelog(
+          matched.id,
+          matched.type,
+        );
         rejected.push({
           rowIndex: i + 1,
           orderNumber: matched.orderNumber,
@@ -682,7 +716,10 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
 
       const priceDiff = Math.abs(excelPrice - matched.dbPrice);
       if (priceDiff > PRICE_TOLERANCE) {
-        const fullOrder = await fetchFullOrderForChangelog(matched.id, matched.type);
+        const fullOrder = await fetchFullOrderForChangelog(
+          matched.id,
+          matched.type,
+        );
         rejected.push({
           rowIndex: i + 1,
           orderNumber: matched.orderNumber,
@@ -697,7 +734,10 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
         continue;
       }
 
-      const fullOrder = await fetchFullOrderForChangelog(matched.id, matched.type);
+      const fullOrder = await fetchFullOrderForChangelog(
+        matched.id,
+        matched.type,
+      );
       if (fullOrder) {
         approved.push({
           rowIndex: i + 1,
@@ -731,7 +771,7 @@ export const validateInsuranceChangelog = async (req: Request, res: Response) =>
 
 async function fetchFullOrderForChangelog(
   orderId: string,
-  type: "insole" | "shoes"
+  type: "insole" | "shoes",
 ): Promise<ChangelogOrderShape | null> {
   if (type === "insole") {
     const order = await prisma.customerOrders.findUnique({
