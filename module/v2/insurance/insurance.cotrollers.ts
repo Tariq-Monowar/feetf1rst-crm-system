@@ -3,26 +3,112 @@ import { Request, Response } from "express";
 
 const prisma = new PrismaClient();
 
+const INSURANCE_STATUSES = ["pending", "approved", "rejected"] as const;
+
+function buildSearchCondition(search: string) {
+  const term = search.trim();
+  const or: any[] = [
+    { customer: { vorname: { contains: term, mode: "insensitive" as const } } },
+    { customer: { nachname: { contains: term, mode: "insensitive" as const } } },
+    { customer: { telefon: { contains: term, mode: "insensitive" as const } } },
+    {
+      prescription: {
+        prescription_number: { contains: term, mode: "insensitive" as const },
+      },
+    },
+    {
+      prescription: {
+        insurance_provider: { contains: term, mode: "insensitive" as const },
+      },
+    },
+    {
+      prescription: {
+        doctor_name: { contains: term, mode: "insensitive" as const },
+      },
+    },
+    {
+      prescription: {
+        referencen_number: { contains: term, mode: "insensitive" as const },
+      },
+    },
+    {
+      prescription: {
+        proved_number: { contains: term, mode: "insensitive" as const },
+      },
+    },
+  ];
+  const orderNum = parseInt(term, 10);
+  if (!Number.isNaN(orderNum)) {
+    or.push({ orderNumber: orderNum });
+  }
+  return { OR: or };
+}
+
 export const getInsuranceList = async (req: Request, res: Response) => {
   try {
-    const { id } = req.user;
-
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+    const search = (req.query.search as string)?.trim();
     const queryType = req.query.type as "insole" | "shoes" | "all" | undefined;
+    const queryInsuranceStatus = req.query.insurance_status as
+      | "pending"
+      | "approved"
+      | "rejected"
+      | undefined;
 
     const type: "insole" | "shoes" | "all" =
       queryType === "insole" || queryType === "shoes" || queryType === "all"
         ? queryType
         : "all";
 
+    const insuranceStatus =
+      queryInsuranceStatus && INSURANCE_STATUSES.includes(queryInsuranceStatus)
+        ? queryInsuranceStatus
+        : undefined;
+
+    let cursorDate: Date | undefined;
+    if (cursor && cursor.trim()) {
+      cursorDate = new Date(cursor);
+      if (Number.isNaN(cursorDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid cursor (must be a valid ISO date string)",
+        });
+      }
+    }
+
+    const insoleBase: any = {
+      paymnentType: { in: ["broth", "insurance"] },
+      insuranceTotalPrice: { not: null },
+    };
+    if (insuranceStatus) insoleBase.insurance_status = insuranceStatus;
+    if (cursorDate) insoleBase.createdAt = { lt: cursorDate };
+
+    const insoleWhere: any =
+      search && (type === "insole" || type === "all")
+        ? { AND: [insoleBase, buildSearchCondition(search)] }
+        : insoleBase;
+
+    const shoeBase: any = {
+      payment_type: { in: ["insurance", "broth"] },
+      insurance_price: { not: null },
+    };
+    if (insuranceStatus) shoeBase.insurance_status = insuranceStatus;
+    if (cursorDate) shoeBase.createdAt = { lt: cursorDate };
+
+    const shoeWhere: any =
+      search && (type === "shoes" || type === "all")
+        ? { AND: [shoeBase, buildSearchCondition(search)] }
+        : shoeBase;
+
     let insole: any[] = [];
     let shoe: any[] = [];
 
     if (type === "insole" || type === "all") {
       insole = await prisma.customerOrders.findMany({
-        where: {
-          paymnentType: { in: ["broth", "insurance"] },
-          insuranceTotalPrice: { not: null },
-        },
+        where: insoleWhere,
+        take: limit + 1,
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           orderNumber: true,
@@ -47,23 +133,22 @@ export const getInsuranceList = async (req: Request, res: Response) => {
               aid_code: true,
             },
           },
-          customer:{
+          customer: {
             select: {
               id: true,
               vorname: true,
               nachname: true,
               telefon: true,
             },
-          }
+          },
         },
       });
     }
     if (type === "shoes" || type === "all") {
       shoe = await prisma.shoe_order.findMany({
-        where: {
-          payment_type: { in: ["insurance", "broth"] },
-          insurance_price: { not: null },
-        },
+        where: shoeWhere,
+        take: limit + 1,
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           orderNumber: true,
@@ -73,6 +158,7 @@ export const getInsuranceList = async (req: Request, res: Response) => {
           private_payed: true,
           insurance_status: true,
           createdAt: true,
+          updatedAt: true,
           prescription: {
             select: {
               id: true,
@@ -120,12 +206,23 @@ export const getInsuranceList = async (req: Request, res: Response) => {
       insuranceType: "shoes" as const,
     }));
 
-    const data = [...insoleData, ...shoeData];
+    const combined = [...insoleData, ...shoeData].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    const hasMore = combined.length > limit;
+    const data = hasMore ? combined.slice(0, limit) : combined;
+    // const nextCursor =
+    //   data.length > 0 ? data[data.length - 1].createdAt : null;
 
     return res.status(200).json({
       success: true,
       type,
       data,
+      hasMore,
+      // nextCursor,
+      ...(search && { search }),
+      ...(insuranceStatus && { insurance_status: insuranceStatus }),
     });
   } catch (error: any) {
     res.status(500).json({
