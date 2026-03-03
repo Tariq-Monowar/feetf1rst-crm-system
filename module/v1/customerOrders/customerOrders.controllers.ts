@@ -371,6 +371,19 @@ export const createOrder = async (req: Request, res: Response) => {
     ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
+
+    // Latest prescription for customer: only if prescription_date is not older than 4 weeks
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    const validPrescription = await prisma.prescription.findFirst({
+      where: {
+        customerId,
+        prescription_date: { gte: fourWeeksAgo, not: null },
+      },
+      orderBy: { prescription_date: "desc" },
+      select: { id: true },
+    });
+
     // When no screenerId, customer must have foot data to create order
     if (!screenerId) {
       const hasFootData =
@@ -594,6 +607,8 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.store = { connect: { id: versorgung.storeId } };
       if (finalEmployeeId)
         orderData.employee = { connect: { id: finalEmployeeId } };
+      if (validPrescription?.id)
+        orderData.prescription = { connect: { id: validPrescription.id } };
       if (fussanalysePreis != null)
         orderData.fussanalysePreis = Number(fussanalysePreis);
       if (einlagenversorgungPreis != null)

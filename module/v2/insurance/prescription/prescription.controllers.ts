@@ -10,7 +10,7 @@ export const createPrescription = async (req: Request, res: Response) => {
       insurance_provider,
       insurance_number,
       prescription_date,
-      practice_number,
+      prescription_number,
       doctor_location,
       doctor_name,
       establishment_number,
@@ -55,7 +55,7 @@ export const createPrescription = async (req: Request, res: Response) => {
         prescription_date: prescription_date
           ? new Date(prescription_date)
           : undefined,
-        practice_number: practice_number ?? undefined,
+        prescription_number: prescription_number ?? undefined,
         doctor_location: doctor_location ?? undefined,
         doctor_name: doctor_name ?? undefined,
         establishment_number: establishment_number ?? undefined,
@@ -94,7 +94,7 @@ export const updatePrescription = async (req: Request, res: Response) => {
       insurance_provider,
       insurance_number,
       prescription_date,
-      practice_number,
+      prescription_number,
       doctor_location,
       doctor_name,
       establishment_number,
@@ -127,8 +127,8 @@ export const updatePrescription = async (req: Request, res: Response) => {
       updateData.insurance_number = insurance_number;
     if (prescription_date !== undefined)
       updateData.prescription_date = new Date(prescription_date);
-    if (practice_number !== undefined)
-      updateData.practice_number = practice_number;
+    if (prescription_number !== undefined)
+      updateData.prescription_number = prescription_number;
     if (doctor_location !== undefined)
       updateData.doctor_location = doctor_location;
     if (doctor_name !== undefined) updateData.doctor_name = doctor_name;
