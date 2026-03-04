@@ -101,7 +101,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step2_leistengröße,
       leistentyp: body_leistentyp,
 
-      // Step 3 data (when bedding_required is true): optional(material, thickness, notes) if zusätzliche_notizen else (dicke_ferse, dicke_ballen, dicke_spitze)
+      // Step 3 data (when bedding_required is true)
       step3_material,
       step3_thickness,
       step3_notes,
@@ -232,9 +232,9 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     }
 
     if (beddingRequired) {
-      // Step 3: if zusätzliche_notizen → optional(material, thickness, notes); else → require dicke_ferse, dicke_ballen, dicke_spitze
+      // Step 3: if zusätzliche_notizen provided → material, thickness, notes optional; else → dicke_ferse, dicke_ballen, dicke_spitze required
       const hasZusätzlicheNotizen =
-        zusätzliche_notizen != null && String(zusätzliche_notizen).trim() !== "";
+        zusätzliche_notizen != null && zusätzliche_notizen !== "";
       if (!hasZusätzlicheNotizen) {
         if (
           dicke_ferse == null ||
@@ -383,30 +383,22 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // Step 3: when bedding_required is true → take data, isCompleted false; when false → no data, isCompleted true
+      // Step 3: when bedding_required is true → take data (material/thickness/notes if zusätzliche_notizen, else dicke_ferse/ballen/spitze), isCompleted false
       if (beddingRequired) {
-        const hasZusätzlicheNotizen =
-          zusätzliche_notizen != null &&
-          String(zusätzliche_notizen).trim() !== "";
-        const step3Data: any = {
-          orderId: order.id,
-          status: "Bettungserstellung",
-          isCompleted: false,
-        };
-        if (hasZusätzlicheNotizen) {
-          step3Data.material = step3_material ?? undefined;
-          step3Data.thickness = step3_thickness ?? undefined;
-          step3Data.notes = step3_notes ?? undefined;
-        } else {
-          // Store dicke_ferse, dicke_ballen, dicke_spitze as JSON in thickness
-          step3Data.thickness = JSON.stringify({
-            dicke_ferse,
-            dicke_ballen,
-            dicke_spitze,
-          });
-        }
         await tx.shoe_order_step.create({
-          data: step3Data as any,
+          data: {
+            orderId: order.id,
+            status: "Bettungserstellung",
+            isCompleted: false,
+
+            material: step3_material?.trim() ?? undefined,
+            thickness: step3_thickness?.trim() ?? undefined,
+            notes: step3_notes?.trim() ?? undefined,
+            zusätzliche_notizen: zusätzliche_notizen?.trim() ?? undefined,
+            dicke_ferse: dicke_ferse?.trim() ?? undefined,
+            dicke_ballen: dicke_ballen?.trim() ?? undefined,
+            dicke_spitze: dicke_spitze?.trim() ?? undefined,
+          } as any,
         });
       } else {
         await tx.shoe_order_step.create({
