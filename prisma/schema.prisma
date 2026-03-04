@@ -1937,7 +1937,7 @@ model shoe_order_step {
 
   auto_print Boolean? @default(false)
 
-  //employee 
+  //employee
   employeeId String?
   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
