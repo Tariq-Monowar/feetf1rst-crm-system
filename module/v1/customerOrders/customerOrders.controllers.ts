@@ -1129,6 +1129,9 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
           orderStatus: true,
           statusUpdate: true,
           invoice: true,
+          paymnentType: true,
+          insurance_payed: true,
+          private_payed: true,
           createdAt: true,
           updatedAt: true,
           customer: {

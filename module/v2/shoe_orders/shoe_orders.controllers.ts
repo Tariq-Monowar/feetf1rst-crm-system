@@ -1022,7 +1022,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         shoeOrderStep: {
           where: { status },
           take: 1,
-          select: { id: true, startedAt: true },
+          select: { id: true, startedAt: true, partnerId: true, employeeId: true },
         },
       },
     });
@@ -1082,19 +1082,24 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     let stepId: string;
 
-    // Set either partner or employee on the step based on who is updating (not both)
+    // Set either partner or employee on the step based on who is updating (not both). Only set if step has neither yet.
     const stepPartnerId = role === "PARTNER" ? partnerId ?? undefined : undefined;
     const stepEmployeeId = role === "EMPLOYEE" ? employeeId ?? undefined : undefined;
+    const stepAlreadyHasAssignee =
+      existingStep != null &&
+      (existingStep.partnerId != null ||
+        existingStep.employeeId != null);
 
     const completedAt = new Date();
 
     if (existingStep) {
-      // Update existing step: only set fields that were sent (undefined = do not change)
+      // Update existing step: only set fields that were sent (undefined = do not change). Don't overwrite partnerId/employeeId if at least one is already set.
       const updateData: Record<string, unknown> = {
         isCompleted: true,
         complatedAt: completedAt,
-        partnerId: stepPartnerId,
-        employeeId: stepEmployeeId,
+        ...(stepAlreadyHasAssignee
+          ? {}
+          : { partnerId: stepPartnerId, employeeId: stepEmployeeId }),
         ...stepPayload,
       };
       // Set startedAt on first update if not already set (actual starting time)
