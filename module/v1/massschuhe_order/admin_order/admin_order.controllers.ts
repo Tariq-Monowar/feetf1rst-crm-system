@@ -928,25 +928,29 @@ export const uploadChecklisteHalbprobenerstellung = async (
 ) => {
   try {
     const { orderId } = req.params;
-    const { checkliste_halbprobe } = req.body;
+    const body = req.body ?? {};
+    let checkliste_halbprobe = body.checkliste_halbprobe;
+    if (typeof checkliste_halbprobe === "string") {
+      try {
+        checkliste_halbprobe = JSON.parse(checkliste_halbprobe);
+      } catch {
+        checkliste_halbprobe = undefined;
+      }
+    }
 
     if (!orderId) {
-      return res.status(400).json({
-        success: false,
-        message: "Order ID is required",
-      });
+      return res.status(400).json({ success: false, message: "Order ID is required" });
+    }
+    if (checkliste_halbprobe === undefined) {
+      return res.status(400).json({ success: false, message: "checkliste_halbprobe is required in body" });
     }
 
     const order = await prisma.custom_shafts.findUnique({
       where: { id: orderId },
       select: { id: true },
     });
-
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+      return res.status(404).json({ success: false, message: "Order not found" });
     }
 
     await prisma.custom_shafts.update({
@@ -961,11 +965,7 @@ export const uploadChecklisteHalbprobenerstellung = async (
     });
   } catch (error: any) {
     console.error("Upload Checkliste Halbprobenerstellung Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Internal server error", error: error.message });
   }
 };
 
