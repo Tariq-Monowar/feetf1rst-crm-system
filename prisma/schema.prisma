@@ -86,6 +86,7 @@ model User {
   diagnosisStatuses           diagnosis_status[]
   routes                      Route[]
   workTypes                   work_types[]
+  shoeOrderSteps              shoe_order_step[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -339,6 +340,7 @@ model Employees {
   leave_application           leave_application[]
   shoeOrders                  shoe_order[]
   workHours                   work_hours[]
+  shoeOrderSteps              shoe_order_step[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -1888,11 +1890,16 @@ model shoe_order_step {
   leistentyp     String?
   material       String?
   leistengröße String?
+
   // step 3
   // files files[]
   // notes String?
   //material string?
-  thickness      String?
+  thickness            String?
+  zusätzliche_notizen String?
+  dicke_ferse          String?
+  dicke_ballen         String?
+  dicke_spitze         String?
 
   // step 4
   preparation_date DateTime?
@@ -1929,6 +1936,13 @@ model shoe_order_step {
   // notes String
 
   auto_print Boolean? @default(false)
+
+  //employee 
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
@@ -2139,6 +2153,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2162,6 +2179,9 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**

@@ -384,6 +384,8 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       }
 
       // Step 3: when bedding_required is true → take data (material/thickness/notes if zusätzliche_notizen, else dicke_ferse/ballen/spitze), isCompleted false
+      const toStr = (v: unknown) =>
+        v == null || v === "" ? undefined : String(v).trim() || undefined;
       if (beddingRequired) {
         await tx.shoe_order_step.create({
           data: {
@@ -391,13 +393,13 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             status: "Bettungserstellung",
             isCompleted: false,
 
-            material: step3_material?.trim() ?? undefined,
-            thickness: step3_thickness?.trim() ?? undefined,
-            notes: step3_notes?.trim() ?? undefined,
-            zusätzliche_notizen: zusätzliche_notizen?.trim() ?? undefined,
-            dicke_ferse: dicke_ferse?.trim() ?? undefined,
-            dicke_ballen: dicke_ballen?.trim() ?? undefined,
-            dicke_spitze: dicke_spitze?.trim() ?? undefined,
+            material: toStr(step3_material),
+            thickness: toStr(step3_thickness),
+            notes: toStr(step3_notes),
+            zusätzliche_notizen: toStr(zusätzliche_notizen),
+            dicke_ferse: toStr(dicke_ferse),
+            dicke_ballen: toStr(dicke_ballen),
+            dicke_spitze: toStr(dicke_spitze),
           } as any,
         });
       } else {
@@ -1166,6 +1168,9 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const employeeId = req.user?.employeeId;
+    const role = req.user?.role;
+
     const status = req.query?.status?.toString();
 
     const body = req.body ?? {};
@@ -1259,6 +1264,8 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
         customer_reviews !== undefined
           ? (customer_reviews?.trim() ?? undefined)
           : undefined,
+      employeeId: role === "EMPLOYEE" ? employeeId : undefined,
+      partnerId: role === "PARTNER" ? partnerId : undefined,
       // complatedAt:
       //   complated_at !== undefined && complated_at !== ""
       //     ? new Date(complated_at)
