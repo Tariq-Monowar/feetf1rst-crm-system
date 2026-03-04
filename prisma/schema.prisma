@@ -2042,6 +2042,7 @@ model custom_shafts {
    */
   Halbprobenerstellung_json Json?
   Halbprobenerstellung_pdf  String?
+  checkliste_halbprobe      Json?
   /**
    * soll_die_bettung_neutral_oder_korrigierend String?
    * Bettungsdicke                              String?
@@ -2103,6 +2104,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2126,6 +2128,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
