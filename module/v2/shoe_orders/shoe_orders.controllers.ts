@@ -320,7 +320,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobenerstellung",
             isCompleted: false,
-
+            
             preparation_date: new Date(preparation_date),
             notes: step4_notes ?? undefined,
           },
@@ -1086,10 +1086,13 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     const stepPartnerId = role === "PARTNER" ? partnerId ?? undefined : undefined;
     const stepEmployeeId = role === "EMPLOYEE" ? employeeId ?? undefined : undefined;
 
+    const completedAt = new Date();
+
     if (existingStep) {
       // Update existing step: only set fields that were sent (undefined = do not change)
       const updateData: Record<string, unknown> = {
         isCompleted: true,
+        complatedAt: completedAt,
         partnerId: stepPartnerId,
         employeeId: stepEmployeeId,
         ...stepPayload,
@@ -1109,13 +1112,14 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status; record actual start time and who performed it
+      // Create new step for this status; record actual start time, completion time, and who performed it
       const newStep = await prisma.shoe_order_step.create({
         data: {
           orderId: id,
           status,
           isCompleted: true,
           startedAt: startedAtValue,
+          complatedAt: completedAt,
           partnerId: stepPartnerId,
           employeeId: stepEmployeeId,
           ...stepPayload,
@@ -1643,15 +1647,31 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
 
         createdAt: true,
 
-        // steps with auto_print false only (for time-spent calculation)
+        // steps with auto_print false only (real workflow steps; skipped steps have auto_print true)
         shoeOrderStep: {
           where: { auto_print: false },
           orderBy: { createdAt: "asc" },
           select: {
             id: true,
             status: true,
+            isCompleted: true,
             createdAt: true,
             startedAt: true,
+            complatedAt: true,
+            partner: {
+              select: {
+                id: true,
+                name: true,
+                busnessName: true,
+              },
+            },
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                accountName: true,
+              },
+            },
           },
         },
       },
@@ -1664,23 +1684,34 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
       });
     }
 
-    // time spent per status (only auto_print false steps); use startedAt when set (actual start), else createdAt
+    // Time spent: only for steps that are completed (isCompleted true). Ignore steps created at order creation and never completed.
+    // End time = complatedAt (completion time) when set, else now.
+    // First step (Auftragserstellung) started when the order was created; others use step startedAt or createdAt.
     const steps = order.shoeOrderStep || [];
+    const completedSteps = steps.filter((s) => s.isCompleted === true);
     const now = new Date();
-    const timeSpentByStatus = steps.map((step, i) => {
-      const stepStartedAt = step.startedAt ?? step.createdAt;
-      const nextStep = steps[i + 1];
-      const nextStartedAt = nextStep
-        ? (nextStep.startedAt ?? nextStep.createdAt)
-        : null;
-      const endedAt = nextStartedAt ?? now;
-      const durationMs = endedAt.getTime() - stepStartedAt.getTime();
+    const orderCreatedAt = order.createdAt;
+    const timeSpentByStatus = completedSteps.map((step) => {
+      const stepStartedAt =
+        step.status === "Auftragserstellung"
+          ? orderCreatedAt
+          : (step.startedAt ?? step.createdAt);
+      const endedAt = step.complatedAt ?? now;
+      const durationMs = Math.max(0, endedAt.getTime() - stepStartedAt.getTime());
+      const performedBy =
+        step.partner != null
+          ? { type: "partner" as const, id: step.partner.id, name: step.partner.name, busnessName: step.partner.busnessName }
+          : step.employee != null
+            ? { type: "employee" as const, id: step.employee.id, employeeName: step.employee.employeeName, accountName: step.employee.accountName }
+            : null;
       return {
         status: step.status,
+        isCompleted: true,
         startedAt: stepStartedAt,
         endedAt,
         durationMs,
         durationHours: Math.round((durationMs / (1000 * 60 * 60)) * 100) / 100,
+        performedBy,
       };
     });
 
