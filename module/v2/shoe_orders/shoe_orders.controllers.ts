@@ -67,7 +67,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       /**
        * has_trim_strips: if true → skip step 2.
        * if false → get extra input:
-       *   step 2: material, leistentyp, notes
+       *   step 2: material, leistentyp, notes, leistengröße
        */
       has_trim_strips,
 
@@ -98,6 +98,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step2_material,
       step2_leistentyp,
       step2_notes,
+      step2_leistengröße,
       leistentyp: body_leistentyp,
 
       // Step 3 data (when bedding_required is true)
@@ -216,8 +217,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
       if (
         step2_material == null ||
-        step2Leistentyp == null ||
-        step2Leistentyp === ""
+        step2Leistentyp == null
       ) {
         return res.status(400).json({
           success: false,
@@ -354,6 +354,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             leistentyp: step2Leistentyp?.trim() ?? undefined,
             material: step2_material ?? undefined,
             notes: step2_notes ?? undefined,
+            leistengröße: step2_leistengröße?.trim() ?? undefined,
           },
         });
       } else {
@@ -1418,14 +1419,6 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
     const partnerId = req.user?.id;
 
     const { status_note, order_note, supply_note } = req.body;
-
-    if (!status_note) {
-      return res.status(400).json({
-        success: false,
-        message: "Status note is required",
-      });
-    }
-
     
 
     const order = await prisma.shoe_order.update({
