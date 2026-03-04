@@ -518,6 +518,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 //       adjustments,
 //       customer_reviews,
 
+
 //       // Step 2 data (when has_trim_strips is false); accept step2_leistentyp or leistentyp
 //       step2_material,
 //       step2_leistentyp,
