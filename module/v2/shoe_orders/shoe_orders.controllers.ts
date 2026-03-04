@@ -219,10 +219,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
     if (!hasTrimStrips) {
       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
-      if (
-        step2_material == null ||
-        step2Leistentyp == null
-      ) {
+      if (step2_material == null || step2Leistentyp == null) {
         return res.status(400).json({
           success: false,
           message:
@@ -517,7 +514,6 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 //       fitting_date,
 //       adjustments,
 //       customer_reviews,
-
 
 //       // Step 2 data (when has_trim_strips is false); accept step2_leistentyp or leistentyp
 //       step2_material,
@@ -984,6 +980,8 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     const { id } = req.params;
     const partnerId = req.user?.id;
     const status = req.query?.status?.toString();
+    const role = req.user?.role;
+    const employeeId = req.user?.employeeId;
 
     const body = req.body ?? {};
     const {
@@ -1084,10 +1082,16 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     let stepId: string;
 
+    // Set either partner or employee on the step based on who is updating (not both)
+    const stepPartnerId = role === "PARTNER" ? partnerId ?? undefined : undefined;
+    const stepEmployeeId = role === "EMPLOYEE" ? employeeId ?? undefined : undefined;
+
     if (existingStep) {
       // Update existing step: only set fields that were sent (undefined = do not change)
       const updateData: Record<string, unknown> = {
         isCompleted: true,
+        partnerId: stepPartnerId,
+        employeeId: stepEmployeeId,
         ...stepPayload,
       };
       // Set startedAt on first update if not already set (actual starting time)
@@ -1105,13 +1109,15 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status; record actual start time
+      // Create new step for this status; record actual start time and who performed it
       const newStep = await prisma.shoe_order_step.create({
         data: {
           orderId: id,
           status,
           isCompleted: true,
           startedAt: startedAtValue,
+          partnerId: stepPartnerId,
+          employeeId: stepEmployeeId,
           ...stepPayload,
         },
       });
@@ -1400,7 +1406,27 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           ...(statusParam ? { status: statusParam } : {}),
         },
         orderBy: { createdAt: "asc" },
-        include: { files: true },
+        include: {
+          files: true,
+          partner: {
+            select: {
+              id: true,
+              name: true,
+              busnessName: true,
+              role: true,
+              image: true,
+            },
+          },
+          employee: {
+            select: {
+              id: true,
+              employeeName: true,
+              accountName: true,
+              role: true,
+              image: true,
+            },
+          },
+        },
       }),
       prisma.shoe_order_step.findMany({
         where: { orderId: id },
@@ -1446,7 +1472,6 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
     const partnerId = req.user?.id;
 
     const { status_note, order_note, supply_note } = req.body;
-    
 
     const order = await prisma.shoe_order.update({
       where: { id, partnerId },
