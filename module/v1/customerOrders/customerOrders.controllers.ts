@@ -1233,6 +1233,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       updatedAt: true,
       priority: true,
       bezahlt: true,
+      paymnentType: true,
+      insurance_payed: true,
+      private_payed: true,
       barcodeLabel: true,
       fertigstellungBis: true,
       geschaeftsstandort: true,
@@ -1388,6 +1391,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
           updatedAt: Date;
           priority: string | null;
           bezahlt: string | null;
+          paymnentType: string | null;
+          insurance_payed: boolean | null;
+          private_payed: boolean | null;
           barcodeLabel: string | null;
           fertigstellungBis: Date | null;
           geschaeftsstandort: unknown;
@@ -1415,7 +1421,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       >(Prisma.sql`
         SELECT
           co.id, co."orderNumber", co."totalPrice", co."orderStatus", co."statusUpdate",
-          co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt, co."barcodeLabel",
+          co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt,
+          co."paymnentType", co."insurance_payed", co."private_payed",
+          co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."service_name", co."sonstiges_category",
           co.diagnosis, co."ausführliche_diagnose",
@@ -1449,6 +1457,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
         updatedAt: row.updatedAt,
         priority: row.priority,
         bezahlt: row.bezahlt,
+        paymnentType: row.paymnentType ?? null,
+        insurance_payed: row.insurance_payed ?? false,
+        private_payed: row.private_payed ?? false,
         barcodeLabel: row.barcodeLabel ?? null,
         fertigstellungBis: row.fertigstellungBis,
         geschaeftsstandort: row.geschaeftsstandort,
