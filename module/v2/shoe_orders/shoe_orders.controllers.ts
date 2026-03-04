@@ -1142,6 +1142,199 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const updateShoeOrderStep = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    const status = req.query?.status?.toString();
+
+    const body = req.body ?? {};
+    const {
+      notes,
+      leistentyp,
+      material,
+      thickness,
+      preparation_date,
+      checkliste_halbprobe,
+      fitting_date,
+      adjustments,
+      customer_reviews,
+      started_at,
+      // complated_at,
+      // is_completed,
+    } = body;
+
+    // multer.fields({ name: "files" }) → req.files.files is array of S3 file objects (each has .location)
+    const rawFiles = (req.files as any)?.files;
+    const fileList = Array.isArray(rawFiles)
+      ? rawFiles
+      : rawFiles
+        ? [rawFiles]
+        : [];
+
+    if (!status || !SHOE_ORDER_STATUSES.includes(status as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid status is required",
+        validStatuses: [...SHOE_ORDER_STATUSES],
+      });
+    }
+
+    // Single query: order + existing step for this status.
+    // Only this one step is created/updated; no other steps (e.g. Bettungserstellung, Halbprobenerstellung) are auto-completed.
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        shoeOrderStep: {
+          where: { status },
+          take: 1,
+          select: { id: true, startedAt: true },
+        },
+      },
+    });
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shoe order not found" });
+    }
+    const existingStep = order.shoeOrderStep[0] ?? null;
+
+    const parseCheckliste = (val: unknown) => {
+      if (val == null || val === "") return undefined;
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val) as Prisma.InputJsonValue;
+        } catch {
+          return undefined;
+        }
+      }
+      return val as Prisma.InputJsonValue;
+    };
+
+    const stepPayload = {
+      notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
+      leistentyp:
+        leistentyp !== undefined
+          ? (leistentyp?.trim() ?? undefined)
+          : undefined,
+      material:
+        material !== undefined ? (material?.trim() ?? undefined) : undefined,
+      thickness:
+        thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
+      preparation_date:
+        preparation_date !== undefined && preparation_date !== ""
+          ? new Date(preparation_date)
+          : undefined,
+      checkliste_halbprobe: parseCheckliste(checkliste_halbprobe),
+      fitting_date:
+        fitting_date !== undefined && fitting_date !== ""
+          ? new Date(fitting_date)
+          : undefined,
+      adjustments:
+        adjustments !== undefined
+          ? (adjustments?.trim() ?? undefined)
+          : undefined,
+      customer_reviews:
+        customer_reviews !== undefined
+          ? (customer_reviews?.trim() ?? undefined)
+          : undefined,
+      // complatedAt:
+      //   complated_at !== undefined && complated_at !== ""
+      //     ? new Date(complated_at)
+      //     : undefined,
+      // isCompleted:
+      //   is_completed !== undefined
+      //     ? (is_completed === true || is_completed === "true")
+      //     : undefined,
+    };
+
+    // Actual start time: from body (if work started before scheduled) or now
+    const startedAtValue: any =
+      started_at !== undefined && started_at !== ""
+        ? new Date(started_at)
+        : new Date();
+
+    let stepId: string;
+
+    if (existingStep) {
+      const updateData: any = {
+        ...stepPayload,
+      };
+
+      if (existingStep.startedAt == null) {
+        updateData.startedAt = startedAtValue;
+      }
+      Object.keys(updateData).forEach(
+        (k) =>
+          (updateData as any)[k] === undefined && delete (updateData as any)[k],
+      );
+
+      await prisma.shoe_order_step.update({
+        where: { id: existingStep.id },
+        data: updateData as any,
+      });
+      stepId = existingStep.id;
+    } else {
+      // Create new step for this status; record actual start time
+      const newStep = await prisma.shoe_order_step.create({
+        data: {
+          orderId: id,
+          status,
+          startedAt: startedAtValue,
+          ...stepPayload,
+        },
+      });
+      stepId = newStep.id;
+    }
+
+    // Batch insert files and update order in parallel (S3 URL in file.location from multer-s3)
+    const filesToCreate = fileList
+      .filter((f: any) => f?.location)
+      .map((file: any) => ({
+        shoeOrderStepId: stepId,
+        fileUrl: file.location,
+        fileName: file.originalname ?? undefined,
+        fileType: file.mimetype ?? undefined,
+        fileSize: file.size ?? undefined,
+      }));
+
+    await Promise.all([
+      filesToCreate.length > 0
+        ? prisma.files.createMany({ data: filesToCreate })
+        : Promise.resolve(),
+      prisma.shoe_order.update({ where: { id }, data: { status } }),
+    ]);
+
+    const stepWithFiles = await prisma.shoe_order_step.findUnique({
+      where: { id: stepId },
+      include: {
+        files: {
+          select: {
+            id: true,
+            fileUrl: true,
+            fileName: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: existingStep
+        ? "Shoe order step updated successfully"
+        : "Shoe order status updated successfully",
+      data: stepWithFiles!,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Status Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order status",
+    });
+  }
+};
+
 export const getShoeOrderStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1224,7 +1417,7 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
     const { id } = req.params;
     const partnerId = req.user?.id;
 
-    const { status_note } = req.body;
+    const { status_note, order_note, supply_note } = req.body;
 
     if (!status_note) {
       return res.status(400).json({
@@ -1233,15 +1426,23 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
       });
     }
 
+    
+
     const order = await prisma.shoe_order.update({
       where: { id, partnerId },
-      data: { status_note },
+      data: { status_note, order_note, supply_note },
+      select: {
+        id: true,
+        status_note: true,
+        order_note: true,
+        supply_note: true,
+      },
     });
 
     return res.status(200).json({
       success: true,
       message: "Shoe order updated successfully",
-      data: order?.status_note,
+      data: order,
     });
   } catch (error: any) {
     console.error("Update Shoe Order Error:", error);
@@ -1263,11 +1464,21 @@ export const getShoeOrderStatusNote = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
 
     const order = await prisma.shoe_order.findFirst({
       where: { id, partnerId },
       select: {
         id: true,
+        orderNumber: true,
         status_note: true,
       },
     });
@@ -1279,16 +1490,38 @@ export const getShoeOrderStatusNote = async (req: Request, res: Response) => {
       });
     }
 
+    const notesRows = await prisma.order_notes.findMany({
+      where: { shoeOrderId: id },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      select: {
+        id: true,
+        note: true,
+        status: true,
+        type: true,
+        isImportant: true,
+        createdAt: true,
+      },
+    });
+
+    const notesHasMore = notesRows.length > limit;
+    const notes = notesHasMore ? notesRows.slice(0, limit) : notesRows;
+
     return res.status(200).json({
       success: true,
       data: order,
+      notes: {
+        data: notes,
+        hasMore: notesHasMore,
+      },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get Shoe Order Status Note Error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong while getting shoe order status note",
-      error: error.message,
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1526,6 +1759,56 @@ export const updateShoeOrderPriority = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order priority",
+    });
+  }
+};
+
+export const getShoeOrderNote = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        status_note: true,
+        order_note: true,
+        supply_note: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const notes = await prisma.order_notes.findMany({
+      where: { shoeOrderId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        note: true,
+        status: true,
+        type: true,
+        isImportant: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      orderNote: order,
+      notes,
+    });
+  } catch (error) {
+    console.error("Get Shoe Order Note Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe order note",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };

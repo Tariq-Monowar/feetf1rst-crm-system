@@ -11,6 +11,8 @@ import {
   getShoeOrderDetails,
   removeShoeOrderFile,
   updateShoeOrderPriority,
+  updateShoeOrderStep,
+  getShoeOrderNote,
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
@@ -25,8 +27,16 @@ router.patch(
   updateShoeOrderStatus,
 );
 
+router.patch(
+  "/update-step/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  upload.fields([{ name: "files", maxCount: 20 }]),
+  updateShoeOrderStep,
+);
+
 router.get(
   "/get-status/:id",
+  upload.fields([{ name: "files", maxCount: 20 }]),
   verifyUser("PARTNER", "EMPLOYEE"),
   getShoeOrderStatus,
 );
@@ -59,6 +69,19 @@ router.patch(
   "/update-priority/:id",
   verifyUser("PARTNER", "EMPLOYEE"),
   updateShoeOrderPriority,
+);
+
+//get notes
+router.get(
+  "/get-notes/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getShoeOrderNote,
+);
+
+router.patch(
+  "/update-order/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  updateShoeOrder,
 );
 
 export default router;

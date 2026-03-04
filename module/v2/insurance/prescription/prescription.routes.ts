@@ -24,4 +24,5 @@ router.get("/get-details/:id", verifyUser("EMPLOYEE", "PARTNER"), getPrescriptio
 router.patch("/update/:id", verifyUser("EMPLOYEE", "PARTNER"), updatePrescription);
 router.delete("/delete/:id", verifyUser("EMPLOYEE", "PARTNER"), deletePrescription);
 
+
 export default router;
