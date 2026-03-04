@@ -1690,9 +1690,10 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         discount: true,
         addonPrices: true,
         insuranceTotalPrice: true,
+        insurance_payed: true,
         private_payed: true,
         privatePrice: true,
-        insurance_payed: true,
+  
         paymnentType: true,
         vatRate: true,
         bezahlt: true,
@@ -1702,6 +1703,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
         quantity: true,
+        
         Versorgungen: {
           select: {
             supplyStatus: {

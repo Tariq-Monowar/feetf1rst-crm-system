@@ -50,6 +50,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     const image3d_1 = files?.image3d_1?.[0]?.location || null;
     const image3d_2 = files?.image3d_2?.[0]?.location || null;
     const invoice = files?.invoice?.[0]?.location || null;
+    const Halbprobenerstellung_pdf = files?.Halbprobenerstellung_pdf?.[0]?.location || null;
 
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
@@ -108,6 +109,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         image3d_1,
         image3d_2,
         invoice,
+        Halbprobenerstellung_pdf,
         orderNumber: shaftOrderNumber,
         catagoary: "Halbprobenerstellung",
       },
@@ -117,6 +119,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         image3d_1: true,
         image3d_2: true,
         invoice: true,
+        Halbprobenerstellung_pdf: true,
         orderNumber: true,
         catagoary: true,
         status: true,
