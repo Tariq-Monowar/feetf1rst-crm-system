@@ -1896,11 +1896,12 @@ model shoe_order_step {
   // files files[]
   // notes String?
   //material string?
-  thickness            String?
+  step3_json Json?
+  // thickness            String?
   zusätzliche_notizen String?
-  dicke_ferse          String?
-  dicke_ballen         String?
-  dicke_spitze         String?
+  // dicke_ferse          String?
+  // dicke_ballen         String?
+  // dicke_spitze         String?
 
   // step 4
   preparation_date DateTime?

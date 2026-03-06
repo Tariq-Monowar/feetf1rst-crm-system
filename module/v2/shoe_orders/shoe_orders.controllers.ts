@@ -74,7 +74,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       /**
        * bedding_required: if false → skip step 3.
        * if true → get extra input:
-       *   step 3: optional(material, thickness, notes) if(zusätzliche_notizen) else (dicke_ferse, dicke_ballen, dicke_spitze)
+       *   step 3: optional(material, thickness, notes) if(zusätzliche_notizen) else (step3_json)
        */
       bedding_required,
 
@@ -106,9 +106,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step3_thickness,
       step3_notes,
       zusätzliche_notizen,
-      dicke_ferse,
-      dicke_ballen,
-      dicke_spitze,
+      step3_json,
 
       deposit_provision,
       foot_analysis_price,
@@ -233,18 +231,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       const hasZusätzlicheNotizen =
         zusätzliche_notizen != null && zusätzliche_notizen !== "";
       if (!hasZusätzlicheNotizen) {
-        if (
-          dicke_ferse == null ||
-          dicke_ferse === "" ||
-          dicke_ballen == null ||
-          dicke_ballen === "" ||
-          dicke_spitze == null ||
-          dicke_spitze === ""
-        ) {
+        if (step3_json == null) {
           return res.status(400).json({
             success: false,
             message:
-              "When bedding_required is true and zusätzliche_notizen is not provided, dicke_ferse, dicke_ballen, and dicke_spitze are required",
+              "When bedding_required is true and zusätzliche_notizen is not provided, step3 json is required",
           });
         }
       }
@@ -317,7 +308,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       if (halfSampleRequired) {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobenerstellung",
             isCompleted: false,
 
@@ -327,7 +318,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobe_durchführen",
             isCompleted: false,
 
@@ -339,7 +330,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobenerstellung",
             isCompleted: true,
             auto_print: true,
@@ -347,7 +338,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobe_durchführen",
             isCompleted: true,
             auto_print: true,
@@ -359,7 +350,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       if (!hasTrimStrips) {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Leistenerstellung",
             isCompleted: false,
 
@@ -372,7 +363,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Leistenerstellung",
             isCompleted: true,
             auto_print: true,
@@ -380,29 +371,27 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // Step 3: when bedding_required is true → take data (material/thickness/notes if zusätzliche_notizen, else dicke_ferse/ballen/spitze), isCompleted false
+      // Step 3: zusätzliche_notizen is a top-level field; step3_json is separate (e.g. { "hello": "hi" }).
       const toStr = (v: unknown) =>
         v == null || v === "" ? undefined : String(v).trim() || undefined;
       if (beddingRequired) {
+        const step3JsonValue: Prisma.InputJsonValue | undefined =
+          typeof step3_json === "object" && step3_json !== null
+            ? (step3_json as Prisma.InputJsonValue)
+            : undefined;
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Bettungserstellung",
             isCompleted: false,
-
-            material: toStr(step3_material),
-            thickness: toStr(step3_thickness),
-            notes: toStr(step3_notes),
             zusätzliche_notizen: toStr(zusätzliche_notizen),
-            dicke_ferse: toStr(dicke_ferse),
-            dicke_ballen: toStr(dicke_ballen),
-            dicke_spitze: toStr(dicke_spitze),
-          } as any,
+            step3_json: step3JsonValue,
+          },
         });
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Bettungserstellung",
             isCompleted: true,
             auto_print: true,
@@ -837,7 +826,10 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     }
 
     const validPaymentTypes = ["insurance", "private", "broth"];
-    if (paymentTypeParam && !validPaymentTypes.includes(paymentTypeParam.toString())) {
+    if (
+      paymentTypeParam &&
+      !validPaymentTypes.includes(paymentTypeParam.toString())
+    ) {
       return res.status(400).json({
         success: false,
         message: "Invalid paymentType value",
@@ -862,13 +854,25 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         conditions.push(Prisma.sql`so.priority = ${priorityParam}::text`);
       }
       if (paymentTypeParam && typeof paymentTypeParam === "string") {
-        conditions.push(Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`);
+        conditions.push(
+          Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`,
+        );
       }
-      if (branchLocationTitleParam && typeof branchLocationTitleParam === "string") {
-        conditions.push(Prisma.sql`so."branch_location"->>'title' = ${branchLocationTitleParam}::text`);
+      if (
+        branchLocationTitleParam &&
+        typeof branchLocationTitleParam === "string"
+      ) {
+        conditions.push(
+          Prisma.sql`so."branch_location"->>'title' = ${branchLocationTitleParam}::text`,
+        );
       }
-      if (pickUpLocationTitleParam && typeof pickUpLocationTitleParam === "string") {
-        conditions.push(Prisma.sql`so."pick_up_location"->>'title' = ${pickUpLocationTitleParam}::text`);
+      if (
+        pickUpLocationTitleParam &&
+        typeof pickUpLocationTitleParam === "string"
+      ) {
+        conditions.push(
+          Prisma.sql`so."pick_up_location"->>'title' = ${pickUpLocationTitleParam}::text`,
+        );
       }
       tokens.forEach((token) => {
         const term = `%${token}%`;
@@ -957,11 +961,23 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     if (paymentTypeParam && typeof paymentTypeParam === "string") {
       whereCondition.payment_type = paymentTypeParam;
     }
-    if (branchLocationTitleParam && typeof branchLocationTitleParam === "string") {
-      (whereCondition as any).branch_location = { path: ["title"], equals: branchLocationTitleParam };
+    if (
+      branchLocationTitleParam &&
+      typeof branchLocationTitleParam === "string"
+    ) {
+      (whereCondition as any).branch_location = {
+        path: ["title"],
+        equals: branchLocationTitleParam,
+      };
     }
-    if (pickUpLocationTitleParam && typeof pickUpLocationTitleParam === "string") {
-      (whereCondition as any).pick_up_location = { path: ["title"], equals: pickUpLocationTitleParam };
+    if (
+      pickUpLocationTitleParam &&
+      typeof pickUpLocationTitleParam === "string"
+    ) {
+      (whereCondition as any).pick_up_location = {
+        path: ["title"],
+        equals: pickUpLocationTitleParam,
+      };
     }
 
     const shoeOrders = await prisma.shoe_order.findMany({
@@ -1764,7 +1780,6 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
               busnessName: (step as any).partner.busnessName,
               image: (step as any).partner.image,
             }
-            
           : (step as any).employee != null
             ? {
                 type: "employee" as const,
