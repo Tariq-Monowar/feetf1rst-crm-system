@@ -1717,6 +1717,7 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
               busnessName: (step as any).partner.busnessName,
               image: (step as any).partner.image,
             }
+            
           : (step as any).employee != null
             ? {
                 type: "employee" as const,
