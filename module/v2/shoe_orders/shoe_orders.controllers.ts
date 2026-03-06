@@ -809,18 +809,37 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     const limitParam = req.query.limit;
     const cursorParam = req.query.cursor;
     const statusParam = req.query.status;
+    const priorityParam = req.query.priority;
+    const paymentTypeParam = req.query.paymentType;
     const searchParam = req.query.search;
 
     const limit = Math.min(Math.max(Number(limitParam) || 10, 1), 100);
     const cursor = typeof cursorParam === "string" ? cursorParam : undefined;
 
-    //valid statuses
     const validStatuses = SHOE_ORDER_STATUSES;
     if (statusParam && !validStatuses.includes(statusParam.toString() as any)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
         validStatuses: validStatuses,
+      });
+    }
+
+    const validPriorities = ["Dringend", "Normal"];
+    if (priorityParam && !validPriorities.includes(priorityParam.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priority value",
+        validPriorities,
+      });
+    }
+
+    const validPaymentTypes = ["insurance", "private", "broth"];
+    if (paymentTypeParam && !validPaymentTypes.includes(paymentTypeParam.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid paymentType value",
+        validPaymentTypes,
       });
     }
 
@@ -836,6 +855,12 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       ];
       if (statusParam && typeof statusParam === "string") {
         conditions.push(Prisma.sql`so.status = ${statusParam}::text`);
+      }
+      if (priorityParam && typeof priorityParam === "string") {
+        conditions.push(Prisma.sql`so.priority = ${priorityParam}::text`);
+      }
+      if (paymentTypeParam && typeof paymentTypeParam === "string") {
+        conditions.push(Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`);
       }
       tokens.forEach((token) => {
         const term = `%${token}%`;
@@ -918,6 +943,12 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     if (statusParam && typeof statusParam === "string") {
       whereCondition.status = statusParam;
     }
+    if (priorityParam && typeof priorityParam === "string") {
+      whereCondition.priority = priorityParam;
+    }
+    if (paymentTypeParam && typeof paymentTypeParam === "string") {
+      whereCondition.payment_type = paymentTypeParam;
+    }
 
     const shoeOrders = await prisma.shoe_order.findMany({
       where: whereCondition,
@@ -939,6 +970,8 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         payment_status: true,
         priority: true,
         total_price: true,
+        insurance_payed: true,
+        private_payed: true,
         shoeOrderStep: {
           orderBy: { createdAt: "asc" },
           where: { isCompleted: true },
