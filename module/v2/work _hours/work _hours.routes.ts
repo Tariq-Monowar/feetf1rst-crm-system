@@ -4,6 +4,7 @@ import upload from "../../../config/multer.config";
 import {
   createWorkHours,
   getCurrentWorkStatus,
+  endWorkSession,
 } from "./work _hours.controllers";
 
 const router = express.Router();
@@ -25,12 +26,6 @@ router.get(
   getCurrentWorkStatus,
 );
 
-//
-
-// router.get(
-//   "/work-hours/get-all",
-//   verifyUser("PARTNER", "EMPLOYEE"),
-//   getAllWorkHours,
-// );
+router.post("/end-work-session", verifyUser("PARTNER", "EMPLOYEE"), endWorkSession);
 
 export default router;
