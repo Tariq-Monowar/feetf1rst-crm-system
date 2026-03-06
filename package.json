@@ -36,7 +36,8 @@
     "allnormal": "ts-node scripts/all-normal-shoe-orders.ts",
     "sync:shoe-order-priority": "ts-node scripts/sync-shoe-order-priority-column.ts",
     "sync:shoe-order-payment-paid": "ts-node scripts/sync-shoe-order-payment-paid.ts",
-    "sync:customerOrders-paymnant-payrd": "ts-node scripts/sync-customerOrders-payment-paid.ts"
+    "sync:customerOrders-paymnant-payrd": "ts-node scripts/sync-customerOrders-payment-paid.ts",
+    "clean:data:shoe_order_step:4": "ts-node scripts/clean-shoe-order-step-step4-fields.ts"
   },
   "keywords": [],
   "author": "",
