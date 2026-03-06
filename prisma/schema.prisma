@@ -1947,8 +1947,41 @@ model shoe_order_step {
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
+  order_step5_id String?
+  order_step5    order_step5? @relation(fields: [order_step5_id], references: [id], onDelete: Cascade)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
+}
+
+model order_step5 {
+  id String @id @default(cuid())
+
+  //three buttons
+  feedback_status   step5_feedback_status?
+  feedback_notes    String?
+  Kleine_Nacharbeit Json?
+
+  //schafttyp
+  schafttyp_intem_note       String?
+  schafttyp_extem_note       String?
+  massschafterstellung_json  Json?
+  massschafterstellung_image String?
+
+  //bodenkonstruktion
+  bodenkonstruktion_intem_note String?
+  bodenkonstruktion_extem_note String?
+  bodenkonstruktion_json       Json?
+  bodenkonstruktion_image      String?
+
+  createdAt      DateTime          @default(now())
+  shoeOrderSteps shoe_order_step[]
+}
+
+enum step5_feedback_status {
+  Freigeben
+  Kleine_Nacharbeit
+  große_Nacharbeiten
 }
 
 model files {
@@ -2115,6 +2148,12 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2138,6 +2177,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
