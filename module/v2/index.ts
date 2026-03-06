@@ -18,7 +18,10 @@ import stock_material from "./storage/stock_material/stock_material.routes";
 import order_feedback from "./order_feedback/order_feedback.routes";
 import government_vat from "./government_vat/government_vat.routes";
 import leave_application from "./leave_application/leave_application.routes";
+
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
+import shoe_orders_statistic from "./shoe_orders/statistic/statistic.routes";
+
 import order_notes from "./order_notes/order_notes.routes";
 import mentors from "./mentors/mentors.routes";
 
@@ -48,8 +51,12 @@ const moduleRoutes = [
   { path: "/order-feedback", route: order_feedback },
   { path: "/government-vat", route: government_vat },
   { path: "/leave-application", route: leave_application },
+
   { path: "/shoe-orders", route: shoe_orders },
+  { path: "/shoe-orders/statistic", route: shoe_orders_statistic },
+
   { path: "/order-notes", route: order_notes },
+
   { path: "/mentors", route: mentors },
 
   { path: "/insurance", route: insurance },

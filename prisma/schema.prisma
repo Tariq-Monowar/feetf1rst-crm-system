@@ -1825,6 +1825,7 @@ model shoe_order {
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
+  @@index([partnerId, status]) // Statistic cards: single-scan counts by status
 }
 
 enum insurance_status {
