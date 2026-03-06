@@ -129,14 +129,14 @@ export const getCurrentWorkStatus = async (req: Request, res: Response) => {
     const hours = Math.floor(elapsedSecondsTotal / 3600);
     const minutes = Math.floor((elapsedSecondsTotal % 3600) / 60);
     const seconds = elapsedSecondsTotal % 60;
-    const milliseconds = elapsedMs % 1000;
+    const hundredths = Math.floor((elapsedMs % 1000) / 10); // 0–99
 
-    // duration: HHMMSSmmm (e.g. "000200000" = 00:02:00.000, "001716281" = 00:17:16.281)
+    // duration: HHMMSSmm (8 digits, e.g. "00020000" = 00:02:00.00)
     const duration =
       String(hours).padStart(2, "0") +
       String(minutes).padStart(2, "0") +
       String(seconds).padStart(2, "0") +
-      String(milliseconds).padStart(3, "0");
+      String(hundredths).padStart(2, "0");
 
     return res.status(200).json({
       success: true,
