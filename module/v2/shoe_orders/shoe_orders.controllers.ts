@@ -207,12 +207,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     // Validate conditional data when required
     if (halfSampleRequired) {
       // Need steps 4 & 5 data when half sample is required
-      if (preparation_date == null || fitting_date == null) {
-        return res.status(400).json({
-          success: false,
-          message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date,  and for step 5: fitting_date are required`,
-        });
-      }
+      // if (preparation_date == null || fitting_date == null) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date,  and for step 5: fitting_date are required`,
+      //   });
+      // }
     }
 
     if (!hasTrimStrips) {
@@ -1163,6 +1163,14 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         : role === "EMPLOYEE"
           ? { employeeId: employeeId ?? undefined }
           : {};
+    // For create(), use relation form (partner/employee connect) instead of scalar IDs.
+    const assigneeRelation = stepAlreadyHasAssignee
+      ? {}
+      : role === "PARTNER" && partnerId
+        ? { partner: { connect: { id: partnerId } } }
+        : role === "EMPLOYEE" && employeeId
+          ? { employee: { connect: { id: employeeId } } }
+          : {};
 
     const completedAt = new Date();
 
@@ -1190,12 +1198,12 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     } else {
       const newStep = await prisma.shoe_order_step.create({
         data: {
-          orderId: id,
+          order: { connect: { id } },
           status,
           isCompleted: true,
           startedAt: startedAtValue,
           complatedAt: completedAt,
-          ...assigneeData,
+          ...assigneeRelation,
           ...stepPayload,
         },
       });
@@ -1368,6 +1376,16 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       //     : undefined,
     };
 
+    // For create(), use relation form for assignee (no scalar partnerId/employeeId).
+    const assigneeRelationStep =
+      role === "PARTNER" && partnerId
+        ? { partner: { connect: { id: partnerId } } }
+        : role === "EMPLOYEE" && employeeId
+          ? { employee: { connect: { id: employeeId } } }
+          : {};
+    const { employeeId: _e, partnerId: _p, ...stepPayloadForCreate } =
+      stepPayload;
+
     // Actual start time: from body (if work started before scheduled) or now
     const startedAtValue: any =
       started_at !== undefined && started_at !== ""
@@ -1398,10 +1416,11 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       // Create new step for this status; record actual start time
       const newStep = await prisma.shoe_order_step.create({
         data: {
-          orderId: id,
+          order: { connect: { id } },
           status,
           startedAt: startedAtValue,
-          ...stepPayload,
+          ...assigneeRelationStep,
+          ...stepPayloadForCreate,
         },
       });
       stepId = newStep.id;
