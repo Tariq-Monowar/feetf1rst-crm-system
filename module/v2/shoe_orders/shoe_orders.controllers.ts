@@ -320,7 +320,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             orderId: order.id,
             status: "Halbprobenerstellung",
             isCompleted: false,
-            
+
             preparation_date: new Date(preparation_date),
             notes: step4_notes ?? undefined,
           },
@@ -1022,7 +1022,12 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         shoeOrderStep: {
           where: { status },
           take: 1,
-          select: { id: true, startedAt: true, partnerId: true, employeeId: true },
+          select: {
+            id: true,
+            startedAt: true,
+            partnerId: true,
+            employeeId: true,
+          },
         },
       },
     });
@@ -1082,24 +1087,26 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     let stepId: string;
 
-    // Set either partner or employee on the step based on who is updating (not both). Only set if step has neither yet.
-    const stepPartnerId = role === "PARTNER" ? partnerId ?? undefined : undefined;
-    const stepEmployeeId = role === "EMPLOYEE" ? employeeId ?? undefined : undefined;
+    // Step already has assignee: do not overwrite partnerId or employeeId.
     const stepAlreadyHasAssignee =
       existingStep != null &&
-      (existingStep.partnerId != null ||
-        existingStep.employeeId != null);
+      (existingStep.partnerId != null || existingStep.employeeId != null);
+    // When setting assignee: set only one – partner OR employee, never both.
+    const assigneeData = stepAlreadyHasAssignee
+      ? {}
+      : role === "PARTNER"
+        ? { partnerId: partnerId ?? undefined }
+        : role === "EMPLOYEE"
+          ? { employeeId: employeeId ?? undefined }
+          : {};
 
     const completedAt = new Date();
 
     if (existingStep) {
-      // Update existing step: only set fields that were sent (undefined = do not change). Don't overwrite partnerId/employeeId if at least one is already set.
       const updateData: Record<string, unknown> = {
         isCompleted: true,
         complatedAt: completedAt,
-        ...(stepAlreadyHasAssignee
-          ? {}
-          : { partnerId: stepPartnerId, employeeId: stepEmployeeId }),
+        ...assigneeData,
         ...stepPayload,
       };
       // Set startedAt on first update if not already set (actual starting time)
@@ -1117,7 +1124,6 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status; record actual start time, completion time, and who performed it
       const newStep = await prisma.shoe_order_step.create({
         data: {
           orderId: id,
@@ -1125,8 +1131,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           isCompleted: true,
           startedAt: startedAtValue,
           complatedAt: completedAt,
-          partnerId: stepPartnerId,
-          employeeId: stepEmployeeId,
+          ...assigneeData,
           ...stepPayload,
         },
       });
@@ -1664,17 +1669,14 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
             startedAt: true,
             complatedAt: true,
             partner: {
-              select: {
-                id: true,
-                name: true,
-                busnessName: true,
-              },
+              select: { id: true, name: true, busnessName: true, image: true },
             },
             employee: {
               select: {
                 id: true,
                 employeeName: true,
                 accountName: true,
+                image: true,
               },
             },
           },
@@ -1702,12 +1704,27 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
           ? orderCreatedAt
           : (step.startedAt ?? step.createdAt);
       const endedAt = step.complatedAt ?? now;
-      const durationMs = Math.max(0, endedAt.getTime() - stepStartedAt.getTime());
+      const durationMs = Math.max(
+        0,
+        endedAt.getTime() - stepStartedAt.getTime(),
+      );
       const performedBy =
-        step.partner != null
-          ? { type: "partner" as const, id: step.partner.id, name: step.partner.name, busnessName: step.partner.busnessName }
-          : step.employee != null
-            ? { type: "employee" as const, id: step.employee.id, employeeName: step.employee.employeeName, accountName: step.employee.accountName }
+        (step as any).partner != null
+          ? {
+              type: "partner" as const,
+              id: (step as any).partner.id,
+              name: (step as any).partner.name,
+              busnessName: (step as any).partner.busnessName,
+              image: (step as any).partner.image,
+            }
+          : (step as any).employee != null
+            ? {
+                type: "employee" as const,
+                id: (step as any).employee.id,
+                employeeName: (step as any).employee.employeeName,
+                accountName: (step as any).employee.accountName,
+                image: (step as any).employee.image,
+              }
             : null;
       return {
         status: step.status,
@@ -1731,6 +1748,12 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get Shoe Order Details Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while getting shoe order details",
@@ -1797,6 +1820,12 @@ export const removeShoeOrderFile = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Remove Shoe Order File Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while removing file",
