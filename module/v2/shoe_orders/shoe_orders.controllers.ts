@@ -811,6 +811,8 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     const statusParam = req.query.status;
     const priorityParam = req.query.priority;
     const paymentTypeParam = req.query.paymentType;
+    const branchLocationTitleParam = req.query.branchLocationTitle;
+    const pickUpLocationTitleParam = req.query.pickUpLocationTitle;
     const searchParam = req.query.search;
 
     const limit = Math.min(Math.max(Number(limitParam) || 10, 1), 100);
@@ -861,6 +863,12 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       }
       if (paymentTypeParam && typeof paymentTypeParam === "string") {
         conditions.push(Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`);
+      }
+      if (branchLocationTitleParam && typeof branchLocationTitleParam === "string") {
+        conditions.push(Prisma.sql`so."branch_location"->>'title' = ${branchLocationTitleParam}::text`);
+      }
+      if (pickUpLocationTitleParam && typeof pickUpLocationTitleParam === "string") {
+        conditions.push(Prisma.sql`so."pick_up_location"->>'title' = ${pickUpLocationTitleParam}::text`);
       }
       tokens.forEach((token) => {
         const term = `%${token}%`;
@@ -948,6 +956,12 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     }
     if (paymentTypeParam && typeof paymentTypeParam === "string") {
       whereCondition.payment_type = paymentTypeParam;
+    }
+    if (branchLocationTitleParam && typeof branchLocationTitleParam === "string") {
+      (whereCondition as any).branch_location = { path: ["title"], equals: branchLocationTitleParam };
+    }
+    if (pickUpLocationTitleParam && typeof pickUpLocationTitleParam === "string") {
+      (whereCondition as any).pick_up_location = { path: ["title"], equals: pickUpLocationTitleParam };
     }
 
     const shoeOrders = await prisma.shoe_order.findMany({
