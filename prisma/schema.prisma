@@ -341,6 +341,7 @@ model Employees {
   shoeOrders                  shoe_order[]
   workHours                   work_hours[]
   shoeOrderSteps              shoe_order_step[]
+  workTypes                   work_types[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -1896,7 +1897,7 @@ model shoe_order_step {
   // files files[]
   // notes String?
   //material string?
-  step3_json Json?
+  step3_json           Json?
   // thickness            String?
   zusätzliche_notizen String?
   // dicke_ferse          String?
@@ -2108,6 +2109,12 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2131,6 +2138,12 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2885,8 +2898,10 @@ model work_types {
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime     @default(now())
-  workHours work_hours[]
+  createdAt DateTime @default(now())
+
+  employees   Employees? @relation(fields: [employeesId], references: [id])
+  employeesId String?
 
   @@index([createdAt])
 }
@@ -2894,20 +2909,22 @@ model work_types {
 model work_hours {
   id String @id @default(uuid())
 
-  employeeId String
-  employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
   date  DateTime?
   hours Int?
 
-  workTypeId String
-  workType   work_types @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  name String?
+
+  employeeId String
+  employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  startTime DateTime?
+  endTime   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([employeeId])
-  @@index([workTypeId])
+  @@index([name])
   @@index([createdAt])
 }
 

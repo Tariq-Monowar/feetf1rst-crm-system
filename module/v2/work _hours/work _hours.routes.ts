@@ -2,35 +2,35 @@ import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
 import {
-  createWorkType,
-  updateWorkType,
-  deleteWorkType,
-  getWorkTypeDetailsById,
-  getAllWorkTypes,
+  createWorkHours,
+  getCurrentWorkStatus,
 } from "./work _hours.controllers";
 
 const router = express.Router();
 
 /*
- *---------PARTNER-----------
- * create work type
- * get all work types
- * get single work type
- * update work type
- * delete work type
+ *---------MASTE PLAN-----------
+ * create worke hours
+ * get current work status
+ * get single work hours
+ * update work hours
+ * delete work hours
  */
 
-router.post("/work-type/create", verifyUser("PARTNER"), upload.single("image"), createWorkType);
-router.get("/work-type/get-all", verifyUser("ANY"), getAllWorkTypes);
-router.get("/work-type/get-details/:id", verifyUser("ANY"), getWorkTypeDetailsById);
-router.patch("/work-type/update/:id", verifyUser("PARTNER"), upload.single("image"), updateWorkType);
-router.delete("/work-type/delete/:id", verifyUser("PARTNER"), deleteWorkType);
+router.post("/create", verifyUser("PARTNER", "EMPLOYEE"), createWorkHours);
 
-/*
- *---------EMPLOYEE-----------
- * get all work types
- * get single work type
- */
- 
+router.get(
+  "/get-current-work-status",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getCurrentWorkStatus,
+);
+
+//
+
+// router.get(
+//   "/work-hours/get-all",
+//   verifyUser("PARTNER", "EMPLOYEE"),
+//   getAllWorkHours,
+// );
 
 export default router;

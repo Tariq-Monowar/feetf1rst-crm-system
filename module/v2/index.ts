@@ -29,6 +29,7 @@ import insurance from "./insurance/insurance.routes";
 import prescription from "./insurance/prescription/prescription.routes";
 
 import work_hours from "./work _hours/work _hours.routes";
+import work_type from "./work _hours/work_type/work_type.routes";
 
 const router = express.Router();
 
@@ -63,6 +64,7 @@ const moduleRoutes = [
   { path: "/insurance/prescription", route: prescription },
 
   { path: "/work-hours", route: work_hours },
+  { path: "/work-hours/work-type", route: work_type },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {
