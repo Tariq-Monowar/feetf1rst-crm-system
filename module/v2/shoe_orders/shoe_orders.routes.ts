@@ -18,6 +18,7 @@ import {
 const router = express.Router();
 
 router.post("/create", verifyUser("PARTNER", "EMPLOYEE"), createShoeOrder);
+
 router.get("/get-all", verifyUser("PARTNER", "EMPLOYEE"), getAllShoeOrders);
 
 router.patch(
@@ -76,12 +77,6 @@ router.get(
   "/get-notes/:id",
   verifyUser("PARTNER", "EMPLOYEE"),
   getShoeOrderNote,
-);
-
-router.patch(
-  "/update-order/:id",
-  verifyUser("PARTNER", "EMPLOYEE"),
-  updateShoeOrder,
 );
 
 export default router;

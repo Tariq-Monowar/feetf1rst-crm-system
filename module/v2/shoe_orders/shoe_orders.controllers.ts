@@ -1076,10 +1076,11 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    // Single query: order + existing step for this status.
-    // Only this one step is created/updated; no other steps (e.g. Bettungserstellung, Halbprobenerstellung) are auto-completed.
+    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
+    const orderWhere =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
     const order = await prisma.shoe_order.findFirst({
-      where: { id, partnerId },
+      where: orderWhere,
       select: {
         id: true,
         shoeOrderStep: {
@@ -1241,6 +1242,12 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Update Shoe Order Status Error:", error);
+    if (error?.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order or step not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order status",
@@ -1289,10 +1296,11 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       });
     }
 
-    // Single query: order + existing step for this status.
-    // Only this one step is created/updated; no other steps (e.g. Bettungserstellung, Halbprobenerstellung) are auto-completed.
+    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
+    const orderWhereStep =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
     const order = await prisma.shoe_order.findFirst({
-      where: { id, partnerId },
+      where: orderWhereStep,
       select: {
         id: true,
         shoeOrderStep: {
@@ -1438,7 +1446,13 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       data: stepWithFiles!,
     });
   } catch (error: any) {
-    console.error("Update Shoe Order Status Error:", error);
+    console.error("Update Shoe Order Step Error:", error);
+    if (error?.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order or step not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order status",
@@ -1547,11 +1561,26 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const role = req.user?.role;
 
     const { status_note, order_note, supply_note } = req.body;
 
+    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
+    const orderWhere =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
+    const existing = await prisma.shoe_order.findFirst({
+      where: orderWhere,
+      select: { id: true },
+    });
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
     const order = await prisma.shoe_order.update({
-      where: { id, partnerId },
+      where: { id: existing.id },
       data: { status_note, order_note, supply_note },
       select: {
         id: true,
@@ -1568,7 +1597,7 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Update Shoe Order Error:", error);
-    if (error.code === "P2025") {
+    if (error?.code === "P2025") {
       return res.status(404).json({
         success: false,
         message: "Shoe order not found",
