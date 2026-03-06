@@ -1114,6 +1114,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       return val as Prisma.InputJsonValue;
     };
 
+    // Schema: shoe_order_step has no "thickness" (commented out); omit to avoid Prisma validation on host.
     const stepPayload = {
       notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
       leistentyp:
@@ -1122,8 +1123,6 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           : undefined,
       material:
         material !== undefined ? (material?.trim() ?? undefined) : undefined,
-      thickness:
-        thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
       preparation_date:
         preparation_date !== undefined && preparation_date !== ""
           ? new Date(preparation_date)
@@ -1196,16 +1195,23 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
+      // Only pass defined values to create (host Prisma rejects unknown/undefined args)
+      const createPayload: Record<string, unknown> = {
+        order: { connect: { id } },
+        status,
+        isCompleted: true,
+        startedAt: startedAtValue,
+        complatedAt: completedAt,
+        ...assigneeRelation,
+        ...stepPayload,
+      };
+      Object.keys(createPayload).forEach(
+        (k) =>
+          (createPayload as any)[k] === undefined &&
+          delete (createPayload as any)[k],
+      );
       const newStep = await prisma.shoe_order_step.create({
-        data: {
-          order: { connect: { id } },
-          status,
-          isCompleted: true,
-          startedAt: startedAtValue,
-          complatedAt: completedAt,
-          ...assigneeRelation,
-          ...stepPayload,
-        },
+        data: createPayload as any,
       });
       stepId = newStep.id;
     }
@@ -1337,6 +1343,7 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       return val as Prisma.InputJsonValue;
     };
 
+    // Schema: shoe_order_step has no "thickness" (commented out); omit to avoid Prisma validation on host.
     const stepPayload = {
       notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
       leistentyp:
@@ -1345,8 +1352,6 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
           : undefined,
       material:
         material !== undefined ? (material?.trim() ?? undefined) : undefined,
-      thickness:
-        thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
       preparation_date:
         preparation_date !== undefined && preparation_date !== ""
           ? new Date(preparation_date)
@@ -1413,15 +1418,21 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status; record actual start time
+      // Only pass defined values to create (host Prisma rejects unknown/undefined args)
+      const createPayloadStep: Record<string, unknown> = {
+        order: { connect: { id } },
+        status,
+        startedAt: startedAtValue,
+        ...assigneeRelationStep,
+        ...stepPayloadForCreate,
+      };
+      Object.keys(createPayloadStep).forEach(
+        (k) =>
+          (createPayloadStep as any)[k] === undefined &&
+          delete (createPayloadStep as any)[k],
+      );
       const newStep = await prisma.shoe_order_step.create({
-        data: {
-          order: { connect: { id } },
-          status,
-          startedAt: startedAtValue,
-          ...assigneeRelationStep,
-          ...stepPayloadForCreate,
-        },
+        data: createPayloadStep as any,
       });
       stepId = newStep.id;
     }
