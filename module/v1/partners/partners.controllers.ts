@@ -10,6 +10,7 @@ import {
 } from "../../../utils/emailService.utils";
 import validator from "validator";
 import redis from "../../../config/redis.config";
+import { getActivePartnerIds, isPartnerActive } from "../../../utils/userActivity";
 
 const SET_PASSWORD_KEY_PREFIX = "set-password:";
 const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
@@ -532,6 +533,8 @@ export const getAllPartners = async (req: Request, res: Response) => {
       }),
     ]);
 
+    const activePartnerIds = await getActivePartnerIds();
+
     const partnersWithImageUrls = partners.map((partner) => {
       const accountInfo = partner.accountInfos?.[0];
       const bankInfo = accountInfo?.bankInfo as {
@@ -546,6 +549,7 @@ export const getAllPartners = async (req: Request, res: Response) => {
         barcodeLabel: accountInfo?.barcodeLabel || null,
         vat_country: accountInfo?.vat_country || null,
         vat_number: accountInfo?.vat_number || null,
+        isActive: activePartnerIds.includes(partner.id),
       };
     });
 
@@ -630,6 +634,7 @@ export const getPartnerById = async (req: Request, res: Response) => {
       bankNumber?: string;
     } | null;
     const primaryLocation = partner.storeLocations?.[0];
+    const isActive = await isPartnerActive(id);
 
     res.status(200).json({
       success: true,
@@ -642,6 +647,7 @@ export const getPartnerById = async (req: Request, res: Response) => {
         vat_country: accountInfo?.vat_country || null,
         vat_number: accountInfo?.vat_number || null,
         mainLocation: primaryLocation?.address ?? null,
+        isActive,
       },
     });
   } catch (error) {

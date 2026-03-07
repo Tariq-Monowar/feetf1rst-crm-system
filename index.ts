@@ -4,6 +4,13 @@ import { Server as SocketIOServer } from "socket.io";
 import { appointmentReminderCron, dailyReport } from "./cron/weekly_report";
 import { scheduleDailyDatabaseBackup } from "./cron/database_backup";
 import app, { allowedOrigins } from "./app";
+import redis from "./config/redis.config";
+import {
+  initUserActivity,
+  addActiveUser,
+  removeActiveUser,
+} from "./utils/userActivity";
+
 const PORT = process.env.PORT || 1971;
 
 // Create HTTP server from Express
@@ -19,39 +26,40 @@ export const io = new SocketIOServer(server, {
   },
 });
 
+initUserActivity(redis, io, prisma);
+
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
-  socket.on("join", (userId: string) => {
+  socket.on("join", (userId: string, role?: string) => {
     socket.join(userId);
-    console.log(`User with ID: ${userId} joined room: ${userId}`);
-  });
-
-  socket.on("joinConversation", (conversationId) => {
-    socket.join(conversationId);
-    console.log(`Joined conversation: ${conversationId}`);
+    socket.data.userId = userId;
+    socket.data.role = role;
+    addActiveUser(userId, socket.id, role);
+    console.log(`User ${userId} (${role ?? "—"}) joined room`);
   });
 
   socket.on("typing", ({ conversationId, userId, userName }) => {
-    socket.to(conversationId).emit("typing", {
-      conversationId,
-      userId,
-      userName,
-    });
+    socket
+      .to(conversationId)
+      .emit("typing", { conversationId, userId, userName });
   });
 
   socket.on("stopTyping", ({ conversationId, userId }) => {
-    socket.to(conversationId).emit("stopTyping", {
-      conversationId,
-      userId,
-    });
+    socket.to(conversationId).emit("stopTyping", { conversationId, userId });
   });
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
+    const userId = socket.data?.userId;
+    const role = socket.data?.role;
+    removeActiveUser(socket.id, userId, role);
+    console.log(
+      "Socket disconnected:",
+      socket.id,
+      userId ? `(user ${userId}, ${role ?? "—"})` : "",
+    );
   });
 
-  // Example: receive a message from client
   socket.on("message", (data) => {
     console.log("Message from client:", data);
   });

@@ -86,6 +86,7 @@ model User {
   routes                      Route[]
   workTypes                   work_types[]
   shoeOrderSteps              shoe_order_step[]
+  timelineAnalytics           timeline_analytics[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -341,6 +342,7 @@ model Employees {
   workHours                   work_hours[]
   shoeOrderSteps              shoe_order_step[]
   workTypes                   work_types[]
+  timelineAnalytics           timeline_analytics[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -1970,7 +1972,6 @@ model shoe_order_step {
 
 // /// Step-5-specific data. Depends on status (Halbprobe_durchführen): one per order when that step is used, keyed by orderId.
 
-
 enum step5_feedback_status {
   Freigeben
   Kleine_Nacharbeit
@@ -2148,6 +2149,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2171,6 +2174,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3009,4 +3014,23 @@ model prescription {
 
   @@index([customerId])
   @@index([createdAt])
+}
+
+//time line analytix
+
+model timeline_analytics {
+  id String @id @default(cuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // partner join/leave (employeeId optional for partner-only sessions)
+  joinAt DateTime?
+  leaveAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
