@@ -705,19 +705,30 @@ export const getPartnerActivity = async (req: Request, res: Response) => {
     const secondsWeek = Number(summary?.seconds_week ?? 0);
     const secondsMonth = Number(summary?.seconds_month ?? 0);
 
+    const now = new Date();
+    const activityList = activity.map((row) => {
+      const leaveAtOrNow = row.leaveAt ?? now;
+      const join = row.joinAt ? new Date(row.joinAt).getTime() : 0;
+      const leave = leaveAtOrNow.getTime();
+      const durationSeconds = join ? Math.max(0, Math.floor((leave - join) / 1000)) : 0;
+      return {
+        id: row.id,
+        partnerId: row.partnerId,
+        employeeId: row.employeeId,
+        joinAt: row.joinAt,
+        leaveAt: row.leaveAt,
+        leaveAtOrNow: leaveAtOrNow.toISOString(),
+        durationSeconds,
+      };
+    });
+
     res.status(200).json({
       success: true,
       data: {
         timeStayedTodaySeconds: secondsToday,
         timeStayedThisWeekSeconds: secondsWeek,
         timeStayedThisMonthSeconds: secondsMonth,
-        activity: activity.map((row) => ({
-          id: row.id,
-          partnerId: row.partnerId,
-          employeeId: row.employeeId,
-          joinAt: row.joinAt,
-          leaveAt: row.leaveAt,
-        })),
+        activity: activityList,
       },
     });
   } catch (error) {
