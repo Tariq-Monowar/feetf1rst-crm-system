@@ -27,6 +27,10 @@ type PrismaLike = {
       orderBy: { joinAt: "desc" };
     }) => Promise<TimelineRow | null>;
     update: (args: { where: { id: string }; data: { leaveAt: Date } }) => Promise<unknown>;
+    updateMany: (args: {
+      where: { partnerId?: string; employeeId?: string; leaveAt: null };
+      data: { leaveAt: Date };
+    }) => Promise<unknown>;
   };
 };
 
@@ -63,16 +67,11 @@ async function recordPartnerJoin(partnerId: string): Promise<void> {
 }
 
 async function recordPartnerLeave(partnerId: string): Promise<void> {
-  const open = await prisma.timeline_analytics.findFirst({
+  const now = new Date();
+  await prisma.timeline_analytics.updateMany({
     where: { partnerId, leaveAt: null },
-    orderBy: { joinAt: "desc" },
+    data: { leaveAt: now },
   });
-  if (open) {
-    await prisma.timeline_analytics.update({
-      where: { id: open.id },
-      data: { leaveAt: new Date() },
-    });
-  }
 }
 
 async function recordEmployeeJoin(partnerId: string, employeeId: string): Promise<void> {
@@ -82,16 +81,11 @@ async function recordEmployeeJoin(partnerId: string, employeeId: string): Promis
 }
 
 async function recordEmployeeLeave(employeeId: string): Promise<void> {
-  const open = await prisma.timeline_analytics.findFirst({
+  const now = new Date();
+  await prisma.timeline_analytics.updateMany({
     where: { employeeId, leaveAt: null },
-    orderBy: { joinAt: "desc" },
+    data: { leaveAt: now },
   });
-  if (open) {
-    await prisma.timeline_analytics.update({
-      where: { id: open.id },
-      data: { leaveAt: new Date() },
-    });
-  }
 }
 
 // --- Helpers: Redis presence ---
@@ -130,16 +124,19 @@ export function addActiveUser(
 
     await redis.set(KEYS.userRole(userId), role);
 
-    // 2. Role-specific: track in Redis + write timeline_analytics row (join)
+    // 2. Role-specific: track in Redis + one timeline row per session (first socket only)
+    const socketCount = await redis.scard(KEYS.userSockets(userId));
+    const isFirstSocket = socketCount === 1;
+
     if (role === "PARTNER") {
       await redis.sadd(KEYS.activePartners, userId);
-      await recordPartnerJoin(userId);
+      if (isFirstSocket) await recordPartnerJoin(userId);
     }
 
     if (role === "EMPLOYEE" && employeeId) {
       await redis.sadd(KEYS.activeEmployees, employeeId);
       await redis.set(KEYS.socketToEmployee(socketId), employeeId);
-      await recordEmployeeJoin(userId, employeeId);
+      if (isFirstSocket) await recordEmployeeJoin(userId, employeeId);
     }
 
     await broadcastActiveUsers();
