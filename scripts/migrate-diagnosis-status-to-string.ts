@@ -6,11 +6,8 @@
  * Usage: npx ts-node scripts/migrate-diagnosis-status-to-string.ts
  */
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 const TABLES = ["Versorgungen", "customer_versorgungen", "customerProduct"];
+import { prisma } from "../db";
 
 async function migrateTable(tableName: string) {
   try {

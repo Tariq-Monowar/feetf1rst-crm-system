@@ -1,7 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 /**
  * Sets insurance_payed and private_payed on shoe_order from payment_status + payment_type.
  * Used to identify which payment is DONE vs PENDING.
@@ -16,6 +12,7 @@ const prisma = new PrismaClient();
 async function syncShoeOrderPaymentPaid() {
   try {
     console.log("Syncing shoe_order insurance_payed / private_payed (done vs pending)...\n");
+import { prisma } from "../db";
 
     const r1 = await prisma.shoe_order.updateMany({
       where: { payment_type: { not: null } },

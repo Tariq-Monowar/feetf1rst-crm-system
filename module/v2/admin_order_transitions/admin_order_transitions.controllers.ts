@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 // Helper function to validate month and year
 const validateMonthYear = (month: number, year: number) => {
   if (month < 1 || month > 12) {

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 import { Readable } from "stream";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -8,8 +9,6 @@ import {
   deleteMultipleFilesFromS3,
   downloadFileFromS3,
 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 const COMPLETED_ORDER_STATUSES: any = [
   "Ausgeführte_Einlagen",

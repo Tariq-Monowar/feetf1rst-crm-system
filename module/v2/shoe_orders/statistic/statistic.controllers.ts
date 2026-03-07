@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from "../../../../db";
+import { Prisma } from "@prisma/client";
 import redis from "../../../../config/redis.config";
-
-const prisma = new PrismaClient();
 
 const CACHE_TTL_SEC = 300; // 5 minutes
 

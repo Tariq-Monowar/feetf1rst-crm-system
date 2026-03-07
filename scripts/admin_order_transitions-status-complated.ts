@@ -1,9 +1,6 @@
 import dotenv from "dotenv";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../db";
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 /**
  * Sync admin_order_transitions status to complated where the linked custom_shaft

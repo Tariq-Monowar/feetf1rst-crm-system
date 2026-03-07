@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import { featureAccessData } from "./feature_access.data";
-
-const prisma = new PrismaClient();
 
 const defaultFeatureAccessData = {
   dashboard: true,

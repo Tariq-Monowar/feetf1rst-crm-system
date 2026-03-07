@@ -1,7 +1,6 @@
-import { PrismaClient, StoreType, Prisma } from "@prisma/client";
+import { StoreType, Prisma } from "@prisma/client";
+import { prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
-const prisma = new PrismaClient();
-
 const parseJsonSafely = (input: any): any => {
   if (typeof input === "object" && input !== null && !Array.isArray(input)) {
     return input;

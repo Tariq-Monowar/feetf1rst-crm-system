@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import * as XLSX from "xlsx";
-
-const prisma = new PrismaClient();
 
 //---------------------------------insurance list---------------------------------
 export const getInsuranceList = async (req: Request, res: Response) => {

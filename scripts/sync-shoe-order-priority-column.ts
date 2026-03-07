@@ -1,7 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 /**
  * One-time migration: copy "Priority" column into "priority" so we can
  * drop the duplicate "Priority" column without losing data.
@@ -14,6 +10,7 @@ async function syncPriorityColumn() {
       SET priority = "Priority"
       WHERE "Priority" IS NOT NULL
     `);
+import { prisma } from "../db";
     console.log("Synced Priority -> priority. Safe to run: npx prisma db push");
   } catch (e: any) {
     if (e.message?.includes('column "Priority" does not exist')) {

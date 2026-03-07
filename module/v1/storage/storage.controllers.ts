@@ -1,12 +1,11 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import {
   PrismaClient,
   StoreOrderOverviewStatus,
   StoreType,
 } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 /**
  * Calculate overall Status dynamically based on mindestbestand / mindestmenge and groessenMengen

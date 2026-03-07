@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function cleanLeaveApplication() {
   try {
     console.log("Cleaning leave_application table...\n");
+import { prisma } from "../db";
 
     const count = await prisma.leave_application.count();
     console.log(`Found ${count} record(s) to delete.\n`);

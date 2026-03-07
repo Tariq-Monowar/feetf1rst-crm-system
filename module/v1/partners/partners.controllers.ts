@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
@@ -10,8 +10,6 @@ import {
 } from "../../../utils/emailService.utils";
 import validator from "validator";
 import redis from "../../../config/redis.config";
-
-const prisma = new PrismaClient();
 
 const SET_PASSWORD_KEY_PREFIX = "set-password:";
 const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60; // 7 days

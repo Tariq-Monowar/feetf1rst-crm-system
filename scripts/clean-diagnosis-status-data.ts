@@ -5,12 +5,9 @@
  * Run: npx ts-node scripts/clean-diagnosis-status-data.ts
  */
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function main() {
   console.log("Cleaning diagnosis_status data...\n");
+import { prisma } from "../db";
 
   const v = await prisma.$executeRawUnsafe(`UPDATE "Versorgungen" SET diagnosis_status = '{}'`);
   console.log(`Versorgungen: ${v} rows updated`);

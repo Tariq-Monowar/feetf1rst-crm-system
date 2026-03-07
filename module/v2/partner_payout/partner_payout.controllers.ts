@@ -1,11 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import {
   getPaginationOptions,
   getPaginationResult,
 } from "../../../utils/pagination";
-
-const prisma = new PrismaClient();
 
 // Create partner payout
 export const createPartnerPayout = async (req: Request, res: Response) => {

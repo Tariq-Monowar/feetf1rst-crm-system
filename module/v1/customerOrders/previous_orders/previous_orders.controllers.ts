@@ -1,15 +1,11 @@
 
 // @ts-nocheck
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../../../../db";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
 import path from "path";
-
-
-const prisma = new PrismaClient();
 
 
 const previousOrdersSelect = {

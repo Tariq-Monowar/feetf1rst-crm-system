@@ -7,11 +7,10 @@
  *   3. npx ts-node scripts/backup-restore-diagnosis-status.ts restore
  */
 
-import { PrismaClient } from "@prisma/client";
 import * as fs from "fs";
+import { prisma } from "../db";
 import * as path from "path";
 
-const prisma = new PrismaClient();
 const BACKUP_FILE = path.join(__dirname, "diagnosis_status_backup.json");
 
 async function backup() {

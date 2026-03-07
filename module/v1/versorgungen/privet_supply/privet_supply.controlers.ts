@@ -1,9 +1,8 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../../db";
 import redis from "../../../../config/redis.config";
-import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 
-const prisma = new PrismaClient();
 const SHADOW_SUPPLY_TTL_SEC = 60 * 60;
 
 export const createShadowSupply = async (req: Request, res: Response) => {

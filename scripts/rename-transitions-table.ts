@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function renameTransitionsTable() {
   try {
     console.log("\n=== Renaming maßschuhe_transitions to admin_order_transitions ===\n");
+import { prisma } from "../db";
 
     // Check if the old table exists
     const tableExists = await prisma.$queryRawUnsafe(`

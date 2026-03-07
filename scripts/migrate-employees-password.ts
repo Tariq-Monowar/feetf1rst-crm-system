@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-
-const prisma = new PrismaClient();
+import { prisma } from "../db";
 
 function isBcryptHash(str: string): boolean {
   return /^\$2[aby]\$\d{2}\$/.test(str);

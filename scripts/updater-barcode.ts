@@ -1,9 +1,6 @@
 import dotenv from "dotenv";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../db";
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 const BARCODE_PREFIX = "FF";
 

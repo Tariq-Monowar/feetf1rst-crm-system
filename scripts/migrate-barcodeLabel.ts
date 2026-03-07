@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function migrateBarcodeLabel() {
   try {
     console.log("Starting migration: Generating barcodeLabel for all accountInfo records...\n");
+import { prisma } from "../db";
 
     // Get all users ordered by createdAt (oldest first)
     const users = await prisma.user.findMany({

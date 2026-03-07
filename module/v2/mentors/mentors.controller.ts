@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 export const createMentor = async (req: Request, res: Response) => {
   const file = req.file as { location?: string } | undefined;

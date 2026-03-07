@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function migrateUpdateImageToZipperImage() {
   try {
     console.log("Starting migration: Renaming update_image to zipper_image in custom_shafts table...\n");
+import { prisma } from "../db";
 
     // Check if update_image column exists
     const columnCheck = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(

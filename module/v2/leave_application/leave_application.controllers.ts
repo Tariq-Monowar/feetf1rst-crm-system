@@ -1,8 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 const validReasons = ["UR", "KR", "FO", "DH", "FT", "SO", "SA", "DG", "OTHER"];
+import { prisma } from "../../../db";
 
 const parseDateInput = (item) => {
   const dateStr = typeof item === "string" ? item : item?.date;

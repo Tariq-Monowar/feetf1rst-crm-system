@@ -1,12 +1,10 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import {
   questionnaireData,
   InsolesQuestionnaData,
   shoeQuestionnaData,
 } from "./question.data";
-
-const prisma = new PrismaClient();
 
 // function normalize(text) {
 //   return text.toLowerCase().replace(/[^\w\s]/gi, "").replace(/\s+/g, "_").trim();

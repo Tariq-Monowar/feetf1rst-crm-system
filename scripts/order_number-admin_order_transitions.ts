@@ -1,10 +1,7 @@
 import dotenv from "dotenv";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../db";
 // Load environment variables from .env file
 dotenv.config();
-
-const prisma = new PrismaClient();
 
 async function assignOrderNumbersToAdminOrderTransitions() {
   try {

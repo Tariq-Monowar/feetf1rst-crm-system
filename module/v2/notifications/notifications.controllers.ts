@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { notificationSend } from "../../../utils/notification.utils";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../../db";
 
 export const createNotification = async (req, res) => {
   try {

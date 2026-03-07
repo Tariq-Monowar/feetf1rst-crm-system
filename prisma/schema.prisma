@@ -1,12 +1,11 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
-// The datasource `url` property is deprecated in Prisma 5+. Connection info should be moved
-// to prisma.config.ts, and the schema only retains the provider.
+// Connection URL is in prisma.config.ts (Prisma 7+)
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {

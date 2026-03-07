@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function setAllShoeOrdersNormal() {
   try {
     console.log("Setting all shoe orders priority to Normal...\n");
+import { prisma } from "../db";
 
     const result = await prisma.shoe_order.updateMany({
       data: { priority: "Normal" },

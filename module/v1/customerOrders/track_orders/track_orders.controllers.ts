@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -9,8 +9,6 @@ import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
 
 const formatDuration = (milliseconds: number): string => {
   const seconds = Math.floor(milliseconds / 1000);

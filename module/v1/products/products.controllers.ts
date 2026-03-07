@@ -1,12 +1,10 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import { data } from "../../../assets/v1/data";
 import { data as characteristicIcons } from "../../../assets/v1/data";
 import { Multer } from "multer";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 import { getImageUrl } from "../../../utils/base_utl";
-const prisma = new PrismaClient();
-
 // -------------------------------------------
 const normalizeGender = (gender: string) => {
   const g = gender.toUpperCase();

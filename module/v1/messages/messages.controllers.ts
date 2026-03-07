@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import validator from "validator";
 import { sendEmail } from "../../../utils/emailService.utils";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 // Removed getImageUrl - images are now S3 URLs
 import {
   getPaginationOptions,
@@ -62,8 +63,6 @@ import {
 //   @@unique([messageId, userId])
 //   @@map("message_visibilities")
 // }
-
-const prisma = new PrismaClient();
 
 export const createMessage = async (req: Request, res: Response) => {
   try {

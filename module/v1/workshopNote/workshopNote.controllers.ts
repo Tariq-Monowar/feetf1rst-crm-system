@@ -1,8 +1,5 @@
 import e, { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
+import { prisma } from "../../../db";
 export const manageWorkshopNote = async (req, res) => {
   try {
     const userId = req.user.id;

@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
+import { prisma } from "../../../../db";
+import { Prisma } from "@prisma/client";
 export const customerOrderStatus = async (req: Request, res: Response) => {
   const MAX_ORDERS_PER_TYPE = 20;
 

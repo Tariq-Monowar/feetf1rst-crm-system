@@ -1,9 +1,6 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../../db";
 import redis from "../../../../config/redis.config";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 export const createDiagnosisStatus = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;

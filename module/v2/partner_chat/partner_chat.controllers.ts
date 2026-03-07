@@ -1,13 +1,11 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import {
   getPaginationOptions,
   getPaginationResult,
 } from "../../../utils/pagination";
 import { io } from "../../../index";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 // Cursor is now just the message ID - no encoding needed
 

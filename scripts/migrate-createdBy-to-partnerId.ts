@@ -9,13 +9,10 @@
  *   npx ts-node scripts/fix-partnerId-migration.ts
  */
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function fixPartnerIdMigration() {
   try {
     console.log("Starting migration fix for partnerId...\n");
+import { prisma } from "../db";
 
     // Step 1: Check current table structure
     console.log("Step 1: Checking current table structure...");

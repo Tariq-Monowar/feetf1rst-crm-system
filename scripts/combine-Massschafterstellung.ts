@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function combineMassschafterstellung() {
   try {
     console.log("\n=== Combining Massschafterstellung to Komplettfertigung ===\n");
+import { prisma } from "../db";
 
     // Find all custom_shafts with Massschafterstellung category
     const massschafterstellungRecords = await prisma.$queryRaw<Array<{

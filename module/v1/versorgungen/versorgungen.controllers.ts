@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 export const getAllVersorgungen = async (req: Request, res: Response) => {
   try {

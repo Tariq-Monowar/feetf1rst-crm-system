@@ -1,8 +1,9 @@
 import cron from "node-cron";
 import { PrismaClient } from "@prisma/client";
+import { adapter } from "../db";
 import { notificationSend } from "../utils/notification.utils";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter });
 
 interface GroessenMengenEntry {
   length: number;

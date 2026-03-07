@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 const STEPS = ["Halbprobe_durchführen", "Schaft_fertigen", "Bodenerstellen"];
 const STEPS_5_7 = ["Halbprobe_durchführen", "Bodenerstellen"];

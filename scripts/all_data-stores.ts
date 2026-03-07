@@ -1,8 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 const validStoreTypes = ["rady_insole", "milling_block"] as const;
+import { prisma } from "../db";
 type StoreType = (typeof validStoreTypes)[number];
 
 async function fetchStores(storeType: StoreType) {

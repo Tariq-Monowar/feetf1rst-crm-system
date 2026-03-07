@@ -5,12 +5,9 @@
  * Run: npx ts-node scripts/fix-cache-lookup.ts
  */
 
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function main() {
   console.log("Recreating tables to clear orphaned type references...\n");
+import { prisma } from "../db";
 
   const run = (sql: string) => prisma.$executeRawUnsafe(sql);
 

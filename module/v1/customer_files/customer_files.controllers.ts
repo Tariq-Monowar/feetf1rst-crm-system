@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import path from "path";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 // -----------------------------------------------------------------
 // Helpers

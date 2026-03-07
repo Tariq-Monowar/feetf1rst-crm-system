@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../../../db";
 
 /** Database ↔ External (Excel) field names */
 const EXTERNAL_TO_DB: Record<string, string> = {

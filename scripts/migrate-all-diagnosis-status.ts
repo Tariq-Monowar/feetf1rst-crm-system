@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function migrateDiagnosisStatusForTable(tableName: string) {
   try {
     console.log(`\n=== Migrating ${tableName} ===`);
+import { prisma } from "../db";
 
     // Check current column type
     const columnInfo = await prisma.$queryRawUnsafe(`

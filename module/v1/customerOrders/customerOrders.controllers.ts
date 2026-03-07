@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -11,8 +12,6 @@ import {
   sendInvoiceEmail,
 } from "../../../utils/emailService.utils";
 import redis from "../../../config/redis.config";
-
-const prisma = new PrismaClient();
 
 const extractLengthValue = (value: any): number | null => {
   if (value === null || value === undefined) {

@@ -4,10 +4,11 @@ import fs from "fs";
 import path from "path";
 import cron from "node-cron";
 import { PrismaClient } from "@prisma/client";
+import { adapter } from "../db";
 import { uploadFileToS3, deleteFileFromS3 } from "../utils/s3utils";
 
 const execAsync = promisify(exec);
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter });
 
 const RETENTION_DAYS = 30;
 

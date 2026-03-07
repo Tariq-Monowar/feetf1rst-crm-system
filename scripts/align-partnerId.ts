@@ -1,6 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../db";
 
 const PAD_LENGTH = 3; // 001, 002, ... 999, then 1000, 1001, ...
 

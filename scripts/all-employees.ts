@@ -1,7 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function fetchAllEmployees() {
   try {
     const employees = await prisma.employees.findMany({
@@ -28,6 +24,7 @@ async function fetchAllEmployees() {
         },
       },
     });
+import { prisma } from "../db";
 
     console.log(`\n=== All Employees (total: ${employees.length}) ===\n`);
     console.log(JSON.stringify(employees, null, 2));

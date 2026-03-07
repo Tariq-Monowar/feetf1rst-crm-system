@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 async function migrateEmployeesRole() {
   try {
     console.log("Starting migration: Setting role to EMPLOYEE for all employees...\n");
+import { prisma } from "../db";
 
     // Count total employees using raw SQL
     const totalEmployeesResult = await prisma.$queryRawUnsafe<Array<{ count: number }>>(

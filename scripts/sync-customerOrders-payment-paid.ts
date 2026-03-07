@@ -1,7 +1,3 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 /**
  * Sets insurance_payed and private_payed on customerOrders from bezahlt + paymnentType.
  * Used to identify which payment is DONE vs PENDING.
@@ -14,6 +10,7 @@ const prisma = new PrismaClient();
  * - Otherwise the corresponding flag is false (so pending is clear).
  *
  * For broth we only have one status (bezahlt), so we can only reflect one side at a time;
+import { prisma } from "../db";
  * we never set both true from a single status.
  */
 async function syncCustomerOrdersPaymentPaid() {

@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../../../db";
 // Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../utils/notification.utils";
 import {
@@ -12,8 +11,6 @@ import {
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 import { sendCustomShaftOrderNotification } from "../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
 
 const formatOrderCreatedAt = (d: Date) =>
   d.toLocaleDateString("de-DE", {
