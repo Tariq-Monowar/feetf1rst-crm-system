@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma } from "../../../db";
+import { prisma, Prisma } from "../../../db";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
@@ -655,6 +655,76 @@ export const getPartnerById = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong",
       error,
+    });
+  }
+};
+
+export const getPartnerActivity = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(1, parseInt(String(req.query.limit), 10) || 10), 100);
+
+    type SummaryRow = { seconds_today: string; seconds_week: string; seconds_month: string };
+    const [summary] = await prisma.$queryRaw<SummaryRow[]>(Prisma.sql`
+      SELECT
+        COALESCE(SUM(
+          CASE WHEN "joinAt" >= CURRENT_DATE AND "joinAt" < CURRENT_DATE + INTERVAL '1 day'
+            THEN EXTRACT(EPOCH FROM (COALESCE("leaveAt", NOW()) - "joinAt"))
+            ELSE 0 END
+        ), 0)::bigint::text AS "seconds_today",
+        COALESCE(SUM(
+          CASE WHEN "joinAt" >= DATE_TRUNC('week', CURRENT_TIMESTAMP)
+            THEN EXTRACT(EPOCH FROM (COALESCE("leaveAt", NOW()) - "joinAt"))
+            ELSE 0 END
+        ), 0)::bigint::text AS "seconds_week",
+        COALESCE(SUM(
+          CASE WHEN "joinAt" >= DATE_TRUNC('month', CURRENT_TIMESTAMP)
+            THEN EXTRACT(EPOCH FROM (COALESCE("leaveAt", NOW()) - "joinAt"))
+            ELSE 0 END
+        ), 0)::bigint::text AS "seconds_month"
+      FROM timeline_analytics
+      WHERE "partnerId" = ${id}::text AND "joinAt" IS NOT NULL
+    `);
+
+    type ActivityRow = {
+      id: string;
+      partnerId: string;
+      employeeId: string | null;
+      joinAt: Date | null;
+      leaveAt: Date | null;
+    };
+    const activity = await prisma.$queryRaw<ActivityRow[]>(Prisma.sql`
+      SELECT id, "partnerId", "employeeId", "joinAt", "leaveAt"
+      FROM timeline_analytics
+      WHERE "partnerId" = ${id}::text
+      ORDER BY "joinAt" DESC NULLS LAST
+      LIMIT ${limit}
+    `);
+
+    const secondsToday = Number(summary?.seconds_today ?? 0);
+    const secondsWeek = Number(summary?.seconds_week ?? 0);
+    const secondsMonth = Number(summary?.seconds_month ?? 0);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        timeStayedTodaySeconds: secondsToday,
+        timeStayedThisWeekSeconds: secondsWeek,
+        timeStayedThisMonthSeconds: secondsMonth,
+        activity: activity.map((row) => ({
+          id: row.id,
+          partnerId: row.partnerId,
+          employeeId: row.employeeId,
+          joinAt: row.joinAt,
+          leaveAt: row.leaveAt,
+        })),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : error,
     });
   }
 };

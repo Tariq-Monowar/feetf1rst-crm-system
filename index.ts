@@ -31,13 +31,14 @@ initUserActivity(redis, io, prisma);
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
-  socket.on("join", (userId: string, role?: string) => {
+  socket.on("join", (userId: string, role?: string, employeeId?: string) => {
     socket.join(userId);
     socket.data.userId = userId;
     socket.data.role = role;
-    console.log("socket.data", socket.data?.role);
-    addActiveUser(userId, socket.id, role);
-    console.log(`User ${userId} (${role ?? "—"}) joined room`);
+    socket.data.employeeId = employeeId;
+    console.log("role", socket.data?.role);
+    addActiveUser(userId, socket.id, role, employeeId);
+    console.log(`User ${userId} (${role ?? "—"}${employeeId ? `, employee ${employeeId}` : ""}) joined room`);
   });
 
   socket.on("typing", ({ conversationId, userId, userName }) => {
@@ -50,10 +51,11 @@ io.on("connection", (socket) => {
     socket.to(conversationId).emit("stopTyping", { conversationId, userId });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     const userId = socket.data?.userId;
     const role = socket.data?.role;
-    removeActiveUser(socket.id, userId, role);
+    const employeeId = socket.data?.employeeId;
+    await removeActiveUser(socket.id, userId, role, employeeId);
     console.log(
       "Socket disconnected:",
       socket.id,
