@@ -1,24 +1,39 @@
 import express from "express";
 import { verifyUser } from "../../../../middleware/verifyUsers";
-import { getOrderStep5Details, updateStep5 } from "./order_step.controllers";
 import upload from "../../../../config/multer.config";
+import {
+  manageMassschafterstellung,
+  getMassschafterstellungDetails,
+  manageBodenkonstruktion,
+  getBodenkonstruktionDetails,
+} from "./order_step.controllers";
 
 const router = express.Router();
 
 router.post(
-  "/update-step-5/:id",
+  "/massschafterstellung/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
-  upload.fields([
-    { name: "massschafterstellung_image", maxCount: 1 },
-    { name: "bodenkonstruktion_image", maxCount: 1 },
-  ]),
-  updateStep5,
+  upload.fields([{ name: "massschafterstellung_image", maxCount: 1 }]),
+  manageMassschafterstellung
 );
 
 router.get(
-  "/get-step-5/:id",
+  "/massschafterstellung/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
-  getOrderStep5Details,
+  getMassschafterstellungDetails
+);
+
+router.post(
+  "/bodenkonstruktion/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  upload.fields([{ name: "bodenkonstruktion_image", maxCount: 1 }]),
+  manageBodenkonstruktion
+);
+
+router.get(
+  "/bodenkonstruktion/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getBodenkonstruktionDetails
 );
 
 export default router;

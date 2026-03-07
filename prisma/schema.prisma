@@ -1016,7 +1016,7 @@ model customerOrders {
   insoleStandards insole_standard[]
   orderNotesList  order_notes[]
 
-  @@unique([partnerId, orderNumber]) // Unique per partner
+  @@unique([partnerId, orderNumber])
   @@index([customerId])
   @@index([partnerId])
   @@index([partnerId, orderStatus, fertigstellungBis]) // getPickupCalculation: single-scan raw query
@@ -1868,7 +1868,7 @@ enum shoe_order_status {
  */
 
 model shoe_order_step {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String?
   order   shoe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -1947,16 +1947,10 @@ model shoe_order_step {
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
-  order_step5_id String?
-  order_step5    order_step5? @relation(fields: [order_step5_id], references: [id], onDelete: Cascade)
-
   createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
-}
 
-model order_step5 {
-  id String @id @default(cuid())
-
+  //step 5
   //three buttons
   feedback_status   step5_feedback_status?
   feedback_notes    String?
@@ -1968,15 +1962,15 @@ model order_step5 {
   massschafterstellung_json  Json?
   massschafterstellung_image String?
 
-  //bodenkonstruktion
+  //bodenkonstruktion   
   bodenkonstruktion_intem_note String?
   bodenkonstruktion_extem_note String?
   bodenkonstruktion_json       Json?
   bodenkonstruktion_image      String?
-
-  createdAt      DateTime          @default(now())
-  shoeOrderSteps shoe_order_step[]
 }
+
+// /// Step-5-specific data. Depends on status (Halbprobe_durchführen): one per order when that step is used, keyed by orderId.
+
 
 enum step5_feedback_status {
   Freigeben
@@ -2154,6 +2148,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2177,6 +2172,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

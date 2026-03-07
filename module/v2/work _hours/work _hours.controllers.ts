@@ -4,22 +4,6 @@ import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const prisma = new PrismaClient();
 
-// model work_types {
-//   id String @id @default(uuid())
-
-//   name        String?
-//   description String?
-//   image       String?
-
-//   partnerId String
-//   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-//   createdAt DateTime     @default(now())
-//   workHours work_hours[]
-
-//   @@index([createdAt])
-// }
-
 export const createWorkHours = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;

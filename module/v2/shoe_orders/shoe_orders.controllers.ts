@@ -1038,37 +1038,23 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
   }
 };
 
-export const updateShoeOrderStatus = async (req: Request, res: Response) => {
+export const updateShoeOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
     const status = req.query?.status?.toString();
     const role = req.user?.role;
     const employeeId = req.user?.employeeId;
-
     const body = req.body ?? {};
-    const {
-      notes,
-      leistentyp,
-      material,
-      thickness,
-      preparation_date,
-      checkliste_halbprobe,
-      fitting_date,
-      adjustments,
-      customer_reviews,
-      started_at,
-    } = body;
 
-    // multer.fields({ name: "files" }) → req.files.files is array of S3 file objects (each has .location)
-    const rawFiles = (req.files as any)?.files;
+    const rawFiles = req.files?.files;
     const fileList = Array.isArray(rawFiles)
       ? rawFiles
       : rawFiles
         ? [rawFiles]
         : [];
 
-    if (!status || !SHOE_ORDER_STATUSES.includes(status as any)) {
+    if (!status || !SHOE_ORDER_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Valid status is required",
@@ -1076,7 +1062,6 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
     const orderWhere =
       role === "PARTNER" && partnerId ? { id, partnerId } : { id };
     const order = await prisma.shoe_order.findFirst({
@@ -1102,68 +1087,76 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     }
     const existingStep = order.shoeOrderStep[0] ?? null;
 
-    const parseCheckliste = (val: unknown) => {
+    const {
+      notes,
+      leistentyp,
+      material,
+      preparation_date,
+      checkliste_halbprobe,
+      fitting_date,
+      adjustments,
+      customer_reviews,
+      started_at,
+      feedback_status,
+      feedback_notes,
+      Kleine_Nacharbeit,
+      schafttyp_intem_note,
+      schafttyp_extem_note,
+      bodenkonstruktion_intem_note,
+      bodenkonstruktion_extem_note,
+    } = body;
+
+    const parseJson = (val) => {
       if (val == null || val === "") return undefined;
       if (typeof val === "string") {
         try {
-          return JSON.parse(val) as Prisma.InputJsonValue;
+          return JSON.parse(val);
         } catch {
           return undefined;
         }
       }
-      return val as Prisma.InputJsonValue;
+      return val;
     };
+    const parseDate = (val) =>
+      val != null && val !== "" ? new Date(val) : undefined;
+    const str = (val) =>
+      val == null || typeof val !== "string" ? undefined : (val.trim() || undefined);
 
-    // Schema: shoe_order_step has no "thickness" (commented out); omit to avoid Prisma validation on host.
     const stepPayload = {
-      notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
-      leistentyp:
-        leistentyp !== undefined
-          ? (leistentyp?.trim() ?? undefined)
-          : undefined,
-      material:
-        material !== undefined ? (material?.trim() ?? undefined) : undefined,
-      preparation_date:
-        preparation_date !== undefined && preparation_date !== ""
-          ? new Date(preparation_date)
-          : undefined,
-      checkliste_halbprobe: parseCheckliste(checkliste_halbprobe),
-      fitting_date:
-        fitting_date !== undefined && fitting_date !== ""
-          ? new Date(fitting_date)
-          : undefined,
-      adjustments:
-        adjustments !== undefined
-          ? (adjustments?.trim() ?? undefined)
-          : undefined,
-      customer_reviews:
-        customer_reviews !== undefined
-          ? (customer_reviews?.trim() ?? undefined)
-          : undefined,
+      notes: str(notes),
+      leistentyp: str(leistentyp),
+      material: str(material),
+      preparation_date: parseDate(preparation_date),
+      checkliste_halbprobe: parseJson(checkliste_halbprobe),
+      fitting_date: parseDate(fitting_date),
+      adjustments: str(adjustments),
+      customer_reviews: str(customer_reviews),
+      ...(status === "Halbprobe_durchführen"
+        ? {
+            feedback_status: feedback_status ?? undefined,
+            feedback_notes: str(feedback_notes),
+            Kleine_Nacharbeit: parseJson(Kleine_Nacharbeit),
+            schafttyp_intem_note: str(schafttyp_intem_note),
+            schafttyp_extem_note: str(schafttyp_extem_note),
+            bodenkonstruktion_intem_note: str(bodenkonstruktion_intem_note),
+            bodenkonstruktion_extem_note: str(bodenkonstruktion_extem_note),
+          }
+        : {}),
     };
 
-    // Actual start time: from body (if work started before scheduled) or now
-    const startedAtValue =
-      started_at !== undefined && started_at !== ""
-        ? new Date(started_at)
-        : new Date();
-
-    let stepId: string;
-
-    // Step already has assignee: do not overwrite partnerId or employeeId.
-    const stepAlreadyHasAssignee =
-      existingStep != null &&
+    const startedAtValue = started_at != null && started_at !== "" ? new Date(started_at) : new Date();
+    const completedAt = new Date();
+    const hasAssignee =
+      existingStep &&
       (existingStep.partnerId != null || existingStep.employeeId != null);
-    // When setting assignee: set only one – partner OR employee, never both.
-    const assigneeData = stepAlreadyHasAssignee
+    const assigneeData = hasAssignee
       ? {}
       : role === "PARTNER"
         ? { partnerId: partnerId ?? undefined }
         : role === "EMPLOYEE"
           ? { employeeId: employeeId ?? undefined }
           : {};
-    // For create(), use relation form (partner/employee connect) instead of scalar IDs.
-    const assigneeRelation = stepAlreadyHasAssignee
+    const assigneeRelation = hasAssignee
       ? {}
       : role === "PARTNER" && partnerId
         ? { partner: { connect: { id: partnerId } } }
@@ -1171,32 +1164,29 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           ? { employee: { connect: { id: employeeId } } }
           : {};
 
-    const completedAt = new Date();
+    const clean = (obj) => {
+      Object.keys(obj).forEach((k) => obj[k] === undefined && delete obj[k]);
+      return obj;
+    };
 
+    let stepId;
     if (existingStep) {
-      const updateData: Record<string, unknown> = {
+      const updateData = clean({
         isCompleted: true,
         complatedAt: completedAt,
         ...assigneeData,
         ...stepPayload,
-      };
-      // Set startedAt on first update if not already set (actual starting time)
-      if (existingStep.startedAt == null) {
-        updateData.startedAt = startedAtValue;
-      }
-      Object.keys(updateData).forEach(
-        (k) =>
-          (updateData as any)[k] === undefined && delete (updateData as any)[k],
-      );
-
+        ...(existingStep.startedAt == null
+          ? { startedAt: startedAtValue }
+          : {}),
+      });
       await prisma.shoe_order_step.update({
         where: { id: existingStep.id },
-        data: updateData as any,
+        data: updateData,
       });
       stepId = existingStep.id;
     } else {
-      // Only pass defined values to create (host Prisma rejects unknown/undefined args)
-      const createPayload: Record<string, unknown> = {
+      const createData = clean({
         order: { connect: { id } },
         status,
         isCompleted: true,
@@ -1204,27 +1194,19 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         complatedAt: completedAt,
         ...assigneeRelation,
         ...stepPayload,
-      };
-      Object.keys(createPayload).forEach(
-        (k) =>
-          (createPayload as any)[k] === undefined &&
-          delete (createPayload as any)[k],
-      );
-      const newStep = await prisma.shoe_order_step.create({
-        data: createPayload as any,
       });
+      const newStep = await prisma.shoe_order_step.create({ data: createData });
       stepId = newStep.id;
     }
 
-    // Batch insert files and update order in parallel (S3 URL in file.location from multer-s3)
     const filesToCreate = fileList
-      .filter((f: any) => f?.location)
-      .map((file: any) => ({
+      .filter((f) => f?.location)
+      .map((f) => ({
         shoeOrderStepId: stepId,
-        fileUrl: file.location,
-        fileName: file.originalname ?? undefined,
-        fileType: file.mimetype ?? undefined,
-        fileSize: file.size ?? undefined,
+        fileUrl: f.location,
+        fileName: f.originalname,
+        fileType: f.mimetype,
+        fileSize: f.size,
       }));
 
     await Promise.all([
@@ -1236,14 +1218,37 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     const stepWithFiles = await prisma.shoe_order_step.findUnique({
       where: { id: stepId },
-      include: {
-        files: {
-          select: {
-            id: true,
-            fileUrl: true,
-            fileName: true,
-          },
-        },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        isCompleted: true,
+        complatedAt: true,
+        startedAt: true,
+        notes: true,
+        leistentyp: true,
+        material: true,
+        leistengröße: true,
+        step3_json: true,
+        zusätzliche_notizen: true,
+        preparation_date: true,
+        checkliste_halbprobe: true,
+        fitting_date: true,
+        adjustments: true,
+        customer_reviews: true,
+        auto_print: true,
+        employeeId: true,
+        partnerId: true,
+        createdAt: true,
+        updatedAt: true,
+        feedback_status: true,
+        feedback_notes: true,
+        Kleine_Nacharbeit: true,
+        schafttyp_intem_note: true,
+        schafttyp_extem_note: true,
+        bodenkonstruktion_intem_note: true,
+        bodenkonstruktion_extem_note: true,
+        files: { select: { id: true, fileUrl: true, fileName: true } },
       },
     });
 
@@ -1252,19 +1257,19 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       message: existingStep
         ? "Shoe order step updated successfully"
         : "Shoe order status updated successfully",
-      data: stepWithFiles!,
+      data: stepWithFiles,
     });
   } catch (error: any) {
     console.error("Update Shoe Order Status Error:", error);
     if (error?.code === "P2025") {
-      return res.status(404).json({
-        success: false,
-        message: "Shoe order or step not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shoe order or step not found" });
     }
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order status",
+      error: error?.message,
     });
   }
 };
@@ -1388,8 +1393,11 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
         : role === "EMPLOYEE" && employeeId
           ? { employee: { connect: { id: employeeId } } }
           : {};
-    const { employeeId: _e, partnerId: _p, ...stepPayloadForCreate } =
-      stepPayload;
+    const {
+      employeeId: _e,
+      partnerId: _p,
+      ...stepPayloadForCreate
+    } = stepPayload;
 
     // Actual start time: from body (if work started before scheduled) or now
     const startedAtValue: any =
@@ -1457,13 +1465,38 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
 
     const stepWithFiles = await prisma.shoe_order_step.findUnique({
       where: { id: stepId },
-      include: {
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        isCompleted: true,
+        complatedAt: true,
+        startedAt: true,
+        notes: true,
+        leistentyp: true,
+        material: true,
+        leistengröße: true,
+        step3_json: true,
+        zusätzliche_notizen: true,
+        preparation_date: true,
+        checkliste_halbprobe: true,
+        fitting_date: true,
+        adjustments: true,
+        customer_reviews: true,
+        auto_print: true,
+        employeeId: true,
+        partnerId: true,
+        createdAt: true,
+        updatedAt: true,
+        feedback_status: true,
+        feedback_notes: true,
+        Kleine_Nacharbeit: true,
+        schafttyp_intem_note: true,
+        schafttyp_extem_note: true,
+        bodenkonstruktion_intem_note: true,
+        bodenkonstruktion_extem_note: true,
         files: {
-          select: {
-            id: true,
-            fileUrl: true,
-            fileName: true,
-          },
+          select: { id: true, fileUrl: true, fileName: true },
         },
       },
     });
@@ -1500,6 +1533,7 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
+    //valoid status
     if (statusParam && !SHOE_ORDER_STATUSES.includes(statusParam as any)) {
       return res.status(400).json({
         success: false,
@@ -1527,7 +1561,36 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           ...(statusParam ? { status: statusParam } : {}),
         },
         orderBy: { createdAt: "asc" },
-        include: {
+        select: {
+          id: true,
+          orderId: true,
+          status: true,
+          isCompleted: true,
+          complatedAt: true,
+          startedAt: true,
+          notes: true,
+          leistentyp: true,
+          material: true,
+          leistengröße: true,
+          step3_json: true,
+          zusätzliche_notizen: true,
+          preparation_date: true,
+          checkliste_halbprobe: true,
+          fitting_date: true,
+          adjustments: true,
+          customer_reviews: true,
+          auto_print: true,
+          employeeId: true,
+          partnerId: true,
+          createdAt: true,
+          updatedAt: true,
+          feedback_status: true,
+          feedback_notes: true,
+          Kleine_Nacharbeit: true,
+          schafttyp_intem_note: true,
+          schafttyp_extem_note: true,
+          bodenkonstruktion_intem_note: true,
+          bodenkonstruktion_extem_note: true,
           files: true,
           partner: {
             select: {
