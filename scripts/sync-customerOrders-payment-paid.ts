@@ -10,9 +10,10 @@
  * - Otherwise the corresponding flag is false (so pending is clear).
  *
  * For broth we only have one status (bezahlt), so we can only reflect one side at a time;
-import { prisma } from "../db";
  * we never set both true from a single status.
  */
+import { prisma } from "../db";
+
 async function syncCustomerOrdersPaymentPaid() {
   try {
     console.log("Syncing customerOrders insurance_payed / private_payed (done vs pending)...\n");

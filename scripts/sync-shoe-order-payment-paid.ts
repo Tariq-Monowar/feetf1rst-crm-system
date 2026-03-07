@@ -9,10 +9,11 @@
  * - private_payed  = true only when (payment_type is private OR broth) AND payment_status = Privat_Bezahlt
  * - Otherwise the corresponding flag is false.
  */
+import { prisma } from "../db";
+
 async function syncShoeOrderPaymentPaid() {
   try {
     console.log("Syncing shoe_order insurance_payed / private_payed (done vs pending)...\n");
-import { prisma } from "../db";
 
     const r1 = await prisma.shoe_order.updateMany({
       where: { payment_type: { not: null } },

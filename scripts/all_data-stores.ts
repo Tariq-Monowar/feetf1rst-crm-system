@@ -1,5 +1,6 @@
-const validStoreTypes = ["rady_insole", "milling_block"] as const;
 import { prisma } from "../db";
+
+const validStoreTypes = ["rady_insole", "milling_block"] as const;
 type StoreType = (typeof validStoreTypes)[number];
 
 async function fetchStores(storeType: StoreType) {

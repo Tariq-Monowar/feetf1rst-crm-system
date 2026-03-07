@@ -1,7 +1,8 @@
+import { prisma } from "../db";
+
 async function formatTransitionsOrderNumber() {
   try {
     console.log("\n=== Formatting Transitions OrderNumbers ===\n");
-import { prisma } from "../db";
 
     // Get all unique partners
     const partners = await prisma.$queryRaw<Array<{ partnerId: string }>>`

@@ -5,9 +5,9 @@
  * Run BEFORE prisma db push / prisma generate
  * Usage: npx ts-node scripts/migrate-diagnosis-status-to-string.ts
  */
+import { prisma } from "../db";
 
 const TABLES = ["Versorgungen", "customer_versorgungen", "customerProduct"];
-import { prisma } from "../db";
 
 async function migrateTable(tableName: string) {
   try {

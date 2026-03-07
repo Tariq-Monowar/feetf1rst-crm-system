@@ -3,6 +3,8 @@
  * drop the duplicate "Priority" column without losing data.
  * Run once before: npx prisma db push
  */
+import { prisma } from "../db";
+
 async function syncPriorityColumn() {
   try {
     await prisma.$executeRawUnsafe(`
@@ -10,7 +12,6 @@ async function syncPriorityColumn() {
       SET priority = "Priority"
       WHERE "Priority" IS NOT NULL
     `);
-import { prisma } from "../db";
     console.log("Synced Priority -> priority. Safe to run: npx prisma db push");
   } catch (e: any) {
     if (e.message?.includes('column "Priority" does not exist')) {

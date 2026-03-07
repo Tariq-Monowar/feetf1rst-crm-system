@@ -2,10 +2,11 @@
  * Adds missing columns to customerOrders and shoe_order, and creates prescription table if missing.
  * Safe to run multiple times (uses IF NOT EXISTS).
  */
+import { prisma } from "../db";
+
 async function addMissingColumns() {
   try {
     console.log("Syncing schema: prescription table, customerOrders & shoe_order columns...\n");
-import { prisma } from "../db";
 
     // Create prescription table if it does not exist (matches Prisma schema)
     await prisma.$executeRawUnsafe(`

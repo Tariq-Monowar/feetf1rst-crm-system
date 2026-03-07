@@ -6,9 +6,9 @@
  *
  * Run: npm run total_price:TO:private_price
  */
+import { prisma } from "../db";
 
 const PRIVATE_STATUSES = ["Privat_Bezahlt", "Privat_offen"] as const;
-import { prisma } from "../db";
 
 async function runCustomerOrders() {
   // Model 1: customerOrders — copy totalPrice → privatePrice (bezahlt = Privat_*)
