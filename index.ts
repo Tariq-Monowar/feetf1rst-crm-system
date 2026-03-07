@@ -35,6 +35,7 @@ io.on("connection", (socket) => {
     socket.join(userId);
     socket.data.userId = userId;
     socket.data.role = role;
+    console.log("socket.data", socket.data?.role);
     addActiveUser(userId, socket.id, role);
     console.log(`User ${userId} (${role ?? "—"}) joined room`);
   });
