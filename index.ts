@@ -28,16 +28,34 @@ export const io = new SocketIOServer(server, {
 
 initUserActivity(redis, io, prisma);
 
+async function clearSocketPresenceOnStartup(): Promise<void> {
+  const [socketKeys, userSocketsKeys, userRoleKeys, socketEmpKeys] = await Promise.all([
+    redis.keys("socket:*"),
+    redis.keys("userSockets:*"),
+    redis.keys("userRole:*"),
+    redis.keys("socketEmployeeId:*"),
+  ]);
+  const toDel = [...socketKeys, ...userSocketsKeys, ...userRoleKeys, ...socketEmpKeys];
+  if (toDel.length > 0) await redis.del(...toDel);
+  await redis.del("activeUsers", "activePartners", "activeEmployees");
+  console.log("Socket presence cleared on startup (no stale connections).");
+}
+
+const socketJoinData = new Map<
+  string,
+  { userId: string; role?: string; employeeId?: string }
+>();
+
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
-  socket.on("join", (userId: string, role?: string, employeeId?: string) => {
+  socket.on("join", async (userId: string, role?: string, employeeId?: string) => {
     socket.join(userId);
     socket.data.userId = userId;
     socket.data.role = role;
     socket.data.employeeId = employeeId;
-    console.log("role", socket.data?.role);
-    addActiveUser(userId, socket.id, role, employeeId);
+    socketJoinData.set(socket.id, { userId, role, employeeId });
+    await addActiveUser(userId, socket.id, role, employeeId);
     console.log(`User ${userId} (${role ?? "—"}${employeeId ? `, employee ${employeeId}` : ""}) joined room`);
   });
 
@@ -52,13 +70,21 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", async () => {
-    const userId = socket.data?.userId;
-    const role = socket.data?.role;
-    const employeeId = socket.data?.employeeId;
-    await removeActiveUser(socket.id, userId, role, employeeId);
+    const socketId = socket.id;
+    const userIdFromRedis = await redis.get(`socket:${socketId}`);
+    const userId = userIdFromRedis?.trim() ?? socketJoinData.get(socketId)?.userId ?? socket.data?.userId;
+    const fromMap = socketJoinData.get(socketId);
+    const role = fromMap?.role ?? socket.data?.role;
+    const employeeId = fromMap?.employeeId ?? socket.data?.employeeId;
+    socketJoinData.delete(socketId);
+
+    if (userId) {
+      await redis.srem(`userSockets:${String(userId).trim()}`, socketId);
+    }
+    await removeActiveUser(socketId, userId ?? undefined, role ?? undefined, employeeId ?? undefined);
     console.log(
       "Socket disconnected:",
-      socket.id,
+      socketId,
       userId ? `(user ${userId}, ${role ?? "—"})` : "",
     );
   });
@@ -74,8 +100,8 @@ server.listen(PORT, async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     await prisma.$connect();
     console.log("Database connected...");
-
     console.log("Redis connected...");
+    await clearSocketPresenceOnStartup();
     dailyReport();
     appointmentReminderCron();
     scheduleDailyDatabaseBackup();

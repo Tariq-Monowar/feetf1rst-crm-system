@@ -40,8 +40,8 @@ const KEYS = {
   activeUsers: "activeUsers",
   activePartners: "activePartners",
   activeEmployees: "activeEmployees",
-  userRole: (userId: string) => `userRole:${userId}`,
-  userSockets: (userId: string) => `userSockets:${userId}`,
+  userRole: (userId: string) => `userRole:${String(userId).trim()}`,
+  userSockets: (userId: string) => `userSockets:${String(userId).trim()}`,
   socketToUser: (socketId: string) => `socket:${socketId}`,
   socketToEmployee: (socketId: string) => `socketEmployeeId:${socketId}`,
 } as const;
@@ -105,42 +105,48 @@ async function getCachedEmployeeId(socketId: string): Promise<string | null> {
 
 // --- Public: add user (join) ---
 
-export function addActiveUser(
+export async function addActiveUser(
   userId: string,
   socketId: string,
   role?: string,
   employeeId?: string,
-) {
-  void (async () => {
-    // 1. Presence: mark user online and link socket
-    await redis.sadd(KEYS.activeUsers, userId);
-    await redis.sadd(KEYS.userSockets(userId), socketId);
-    await redis.set(KEYS.socketToUser(socketId), userId);
+): Promise<void> {
+  // 1. Presence: mark user online and link socket
+  await redis.sadd(KEYS.activeUsers, userId);
+  await redis.sadd(KEYS.userSockets(userId), socketId);
+  await redis.set(KEYS.socketToUser(socketId), userId);
 
-    if (!role) {
-      await broadcastActiveUsers();
-      return;
-    }
-
-    await redis.set(KEYS.userRole(userId), role);
-
-    // 2. Role-specific: track in Redis + one timeline row per session (first socket only)
-    const socketCount = await redis.scard(KEYS.userSockets(userId));
-    const isFirstSocket = socketCount === 1;
-
-    if (role === "PARTNER") {
-      await redis.sadd(KEYS.activePartners, userId);
-      if (isFirstSocket) await recordPartnerJoin(userId);
-    }
-
-    if (role === "EMPLOYEE" && employeeId) {
-      await redis.sadd(KEYS.activeEmployees, employeeId);
-      await redis.set(KEYS.socketToEmployee(socketId), employeeId);
-      if (isFirstSocket) await recordEmployeeJoin(userId, employeeId);
-    }
-
+  if (!role) {
     await broadcastActiveUsers();
-  })();
+    return;
+  }
+
+  await redis.set(KEYS.userRole(userId), role);
+
+  // 2. Role-specific: track in Redis + one timeline row per session (first socket only)
+  const socketCount = await redis.scard(KEYS.userSockets(userId));
+  const isFirstSocket = socketCount === 1;
+
+  if (role === "PARTNER") {
+    await redis.sadd(KEYS.activePartners, userId);
+    if (isFirstSocket) await recordPartnerJoin(userId);
+  }
+
+  if (role === "EMPLOYEE" && employeeId) {
+    await redis.sadd(KEYS.activeEmployees, employeeId);
+    await redis.set(KEYS.socketToEmployee(socketId), employeeId);
+    if (isFirstSocket) await recordEmployeeJoin(userId, employeeId);
+  }
+
+  await broadcastActiveUsers();
+
+  // If disconnect ran already (socket no longer in set), undo active state so isActive stays false
+  const stillPresent = await redis.sismember(KEYS.userSockets(userId), socketId);
+  console.log("stillPresent", stillPresent);
+  if (!stillPresent) {
+    if (role === "PARTNER") await redis.srem(KEYS.activePartners, userId);
+    if (role === "EMPLOYEE" && employeeId) await redis.srem(KEYS.activeEmployees, employeeId);
+  }
 }
 
 // --- Public: remove user (leave) ---
@@ -157,22 +163,33 @@ export async function removeActiveUser(
   const resolvedRole = role ?? (await getCachedRole(uid));
   const resolvedEmployeeId = employeeId ?? (await getCachedEmployeeId(socketId));
 
+  // Always remove this socket from the user's set so getPartnerIdsWithSockets sees 0
   await redis.srem(KEYS.userSockets(uid), socketId);
   const remainingSockets = await redis.scard(KEYS.userSockets(uid));
+
+  // Always remove from role sets on this socket's disconnect; re-add only if other sockets remain
+  if (resolvedRole === "PARTNER") {
+    await redis.srem(KEYS.activePartners, uid);
+    if (remainingSockets > 0) await redis.sadd(KEYS.activePartners, uid);
+    else {
+      try {
+        await recordPartnerLeave(uid);
+      } catch (_) {}
+    }
+  }
+  if (resolvedRole === "EMPLOYEE" && resolvedEmployeeId) {
+    await redis.srem(KEYS.activeEmployees, resolvedEmployeeId);
+    if (remainingSockets > 0) await redis.sadd(KEYS.activeEmployees, resolvedEmployeeId);
+    else {
+      try {
+        await recordEmployeeLeave(resolvedEmployeeId);
+      } catch (_) {}
+    }
+  }
 
   if (remainingSockets === 0) {
     await redis.srem(KEYS.activeUsers, uid);
     await redis.del(KEYS.userSockets(uid), KEYS.userRole(uid));
-
-    if (resolvedRole === "PARTNER") {
-      await redis.srem(KEYS.activePartners, uid);
-      await recordPartnerLeave(uid);
-    }
-
-    if (resolvedRole === "EMPLOYEE" && resolvedEmployeeId) {
-      await redis.srem(KEYS.activeEmployees, resolvedEmployeeId);
-      await recordEmployeeLeave(resolvedEmployeeId);
-    }
   }
 
   await redis.del(KEYS.socketToUser(socketId), KEYS.socketToEmployee(socketId));
@@ -187,6 +204,22 @@ export const isUserActive = (id: string) =>
   redis.sismember(KEYS.activeUsers, id).then((n) => n === 1);
 
 export const getActivePartnerIds = () => redis.smembers(KEYS.activePartners);
+
+/** Source of truth: partner is active iff they have ≥1 socket in userSockets(id). */
+export async function getPartnerIdsWithSockets(
+  partnerIds: string[],
+): Promise<string[]> {
+  if (partnerIds.length === 0) return [];
+  const pipeline = redis.pipeline();
+  for (const id of partnerIds) pipeline.scard(KEYS.userSockets(id));
+  const results = await pipeline.exec();
+  const active: string[] = [];
+  results?.forEach((reply, i) => {
+    const [err, count] = reply ?? [];
+    if (!err && count != null && Number(count) > 0) active.push(partnerIds[i]);
+  });
+  return active;
+}
 
 export const isPartnerActive = (id: string) =>
   redis.sismember(KEYS.activePartners, id).then((n) => n === 1);

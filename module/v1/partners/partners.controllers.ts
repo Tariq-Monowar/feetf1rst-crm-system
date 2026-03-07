@@ -10,7 +10,13 @@ import {
 } from "../../../utils/emailService.utils";
 import validator from "validator";
 import redis from "../../../config/redis.config";
-import { getActivePartnerIds, isPartnerActive } from "../../../utils/userActivity";
+import { isPartnerActive } from "../../../utils/userActivity";
+
+const REDIS_USER_SOCKETS_PREFIX = "userSockets:";
+
+function partnerSocketsKey(partnerId: string): string {
+  return REDIS_USER_SOCKETS_PREFIX + String(partnerId).trim();
+}
 
 const SET_PASSWORD_KEY_PREFIX = "set-password:";
 const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60; // 7 days
@@ -533,7 +539,11 @@ export const getAllPartners = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const activePartnerIds = await getActivePartnerIds();
+    const activePartnerIds = new Set<string>();
+    for (const p of partners) {
+      const count = await redis.scard(partnerSocketsKey(p.id));
+      if (count > 0) activePartnerIds.add(p.id);
+    }
 
     const partnersWithImageUrls = partners.map((partner) => {
       const accountInfo = partner.accountInfos?.[0];
@@ -549,7 +559,7 @@ export const getAllPartners = async (req: Request, res: Response) => {
         barcodeLabel: accountInfo?.barcodeLabel || null,
         vat_country: accountInfo?.vat_country || null,
         vat_number: accountInfo?.vat_number || null,
-        isActive: activePartnerIds.includes(partner.id),
+        isActive: activePartnerIds.has(partner.id),
       };
     });
 
@@ -568,6 +578,25 @@ export const getAllPartners = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong",
       error,
+    });
+  }
+};
+
+export const getPartnerSocketsDebug = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const key = partnerSocketsKey(id);
+    const socketCount = await redis.scard(key);
+    const socketIds = await redis.smembers(key);
+    res.status(200).json({
+      success: true,
+      data: { redisKey: key, socketCount, socketIds, isActive: socketCount > 0 },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : error,
     });
   }
 };

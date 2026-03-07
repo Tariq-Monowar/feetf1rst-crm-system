@@ -5,6 +5,7 @@ import {
   updatePartnerInfo,
   getAllPartners,
   getPartnerById,
+  getPartnerSocketsDebug,
   updatePartnerByAdmin,
   deletePartner,
   forgotPasswordSendOtp,
@@ -14,7 +15,7 @@ import {
   managePartnerSettings,
   getPartnerSettings,
   setPasswordLink,
-  getPartnerActivity
+  getPartnerActivity,
 } from "./partners.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -44,6 +45,7 @@ router.post(
 
 router.get("/get-partner-by-id/:id", verifyUser("ADMIN"), getPartnerById);
 router.get("/partner-activity/:id", verifyUser("ADMIN"), getPartnerActivity);
+router.get("/debug-sockets/:id", verifyUser("ADMIN"), getPartnerSocketsDebug);
 
 router.patch("/set-password/:id", setPasswordLink);
 
