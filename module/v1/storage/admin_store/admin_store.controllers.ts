@@ -674,6 +674,81 @@ export const searchBrandStore = async (req: any, res: any) => {
   }
 };
 
+export const createBrandStore = async (req: any, res: any) => {
+  try {
+    const { brand, groessenMengen, type: rawType } = req.body;
+    const type = (rawType?.trim() || "rady_insole") as StoreType;
+
+    if (!brand || typeof brand !== "string" || !brand.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "brand is required and must be a non-empty string",
+      });
+    }
+    if (!VALID_STORE_TYPES.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "type must be rady_insole or milling_block",
+      });
+    }
+
+    const trimmedBrand = brand.trim();
+
+    let parsedGroessenMengen: any = null;
+    if (groessenMengen !== undefined && groessenMengen !== null && groessenMengen !== "") {
+      try {
+        parsedGroessenMengen = parseJsonSafely(groessenMengen);
+      } catch (parseError: any) {
+        return res.status(400).json({
+          success: false,
+          message: "groessenMengen must be a valid JSON object",
+          error: parseError.message,
+        });
+      }
+    }
+
+    const existing = await prisma.brand_store.findFirst({
+      where: { brand: trimmedBrand, type },
+    });
+
+    let brandStore;
+    if (existing) {
+      brandStore = await prisma.brand_store.update({
+        where: { id: existing.id },
+        data: {
+          ...(parsedGroessenMengen !== null && { groessenMengen: parsedGroessenMengen }),
+        },
+      });
+      return res.status(200).json({
+        success: true,
+        message: "Brand store updated successfully",
+        data: brandStore,
+      });
+    }
+
+    brandStore = await prisma.brand_store.create({
+      data: {
+        brand: trimmedBrand,
+        groessenMengen: parsedGroessenMengen,
+        type,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Brand store created successfully",
+      data: brandStore,
+    });
+  } catch (error: any) {
+    console.error("Error in createBrandStore:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const getSingleBrandStore = async (req, res) => {
   try {
     const { id } = req.params;

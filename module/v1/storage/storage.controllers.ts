@@ -695,6 +695,138 @@ export const addStorage = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Add quantity from admin store to partner's EXISTING store (create_status by_admin).
+ * Does not create a new store; only updates existing store and creates tracking.
+ * Requires partner to already have a store linked to this adminStoreId.
+ */
+export const addStorageFromAdmin = async (req: any, res: any) => {
+  try {
+    const { id: userId } = req.user;
+    const { admin_store_id, lagerort = null, groessenMengen: bodyGroessenMengen } = req.body;
+
+    if (!admin_store_id) {
+      return res.status(400).json({
+        success: false,
+        message: "admin_store_id is required",
+      });
+    }
+
+    const adminStore = await prisma.admin_store.findUnique({
+      where: { id: admin_store_id },
+    });
+
+    if (!adminStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin store not found",
+      });
+    }
+
+    if (
+      !adminStore.productName ||
+      !adminStore.brand ||
+      !adminStore.artikelnummer ||
+      !adminStore.groessenMengen ||
+      !adminStore.type
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen, type)",
+      });
+    }
+
+    const existingStore = await prisma.stores.findFirst({
+      where: {
+        adminStoreId: admin_store_id,
+        userId,
+      },
+    });
+
+    if (!existingStore) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No existing store found for this admin store. Buy this product from admin store first, then you can add quantity here.",
+      });
+    }
+
+    const storeType = adminStore.type as StoreType;
+    const sourceGroessenMengen =
+      bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
+        ? (bodyGroessenMengen as Record<string, any>)
+        : (adminStore.groessenMengen as Record<string, any>) ?? {};
+    const transformedGroessenMengen = transformGroessenMengenForStore(
+      sourceGroessenMengen,
+      storeType,
+    );
+
+    const currentGroessenMengen =
+      (existingStore.groessenMengen as Record<string, any>) || {};
+    const updatedGroessenMengen = { ...currentGroessenMengen };
+    const mindestbestand = existingStore.mindestbestand ?? 0;
+
+    for (const sizeKey of Object.keys(transformedGroessenMengen)) {
+      const newSizeData = transformedGroessenMengen[sizeKey];
+      if (updatedGroessenMengen[sizeKey]) {
+        const currentQuantity = Number(
+          updatedGroessenMengen[sizeKey].quantity ?? 0,
+        );
+        updatedGroessenMengen[sizeKey] = {
+          ...updatedGroessenMengen[sizeKey],
+          quantity: currentQuantity + (newSizeData.quantity ?? 0),
+        };
+      } else {
+        updatedGroessenMengen[sizeKey] = newSizeData;
+      }
+    }
+
+    const newStatus = calculateStatus(updatedGroessenMengen, mindestbestand);
+
+    const updatedStore = await prisma.stores.update({
+      where: { id: existingStore.id },
+      data: {
+        groessenMengen: updatedGroessenMengen,
+        Status: newStatus,
+        ...(lagerort != null && lagerort !== "" && { lagerort }),
+      },
+    });
+
+    await prisma.admin_store_tracking.create({
+      data: {
+        storeId: updatedStore.id,
+        partnerId: userId,
+        produktname: adminStore.productName,
+        hersteller: adminStore.brand,
+        artikelnummer: adminStore.artikelnummer,
+        lagerort: lagerort ?? existingStore.lagerort,
+        groessenMengen: transformedGroessenMengen,
+        admin_storeId: admin_store_id,
+        price: (adminStore as any).price ?? 0,
+        image: adminStore.image,
+        type: storeType,
+        features: (adminStore as any).features ?? null,
+      },
+    });
+
+    const storeWithStatus = addStatusToStore(updatedStore);
+
+    res.status(200).json({
+      success: true,
+      message: "Quantity added to existing store and tracking created",
+      data: storeWithStatus,
+    });
+  } catch (error: any) {
+    console.error("addStorageFromAdmin error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const getAllMyStorage = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;

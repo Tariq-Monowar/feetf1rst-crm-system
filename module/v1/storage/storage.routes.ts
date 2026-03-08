@@ -3,6 +3,7 @@ import {
   createStorage,
   buyStorage,
   addStorage,
+  addStorageFromAdmin,
   deleteStorage,
   getAllMyStorage,
   getSingleStorage,
@@ -12,7 +13,7 @@ import {
   getStoragePerformer,
   getStoreOverviews,
   updateOverviewStatus,
-  getStoreOverviewById
+  getStoreOverviewById,
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -35,6 +36,8 @@ router.post("/buy", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), buyStorage);
 
 // এখনে পার্টনার স্টক অ্যাাড কতে পারবে কিনা ছাড়া
 router.post("/add-storage", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), addStorage);
+// Add quantity from admin store to existing partner store (by_admin only); creates tracking
+router.post("/add-storage-from-admin", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), addStorageFromAdmin);
 
 
 router.get("/my/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllMyStorage);
