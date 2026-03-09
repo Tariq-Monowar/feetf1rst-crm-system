@@ -1,11 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import redis from "../../../../config/redis.config";
 import { sendForgotPasswordOTP, sendTwoFactorOtp } from "../../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
 
 // Generate secret for 2FA
 const generateSecret = (): string => {

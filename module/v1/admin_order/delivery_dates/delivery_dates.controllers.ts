@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../../db";
 import { PrismaClient, custom_shafts_catagoary } from "@prisma/client";
 import redis from "../../../../config/redis.config";
-
-const prisma = new PrismaClient();
 
 const REDIS_DELIVERY_DATES_KEY = "delivery_dates:list";
 

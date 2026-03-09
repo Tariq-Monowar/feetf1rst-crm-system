@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import fs from "fs";
 import path from "path";
-
-const prisma = new PrismaClient();
 
 /**
  * EinlagenFinder API

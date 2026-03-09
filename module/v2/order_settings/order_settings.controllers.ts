@@ -1,8 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
+import { prisma } from "../../../db";
 // Default order settings
 const DEFAULT_ORDER_SETTINGS = {
   autoCalcPelottePos: true,

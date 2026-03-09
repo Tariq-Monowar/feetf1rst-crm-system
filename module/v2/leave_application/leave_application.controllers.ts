@@ -1,8 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
 const validReasons = ["UR", "KR", "FO", "DH", "FT", "SO", "SA", "DG", "OTHER"];
+import { prisma } from "../../../db";
 
 const parseDateInput = (item) => {
   const dateStr = typeof item === "string" ? item : item?.date;
@@ -38,7 +35,7 @@ const isForeignKeyError = (error) => {
 export const leaveRequest = async (req, res) => {
   try {
     const employeeId = req.user?.employeeId;
-    
+
     if (!employeeId) {
       return res.status(401).json({
         success: false,
@@ -166,6 +163,10 @@ export const getMyLeaveRequests = async (req, res) => {
     const employeeId = req.user?.employeeId;
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
     const cursor = req.query.cursor;
+    const year = req.query.year != null ? parseInt(req.query.year, 10) : null;
+    const month =
+      req.query.month != null ? parseInt(req.query.month, 10) : null;
+    const statusParam = req.query.status;
 
     if (!employeeId) {
       return res.status(401).json({
@@ -174,8 +175,49 @@ export const getMyLeaveRequests = async (req, res) => {
       });
     }
 
+    const validStatuses = ["Pending", "Approved", "Rejected"];
+    const where: Record<string, unknown> = {
+      employeeId,
+    };
+
+    if (statusParam != null && statusParam !== "") {
+      const statuses = String(statusParam)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const invalid = statuses.filter((s) => !validStatuses.includes(s));
+      if (invalid.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status: ${invalid.join(", ")}`,
+          validStatuses: [...validStatuses],
+        });
+      }
+      if (statuses.length === 1) {
+        where.status = statuses[0];
+      } else if (statuses.length > 1) {
+        where.status = { in: statuses };
+      }
+    }
+
+    const hasValidYear = year != null && !isNaN(year);
+    const hasValidMonth =
+      month != null && !isNaN(month) && month >= 1 && month <= 12;
+
+    if (hasValidYear) {
+      if (hasValidMonth) {
+        const startOfMonth = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+        const startOfNextMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+        where.date = { gte: startOfMonth, lt: startOfNextMonth };
+      } else {
+        const startOfYear = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
+        const startOfNextYear = new Date(Date.UTC(year + 1, 0, 1, 0, 0, 0, 0));
+        where.date = { gte: startOfYear, lt: startOfNextYear };
+      }
+    }
+
     const leaveRequests = await prisma.leave_application.findMany({
-      where: { employeeId },
+      where,
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: "desc" },
@@ -277,7 +319,9 @@ export const updateLeaveRequest = async (req, res) => {
           message: "Invalid date. Use ISO date (e.g. 2026-02-20).",
         });
       }
-      const dateObj = new Date(parsed.toISOString().slice(0, 10) + "T00:00:00.000Z");
+      const dateObj = new Date(
+        parsed.toISOString().slice(0, 10) + "T00:00:00.000Z",
+      );
       const existingOnDate = await prisma.leave_application.findFirst({
         where: {
           employeeId,
@@ -297,7 +341,8 @@ export const updateLeaveRequest = async (req, res) => {
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one of reason, type or date must be provided to update",
+        message:
+          "At least one of reason, type or date must be provided to update",
       });
     }
 
@@ -318,6 +363,65 @@ export const updateLeaveRequest = async (req, res) => {
       success: true,
       message: "Leave request updated successfully",
       data: updated,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const deleteLeaveRequest = async (req, res) => {
+  try {
+    const employeeId = req.user?.employeeId;
+    const id = req.params?.id;
+
+    if (!employeeId) {
+      return res.status(401).json({
+        success: false,
+        message: "Employee context required. Please log in as an employee.",
+      });
+    }
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Leave request id is required.",
+      });
+    }
+
+    const leave = await prisma.leave_application.findFirst({
+      where: { id, employeeId },
+      select: { id: true, status: true },
+    });
+
+    if (!leave) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Leave request not found or you do not have permission to delete it.",
+      });
+    }
+
+    if (leave.status === "Approved") {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Cannot delete an approved leave request. Only Pending or Rejected requests can be deleted.",
+      });
+    }
+
+    await prisma.leave_application.delete({
+      where: { id },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Leave request deleted successfully",
+      data: { id: leave.id },
     });
   } catch (error) {
     console.error(error);

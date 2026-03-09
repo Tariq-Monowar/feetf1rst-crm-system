@@ -1,11 +1,8 @@
 // create news
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import { Prisma } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
-
 
 export const createNews = async (req: Request, res: Response) => {
     const file = req.file as any;

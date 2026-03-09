@@ -1,8 +1,7 @@
-import { Prisma, PrismaClient, massschuhe_order_status } from "@prisma/client";
+import { Prisma, massschuhe_order_status } from "@prisma/client";
+import { prisma } from "../../../db";
 import { Request, Response } from "express";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 // Valid statuses for massschuhe orders
 const VALID_STATUSES = [
@@ -1977,10 +1976,10 @@ export const deleteAllMassschuheOrders = async (req: Request, res: Response) => 
         },
       });
 
-      // Delete all admin_order_transitions
+      // Delete admin_order_transitions linked to custom_shafts that belong to massschuhe_orders (transitions use custom_shafts_id, not massschuhe_order_id)
       await tx.admin_order_transitions.deleteMany({
         where: {
-          massschuhe_order_id: { not: null },
+          custom_shafts: { massschuhe_order_id: { not: null } },
         },
       });
 

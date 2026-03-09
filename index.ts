@@ -1,18 +1,25 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "./db";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { appointmentReminderCron, dailyReport } from "./cron/weekly_report";
 import { scheduleDailyDatabaseBackup } from "./cron/database_backup";
 import app, { allowedOrigins } from "./app";
+import redis from "./config/redis.config";
+import {
+  initUserActivity,
+  addActiveUser,
+  removeActiveUser,
+} from "./utils/userActivity";
 
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 1971;
 
 // Ensures the pos_receipt table always exists, using a direct (non-pooler) connection
 // so DDL works even through PgBouncer. Runs on every startup — safe and idempotent.
 async function ensurePosReceiptTable() {
   const directClient = new PrismaClient({
-    datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL } },
+    datasources: {
+      db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL },
+    },
   });
   try {
     await directClient.$executeRawUnsafe(`
@@ -53,10 +60,10 @@ async function ensurePosReceiptTable() {
       )
     `);
     await directClient.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS "pos_receipt_partnerId_idx" ON "pos_receipt" ("partnerId")`
+      `CREATE INDEX IF NOT EXISTS "pos_receipt_partnerId_idx" ON "pos_receipt" ("partnerId")`,
     );
     await directClient.$executeRawUnsafe(
-      `CREATE INDEX IF NOT EXISTS "pos_receipt_employeeId_idx" ON "pos_receipt" ("employeeId")`
+      `CREATE INDEX IF NOT EXISTS "pos_receipt_employeeId_idx" ON "pos_receipt" ("employeeId")`,
     );
     console.log("[startup] pos_receipt table ensured.");
   } catch (err) {
@@ -79,39 +86,88 @@ export const io = new SocketIOServer(server, {
   },
 });
 
+initUserActivity(redis, io, prisma);
+
+async function clearSocketPresenceOnStartup(): Promise<void> {
+  const [socketKeys, userSocketsKeys, userRoleKeys, socketEmpKeys] =
+    await Promise.all([
+      redis.keys("socket:*"),
+      redis.keys("userSockets:*"),
+      redis.keys("userRole:*"),
+      redis.keys("socketEmployeeId:*"),
+    ]);
+  const toDel = [
+    ...socketKeys,
+    ...userSocketsKeys,
+    ...userRoleKeys,
+    ...socketEmpKeys,
+  ];
+  if (toDel.length > 0) await redis.del(...toDel);
+  await redis.del("activeUsers", "activePartners", "activeEmployees");
+  console.log("Socket presence cleared on startup (no stale connections).");
+}
+
+const socketJoinData = new Map<
+  string,
+  { userId: string; role?: string; employeeId?: string }
+>();
+
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
-  socket.on("join", (userId: string) => {
-    socket.join(userId);
-    console.log(`User with ID: ${userId} joined room: ${userId}`);
-  });
-
-  socket.on("joinConversation", (conversationId) => {
-    socket.join(conversationId);
-    console.log(`Joined conversation: ${conversationId}`);
-  });
+  socket.on(
+    "join",
+    async (userId: string, role?: string, employeeId?: string) => {
+      socket.join(userId);
+      socket.data.userId = userId;
+      socket.data.role = role;
+      socket.data.employeeId = employeeId;
+      socketJoinData.set(socket.id, { userId, role, employeeId });
+      await addActiveUser(userId, socket.id, role, employeeId);
+      console.log(
+        `User ${userId} (${role ?? "—"}${employeeId ? `, employee ${employeeId}` : ""}) joined room`,
+      );
+    },
+  );
 
   socket.on("typing", ({ conversationId, userId, userName }) => {
-    socket.to(conversationId).emit("typing", {
-      conversationId,
-      userId,
-      userName,
-    });
+    socket
+      .to(conversationId)
+      .emit("typing", { conversationId, userId, userName });
   });
 
   socket.on("stopTyping", ({ conversationId, userId }) => {
-    socket.to(conversationId).emit("stopTyping", {
-      conversationId,
-      userId,
-    });
+    socket.to(conversationId).emit("stopTyping", { conversationId, userId });
   });
 
-  socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
+  socket.on("disconnect", async () => {
+    const socketId = socket.id;
+    const userIdFromRedis = await redis.get(`socket:${socketId}`);
+    const userId =
+      userIdFromRedis?.trim() ??
+      socketJoinData.get(socketId)?.userId ??
+      socket.data?.userId;
+    const fromMap = socketJoinData.get(socketId);
+    const role = fromMap?.role ?? socket.data?.role;
+    const employeeId = fromMap?.employeeId ?? socket.data?.employeeId;
+    socketJoinData.delete(socketId);
+
+    if (userId) {
+      await redis.srem(`userSockets:${String(userId).trim()}`, socketId);
+    }
+    await removeActiveUser(
+      socketId,
+      userId ?? undefined,
+      role ?? undefined,
+      employeeId ?? undefined,
+    );
+    console.log(
+      "Socket disconnected:",
+      socketId,
+      userId ? `(user ${userId}, ${role ?? "—"})` : "",
+    );
   });
 
-  // Example: receive a message from client
   socket.on("message", (data) => {
     console.log("Message from client:", data);
   });
@@ -126,6 +182,7 @@ server.listen(PORT, async () => {
     await ensurePosReceiptTable();
 
     console.log("Redis connected...");
+    await clearSocketPresenceOnStartup();
     dailyReport();
     appointmentReminderCron();
     scheduleDailyDatabaseBackup();

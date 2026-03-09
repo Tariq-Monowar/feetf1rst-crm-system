@@ -1,12 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../../../../db";
 // Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../../utils/notification.utils";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../../utils/s3utils";
 import { generateNextOrderNumber } from "../../../v2/admin_order_transitions/admin_order_transitions.controllers";
-
-const prisma = new PrismaClient();
 
 export const createMaßschaftKollektion = async (
   req: Request,

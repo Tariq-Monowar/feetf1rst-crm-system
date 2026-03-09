@@ -1,7 +1,8 @@
 import { PrismaClient, notificationType } from "@prisma/client";
+import { adapter } from "../db";
 import { io } from "../index";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter });
 
 export const notificationSend = async (
   partnerId: string,

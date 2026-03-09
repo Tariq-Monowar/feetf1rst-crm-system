@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -9,8 +9,6 @@ import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
 
 const formatDuration = (milliseconds: number): string => {
   const seconds = Math.floor(milliseconds / 1000);
@@ -1690,6 +1688,12 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         discount: true,
         addonPrices: true,
         insuranceTotalPrice: true,
+        insurance_payed: true,
+        private_payed: true,
+        privatePrice: true,
+  
+        paymnentType: true,
+        vatRate: true,
         bezahlt: true,
         orderStatus: true,
         orderCategory: true,
@@ -1697,16 +1701,22 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
         quantity: true,
+        
         Versorgungen: {
           select: {
             supplyStatus: {
               select: {
                 price: true,
                 vatRate: true,
-
                 // profitPercentage: true,
               },
             },
+          },
+        },
+        product: {
+          select: {
+            name: true,
+            versorgung: true,
           },
         },
         customerOrderInsurances: {
@@ -1717,6 +1727,16 @@ export const getPriceDetails = async (req: Request, res: Response) => {
             vat_country: true,
           },
         },
+        partner: {
+          select: {
+            accountInfos: {
+              select: {
+                vat_country: true,
+              },
+            },
+          },
+        },
+       
       },
     });
 

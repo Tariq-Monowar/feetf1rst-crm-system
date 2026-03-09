@@ -1,13 +1,11 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import validator from "validator";
 import {
   sendImprovementEmail,
   sendNewSuggestionEmail,
 } from "../../../utils/emailService.utils";
 import { deleteFileFromS3, deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 // model SuggestionFeetf1rst {
 //   id String @id @default(uuid())

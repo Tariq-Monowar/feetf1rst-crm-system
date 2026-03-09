@@ -18,10 +18,20 @@ import stock_material from "./storage/stock_material/stock_material.routes";
 import order_feedback from "./order_feedback/order_feedback.routes";
 import government_vat from "./government_vat/government_vat.routes";
 import leave_application from "./leave_application/leave_application.routes";
+
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
 import receipts from "./receipts/receipts.routes";
+import shoe_orders_statistic from "./shoe_orders/statistic/statistic.routes";
+
 import order_notes from "./order_notes/order_notes.routes";
 import mentors from "./mentors/mentors.routes";
+
+import insurance from "./insurance/insurance.routes";
+import prescription from "./insurance/prescription/prescription.routes";
+
+import work_hours from "./work _hours/work _hours.routes";
+import work_type from "./work _hours/work_type/work_type.routes";
+import order_step from "./shoe_orders/order_step/order_step.routes";
 
 const router = express.Router();
 
@@ -44,10 +54,21 @@ const moduleRoutes = [
   { path: "/order-feedback", route: order_feedback },
   { path: "/government-vat", route: government_vat },
   { path: "/leave-application", route: leave_application },
+
   { path: "/shoe-orders", route: shoe_orders },
   { path: "/receipts", route: receipts },
+  { path: "/shoe-orders/statistic", route: shoe_orders_statistic },
+
   { path: "/order-notes", route: order_notes },
+
   { path: "/mentors", route: mentors },
+
+  { path: "/insurance", route: insurance },
+  { path: "/insurance/prescription", route: prescription },
+
+  { path: "/work-hours", route: work_hours },
+  { path: "/work-hours/work-type", route: work_type },
+  { path: "/shoe-orders/order-step", route: order_step },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

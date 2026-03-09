@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 import {
   generateNextOrderNumber,
@@ -8,8 +8,6 @@ import {
 import { sendCustomShaftOrderNotification } from "../../../../utils/emailService.utils";
 
 // Removed getImageUrl - images are now S3 URLs
-const prisma = new PrismaClient();
-
 const formatOrderCreatedAt = (d: Date) =>
   d.toLocaleDateString("de-DE", {
     weekday: "long",
@@ -50,6 +48,8 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     const image3d_1 = files?.image3d_1?.[0]?.location || null;
     const image3d_2 = files?.image3d_2?.[0]?.location || null;
     const invoice = files?.invoice?.[0]?.location || null;
+    const Halbprobenerstellung_pdf =
+      files?.Halbprobenerstellung_pdf?.[0]?.location || null;
 
     // Verify order exists
     const order = await prisma.massschuhe_order.findUnique({
@@ -108,6 +108,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         image3d_1,
         image3d_2,
         invoice,
+        Halbprobenerstellung_pdf,
         orderNumber: shaftOrderNumber,
         catagoary: "Halbprobenerstellung",
       },
@@ -117,6 +118,7 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         image3d_1: true,
         image3d_2: true,
         invoice: true,
+        Halbprobenerstellung_pdf: true,
         orderNumber: true,
         catagoary: true,
         status: true,
@@ -136,12 +138,16 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     // Generate orderNumber for this partner
     const orderNumber = await generateNextOrderNumber(userId);
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
+
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         custom_shafts_id: data.id,
         customerId: order.customerId,
         partnerId: userId,
@@ -150,6 +156,27 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         note: "Halbprobenerstellung send to admin",
       },
     });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
@@ -528,11 +555,14 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
     const orderNumber = await generateNextOrderNumber(id);
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         partnerId: id,
         customerId: order.customerId,
         custom_shafts_id: customShaft.id,
@@ -542,6 +572,25 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: id },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: id, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
     if (isCourier && courierContactData) {
       await prisma.courierContact.create({
         data: {
@@ -735,6 +784,10 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
     // Generate orderNumber for this partner (transition)
     const orderNumber = await generateNextOrderNumber(userId);
 
@@ -743,7 +796,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         customerId: order.customerId,
         partnerId: userId,
         custom_shafts_id: data.id,
@@ -752,6 +804,28 @@ export const sendToAdminOrder_3 = async (req, res) => {
         note: "Bodenkonstruktion send to admin",
       },
     });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
@@ -782,7 +856,266 @@ export const sendToAdminOrder_3 = async (req, res) => {
   }
 };
 
+export const halbprobenerstellungOrder = async (
+  req: Request,
+  res: Response,
+) => {
+  const files = req.files as any;
+
+  const cleanupFiles = () => {
+    if (!files) return;
+    Object.keys(files).forEach((key) => {
+      files[key].forEach((file: any) => {
+        if (file.location) {
+          deleteFileFromS3(file.location);
+        }
+      });
+    });
+  };
+
+  try {
+    const userId = req.user?.id;
+    const { totalPrice, Halbprobenerstellung_json } = req.body;
+
+    const image3d_1 = files?.image3d_1?.[0]?.location || null;
+    const image3d_2 = files?.image3d_2?.[0]?.location || null;
+    const invoice = files?.invoice?.[0]?.location || null;
+    const Halbprobenerstellung_pdf =
+      files?.Halbprobenerstellung_pdf?.[0]?.location || null;
+
+    // Parse totalPrice properly - handle string, number, or null
+    let parsedTotalPrice: number | null = null;
+    if (totalPrice !== undefined && totalPrice !== null && totalPrice !== "") {
+      const parsed = parseFloat(totalPrice.toString());
+      parsedTotalPrice = isNaN(parsed) ? null : parsed;
+    }
+
+    // Validate totalPrice
+    if (!parsedTotalPrice || parsedTotalPrice <= 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "totalPrice is required and must be greater than 0",
+      });
+    }
+
+    // Parse Halbprobenerstellung_json if it's a string
+    let parsedJson = Halbprobenerstellung_json;
+    if (typeof Halbprobenerstellung_json === "string") {
+      try {
+        parsedJson = JSON.parse(Halbprobenerstellung_json);
+      } catch (e) {
+        // If parsing fails, use as is
+        parsedJson = Halbprobenerstellung_json;
+      }
+    }
+
+    // Next order number for this partner (10000, 10001, ...)
+    const shaftOrderNumber = await generateNextCustomShaftOrderNumber(userId);
+    // Create custom shaft order (no massschuhe_order)
+    const data = await prisma.custom_shafts.create({
+      data: {
+        user: {
+          connect: { id: userId },
+        },
+        totalPrice: parsedTotalPrice,
+        Halbprobenerstellung_json: parsedJson,
+        image3d_1,
+        image3d_2,
+        invoice,
+        Halbprobenerstellung_pdf,
+        orderNumber: shaftOrderNumber,
+        catagoary: "Halbprobenerstellung",
+      },
+      select: {
+        id: true,
+        totalPrice: true,
+        image3d_1: true,
+        image3d_2: true,
+        invoice: true,
+        Halbprobenerstellung_pdf: true,
+        orderNumber: true,
+        catagoary: true,
+        status: true,
+        Halbprobenerstellung_json: true,
+        user: {
+          select: { name: true, email: true, busnessName: true, image: true },
+        },
+      },
+    });
+
+    // Generate orderNumber for this partner
+    const orderNumber = await generateNextOrderNumber(userId);
+
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
+    // Create transition record (no massschuhe_order link)
+    await prisma.admin_order_transitions.create({
+      data: {
+        orderNumber: orderNumber,
+        orderFor: "shoes",
+        custom_shafts_id: data.id,
+        partnerId: userId,
+        custom_shafts_catagoary: "Halbprobenerstellung",
+        price: parsedTotalPrice,
+        note: "Halbprobenerstellung send to admin",
+      },
+    });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
+
+    const partnerUser = (data as any).user;
+    sendCustomShaftOrderNotification({
+      orderId: data.id,
+      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+      partnerEmail: partnerUser?.email || "",
+      partnerImage: partnerUser?.image ?? null,
+      category: "Halbprobenerstellung",
+      totalPrice: parsedTotalPrice,
+      customerDisplay: "—",
+      isBodenkonstruktion: false,
+      createdAt: formatOrderCreatedAt(new Date()),
+    }).catch((err) => console.error("Order notification email failed:", err));
+
+    // Format response nicely for frontend
+    return res.status(200).json({
+      success: true,
+      message: "Order sent to admin 1 successfully",
+      data,
+      // Halbprobenerstellung_json: data.Halbprobenerstellung_json && typeof data.Halbprobenerstellung_json === 'string' ? (() => { try { return JSON.parse(data.Halbprobenerstellung_json); } catch { return data.Halbprobenerstellung_json; } })() : data.Halbprobenerstellung_json,
+    });
+  } catch (error: any) {
+    console.error("Send to Admin Order 1 Error:", error);
+    cleanupFiles();
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
 //----------------------------------------------------------
+export const uploadChecklisteHalbprobenerstellung = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { orderId } = req.params;
+    const body = req.body ?? {};
+    let checkliste_halbprobe = body.checkliste_halbprobe;
+    if (typeof checkliste_halbprobe === "string") {
+      try {
+        checkliste_halbprobe = JSON.parse(checkliste_halbprobe);
+      } catch {
+        checkliste_halbprobe = undefined;
+      }
+    }
+
+    if (!orderId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Order ID is required" });
+    }
+    if (checkliste_halbprobe === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "checkliste_halbprobe is required in body",
+      });
+    }
+
+    const order = await prisma.custom_shafts.findUnique({
+      where: { id: orderId },
+      select: { id: true },
+    });
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    await prisma.custom_shafts.update({
+      where: { id: orderId },
+      data: { checkliste_halbprobe },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Checkliste Halbprobenerstellung uploaded successfully",
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Upload Checkliste Halbprobenerstellung Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+export const getChecklisteHalbprobenerstellung = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.custom_shafts.findUnique({
+      where: { id: orderId },
+      select: { checkliste_halbprobe: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Checkliste Halbprobenerstellung fetched successfully",
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Get Checkliste Halbprobenerstellung Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
 export const getAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
@@ -791,15 +1124,11 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     const status = req.query.status;
     const catagoary = req.query.catagoary;
 
-    // Validate limit
     if (limit < 1 || limit > 100) {
-      return res.status(400).json({
-        success: false,
-        message: "Limit must be between 1 and 100",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Limit must be between 1 and 100" });
     }
-
-    const whereCondition: any = {};
 
     const validStatuses = [
       "Bestellung_eingegangen",
@@ -807,50 +1136,37 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       "Qualitätskontrolle",
       "Versandt",
       "Ausgeführt",
-    ] as const;
-
+    ];
     const validCatagoaries = [
       "Halbprobenerstellung",
       "Massschafterstellung",
       "Bodenkonstruktion",
       "Komplettfertigung",
-    ] as const;
+    ];
 
-    // Validate status
-    if (status && !validStatuses.includes(status.toString() as any)) {
+    if (status && !validStatuses.includes(status.toString())) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
-        validStatuses: validStatuses,
+        validStatuses,
       });
     }
-
-    // Validate catagoary
-    if (catagoary && !validCatagoaries.includes(catagoary.toString() as any)) {
+    if (catagoary && !validCatagoaries.includes(catagoary.toString())) {
       return res.status(400).json({
         success: false,
         message: "Invalid catagoary value",
-        validCatagoaries: validCatagoaries,
+        validCatagoaries,
       });
     }
 
-    // Always ignore canceled orders
-    whereCondition.order_status = { not: "canceled" };
-
-    if (status) {
-      // Schema has typo: In_Produktiony; accept In_Produktion from API
-      const statusValue =
+    const where: any = { order_status: { not: "canceled" } };
+    if (status)
+      where.status =
         status.toString() === "In_Produktion" ? "In_Produktiony" : status;
-      whereCondition.status = statusValue;
-    }
-
-    if (catagoary) {
-      whereCondition.catagoary = catagoary;
-    }
-
-    // Build search conditions
+    if (catagoary) where.catagoary = catagoary;
+    if (cursor) where.id = { lt: cursor };
     if (search) {
-      const searchConditions: any[] = [
+      where.OR = [
         { orderNumber: { contains: search, mode: "insensitive" } },
         { other_customer_number: { contains: search, mode: "insensitive" } },
         {
@@ -876,93 +1192,62 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
           },
         },
       ];
-
-      whereCondition.OR = searchConditions;
     }
 
-    // Apply cursor-based pagination
-    // If cursor (ID) is provided, fetch records with id less than cursor (for descending order)
-    if (cursor) {
-      whereCondition.id = { lt: cursor };
-    }
+    const listSelect = {
+      id: true,
+      orderNumber: true,
+      catagoary: true,
+      status: true,
+      order_status: true,
+      totalPrice: true,
+      other_customer_number: true,
+      createdAt: true,
+      isCustomeModels: true,
+      deliveryDate: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          busnessName: true,
+          partnerId: true,
+          image: true,
+          email: true,
+          phone: true,
+          storeLocations: {
+            where: { isPrimary: true },
+            take: 1,
+            select: { id: true, address: true },
+          },
+          accountInfos: { select: { vat_number: true, bankInfo: true } },
+          mentor: { select: { name: true, email: true, phone: true } },
+        },
+      },
+      customer: {
+        select: {
+          id: true,
+          customerNumber: true,
+          vorname: true,
+          nachname: true,
+        },
+      },
+      maßschaft_kollektion: { select: { id: true, name: true } },
+    };
 
-    // Order by createdAt descending to show latest first
-    // Fetch limit + 1 to check if there's a next page
     const data = await prisma.custom_shafts.findMany({
-      where: whereCondition,
-      take: limit + 1, // Fetch one extra to check if there's more
+      where,
+      take: limit + 1,
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        orderNumber: true,
-        catagoary: true,
-        status: true,
-        order_status: true,
-        totalPrice: true,
-        other_customer_number: true,
-        createdAt: true,
-        isCustomeModels: true,
-        deliveryDate: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            busnessName: true,
-            partnerId: true,
-            image: true,
-            email: true,
-            phone: true,
-            storeLocations: {
-              where: { isPrimary: true },
-              take: 1,
-              select: { id: true, address: true },
-            },
-            accountInfos: {
-              select: {
-                vat_number: true,
-                bankInfo: true,
-              },
-            },
-            mentor: {
-              select: {
-                name: true,
-                email: true,
-                phone: true,
-              },
-            },
-          },
-        },
-        customer: {
-          select: {
-            id: true,
-            customerNumber: true,
-            vorname: true,
-            nachname: true,
-          },
-        },
-        maßschaft_kollektion: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      } as any,
+      select: listSelect as any,
     });
 
-    // Check if there's a next page
     const hasNextPage = data.length > limit;
-
-    // If we fetched an extra item, remove it
     const items = hasNextPage ? data.slice(0, limit) : data;
-
     res.status(200).json({
       success: true,
       message: "Admin orders fetched successfully",
       data: items,
-      pagination: {
-        limit,
-        hasNextPage,
-      },
+      pagination: { limit, hasNextPage },
     });
   } catch (error: any) {
     console.error("Get Admin Orders Error:", error);
@@ -974,142 +1259,131 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
   }
 };
 
-const VALID_CUSTOM_SHAFTS_CATAGOARIES = [
-  "Halbprobenerstellung",
-  "Massschafterstellung",
-  "Bodenkonstruktion",
-  "Komplettfertigung",
-] as const;
-
-// Single select shape for getSingleAllAdminOrders – one query fetches all category fields
-const SINGLE_ADMIN_ORDER_SELECT = {
-  id: true,
-  orderNumber: true,
-  other_customer_number: true,
-  other_customer_name: true,
-  customerId: true,
-  invoice: true,
-  totalPrice: true,
-  image3d_1: true,
-  image3d_2: true,
-  status: true,
-  catagoary: true,
-  order_status: true,
-  createdAt: true,
-  updatedAt: true,
-  massschuhe_order_id: true,
-  isCustomeModels: true,
-  Halbprobenerstellung_json: true,
-  Massschafterstellung_json1: true,
-  Massschafterstellung_json2: true,
-  versenden: true,
-  ledertyp_image: true,
-  zipper_image: true,
-  paintImage: true,
-  invoice2: true,
-  maßschaftKollektionId: true,
-  bodenkonstruktion_json: true,
-  staticImage: true,
-  customerName: true,
-  deliveryDate: true,
-  isCustomBodenkonstruktion: true,
-  customer: {
-    select: {
-      id: true,
-      customerNumber: true,
-      vorname: true,
-      nachname: true,
-      email: true,
-      telefon: true,
-      geburtsdatum: true,
-    },
-  },
-  maßschaft_kollektion: {
-    select: {
-      id: true,
-      ide: true,
-      name: true,
-      price: true,
-      image: true,
-      catagoary: true,
-      gender: true,
-      description: true,
-      verschlussart: true,
-    },
-  },
-  customModels: {
-    select: {
-      id: true,
-      custom_models_name: true,
-      custom_models_image: true,
-      custom_models_price: true,
-      custom_models_verschlussart: true,
-      custom_models_gender: true,
-      custom_models_description: true,
-    },
-  },
-  user: {
-    select: {
-      id: true,
-      busnessName: true,
-      email: true,
-      image: true,
-    },
-  },
-  massschuhe_order: {
-    select: {
-      id: true,
-      isPanding: true,
-      arztliche_diagnose: true,
-      delivery_date: true,
-    },
-  },
-  courierContacts: {
-    select: {
-      id: true,
-      address: true,
-      companyName: true,
-      phone: true,
-      email: true,
-      price: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  },
-} as const;
-
 export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const catagoaryQuery = req.query.catagoary as string | undefined;
 
     if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Custom shaft ID is required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Custom shaft ID is required" });
     }
 
-    const where: {
-      id: string;
-      catagoary?: (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number];
-    } = { id };
+    const validCatagoaries = [
+      "Halbprobenerstellung",
+      "Massschafterstellung",
+      "Bodenkonstruktion",
+      "Komplettfertigung",
+    ];
+    const where: any = { id };
     if (catagoaryQuery) {
-      if (!VALID_CUSTOM_SHAFTS_CATAGOARIES.includes(catagoaryQuery as any)) {
+      if (!validCatagoaries.includes(catagoaryQuery)) {
         return res.status(400).json({
           success: false,
           message: "Invalid catagoary value",
-          validCatagoaries: [...VALID_CUSTOM_SHAFTS_CATAGOARIES],
+          validCatagoaries,
         });
       }
-      where.catagoary =
-        catagoaryQuery as (typeof VALID_CUSTOM_SHAFTS_CATAGOARIES)[number];
+      where.catagoary = catagoaryQuery;
     }
 
-    // Single DB query – no separate category check
+    const singleSelect = {
+      id: true,
+      orderNumber: true,
+      other_customer_number: true,
+      other_customer_name: true,
+      customerId: true,
+      invoice: true,
+      totalPrice: true,
+      image3d_1: true,
+      image3d_2: true,
+      status: true,
+      catagoary: true,
+      order_status: true,
+      createdAt: true,
+      updatedAt: true,
+      massschuhe_order_id: true,
+      isCustomeModels: true,
+      Halbprobenerstellung_json: true,
+      Halbprobenerstellung_pdf: true,
+      checkliste_halbprobe: true,
+      Massschafterstellung_json1: true,
+      Massschafterstellung_json2: true,
+      versenden: true,
+      ledertyp_image: true,
+      zipper_image: true,
+      paintImage: true,
+      invoice2: true,
+      maßschaftKollektionId: true,
+      bodenkonstruktion_json: true,
+      staticImage: true,
+      customerName: true,
+      deliveryDate: true,
+      isCustomBodenkonstruktion: true,
+      customer: {
+        select: {
+          id: true,
+          customerNumber: true,
+          vorname: true,
+          nachname: true,
+          email: true,
+          telefon: true,
+          geburtsdatum: true,
+        },
+      },
+      maßschaft_kollektion: {
+        select: {
+          id: true,
+          ide: true,
+          name: true,
+          price: true,
+          image: true,
+          catagoary: true,
+          gender: true,
+          description: true,
+          verschlussart: true,
+        },
+      },
+      customModels: {
+        select: {
+          id: true,
+          custom_models_name: true,
+          custom_models_image: true,
+          custom_models_price: true,
+          custom_models_verschlussart: true,
+          custom_models_gender: true,
+          custom_models_description: true,
+        },
+      },
+      user: {
+        select: { id: true, busnessName: true, email: true, image: true },
+      },
+      massschuhe_order: {
+        select: {
+          id: true,
+          isPanding: true,
+          arztliche_diagnose: true,
+          delivery_date: true,
+        },
+      },
+      courierContacts: {
+        select: {
+          id: true,
+          address: true,
+          companyName: true,
+          phone: true,
+          email: true,
+          price: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    };
+
     const shaftData: any = await prisma.custom_shafts.findUnique({
       where,
-      select: SINGLE_ADMIN_ORDER_SELECT,
+      select: singleSelect,
     });
 
     if (!shaftData) {
@@ -1170,6 +1444,9 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     if (cat === "Halbprobenerstellung") {
       base.Halbprobenerstellung_json =
         shaftData.Halbprobenerstellung_json ?? null;
+      base.Halbprobenerstellung_pdf =
+        formatImg(shaftData.Halbprobenerstellung_pdf) ?? null;
+      base.checkliste_halbprobe = shaftData.checkliste_halbprobe ?? null;
     } else if (cat === "Massschafterstellung" || cat === "Komplettfertigung") {
       base.Massschafterstellung_json1 =
         shaftData.Massschafterstellung_json1 ?? null;
@@ -1191,6 +1468,8 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     } else {
       base.Halbprobenerstellung_json =
         shaftData.Halbprobenerstellung_json ?? null;
+      base.Halbprobenerstellung_pdf =
+        formatImg(shaftData.Halbprobenerstellung_pdf) ?? null;
       base.Massschafterstellung_json1 =
         shaftData.Massschafterstellung_json1 ?? null;
       base.Massschafterstellung_json2 =
@@ -1221,6 +1500,15 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
 
     const user = shaftData.user;
     base.partner = user ? { ...user, image: formatImg(user.image) } : null;
+
+    if (cat === "Halbprobenerstellung") {
+      delete base.customer;
+      delete base.courier_contact;
+      delete base.massschuhe_order;
+      delete base.massschuhe_order_id;
+      delete base.other_customer_number;
+      delete base.other_customer_name;
+    }
 
     res.status(200).json({
       success: true,

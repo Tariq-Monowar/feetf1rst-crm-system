@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { baseUrl } from "../../../utils/base_utl";
@@ -10,7 +10,6 @@ import {
 import { deleteFileFromS3 } from "../../../utils/s3utils";
 import redis from "../../../config/redis.config";
 
-const prisma = new PrismaClient();
 const SET_PASSWORD_KEY_PREFIX = "set-password:";
 const SET_PASSWORD_TTL_SEC = 7 * 24 * 60 * 60;
 
@@ -91,7 +90,7 @@ export const createUser = async (req: Request, res: Response) => {
     const image = req.file as any; // S3 file object
 
     const missingField = ["name", "email", "password"].find(
-      (field) => !req.body[field]
+      (field) => !req.body[field],
     );
 
     if (missingField) {
@@ -142,7 +141,7 @@ export const createUser = async (req: Request, res: Response) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET as string,
-      { expiresIn: "100d" }
+      { expiresIn: "100d" },
     );
 
     res.status(201).json({
@@ -170,10 +169,8 @@ export const loginUser = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-
-
     const missingField = ["email", "password"].find(
-      (field) => !req.body[field]
+      (field) => !req.body[field],
     );
 
     if (missingField) {
@@ -298,7 +295,6 @@ export const loginUser = async (req: Request, res: Response) => {
         token,
       });
     }
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -307,7 +303,6 @@ export const loginUser = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const updateUser = async (req: Request, res: Response) => {
   try {
@@ -326,13 +321,13 @@ export const updateUser = async (req: Request, res: Response) => {
       vat_number,
       barcodeLabel,
     } = req.body;
-    
+
     const newImage = req.file as any;
 
     // Get user
     const user = await prisma.user.findUnique({
       where: { id: String(id) },
-      include: { accountInfos: true }
+      include: { accountInfos: true },
     });
 
     if (!user) {
@@ -351,8 +346,11 @@ export const updateUser = async (req: Request, res: Response) => {
     const parsedHauptstandort = Array.isArray(hauptstandort)
       ? hauptstandort
       : typeof hauptstandort === "string" && hauptstandort.trim()
-      ? hauptstandort.split(",").map(s => s.trim()).filter(Boolean)
-      : undefined;
+        ? hauptstandort
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined;
 
     // Update user
     const updatedUser = await prisma.user.update({
@@ -369,14 +367,24 @@ export const updateUser = async (req: Request, res: Response) => {
 
     // Handle account info
     const existingAccountInfo = user.accountInfos[0];
-    const hasAccountUpdates = vat_country || vat_number || barcodeLabel || bankName || bankNumber || bic || bankInfoInput;
+    const hasAccountUpdates =
+      vat_country ||
+      vat_number ||
+      barcodeLabel ||
+      bankName ||
+      bankNumber ||
+      bic ||
+      bankInfoInput;
 
     if (hasAccountUpdates || existingAccountInfo) {
       // Parse bankInfo JSON if provided
       let parsedBankInfo: any = {};
       if (bankInfoInput) {
         try {
-          parsedBankInfo = typeof bankInfoInput === 'string' ? JSON.parse(bankInfoInput) : bankInfoInput;
+          parsedBankInfo =
+            typeof bankInfoInput === "string"
+              ? JSON.parse(bankInfoInput)
+              : bankInfoInput;
         } catch (e) {
           parsedBankInfo = {};
         }
@@ -387,8 +395,16 @@ export const updateUser = async (req: Request, res: Response) => {
 
       // Merge bank info (priority: parsedBankInfo > individual fields > existing)
       const bankInfo = {
-        bankName: parsedBankInfo.bankName ?? bankName ?? currentBankInfo.bankName ?? null,
-        bankNumber: parsedBankInfo.bankNumber ?? bankNumber ?? currentBankInfo.bankNumber ?? null,
+        bankName:
+          parsedBankInfo.bankName ??
+          bankName ??
+          currentBankInfo.bankName ??
+          null,
+        bankNumber:
+          parsedBankInfo.bankNumber ??
+          bankNumber ??
+          currentBankInfo.bankNumber ??
+          null,
         bic: parsedBankInfo.bic ?? bic ?? currentBankInfo.bic ?? null,
       };
 
@@ -400,22 +416,22 @@ export const updateUser = async (req: Request, res: Response) => {
       };
 
       const accountInfoModel = (prisma as any).accountInfo;
-      
+
       if (existingAccountInfo) {
         await accountInfoModel.update({
           where: { id: existingAccountInfo.id },
-          data: accountInfoData
+          data: accountInfoData,
         });
       } else {
         await accountInfoModel.create({
-          data: { ...accountInfoData, userId: user.id }
+          data: { ...accountInfoData, userId: user.id },
         });
       }
     }
 
     // Get updated account info
     const accountInfo = await (prisma as any).accountInfo.findFirst({
-      where: { userId: String(id) }
+      where: { userId: String(id) },
     });
 
     res.status(200).json({
@@ -431,18 +447,17 @@ export const updateUser = async (req: Request, res: Response) => {
         busnessName: updatedUser.busnessName,
         hauptstandort: updatedUser.hauptstandort,
         role: updatedUser.role,
-        accountInfo: accountInfo || null
-      }
+        accountInfo: accountInfo || null,
+      },
     });
-
   } catch (error: any) {
-    console.error('Error updating user:', error);
-    
-    if (error.code === 'P2002') {
+    console.error("Error updating user:", error);
+
+    if (error.code === "P2002") {
       const field = error.meta?.target?.[0];
       return res.status(400).json({
         success: false,
-        message: `${field === 'email' ? 'Email' : 'Field'} already exists`
+        message: `${field === "email" ? "Email" : "Field"} already exists`,
       });
     }
 
@@ -450,11 +465,10 @@ export const updateUser = async (req: Request, res: Response) => {
       success: false,
       message: "Failed to update user profile",
       error: error.message || "Unknown error",
-      ...(error.code && { code: error.code })
+      ...(error.code && { code: error.code }),
     });
   }
 };
-
 
 export const changePassword = async (req: Request, res: Response) => {
   try {
@@ -543,7 +557,7 @@ export const createPartnership = async (req: Request, res: Response) => {
       `${SET_PASSWORD_KEY_PREFIX}${partnership.id}`,
       "1",
       "EX",
-      SET_PASSWORD_TTL_SEC
+      SET_PASSWORD_TTL_SEC,
     );
 
     const link =
@@ -572,7 +586,7 @@ export const createPartnership = async (req: Request, res: Response) => {
 export const updatePartnerProfile = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
-    const { name,  } = req.body;
+    const { name } = req.body;
     const newImage = req.file as any;
 
     const existingUser = await prisma.user.findUnique({
@@ -658,7 +672,11 @@ export const getAllPartners = async (req: Request, res: Response) => {
  * - EMPLOYEE: employeeId (loginEmployeeById) or id (loginEmployee)
  * - ADMIN/PARTNER: id
  */
-const getAuthLookupId = (payload: { role?: string; id?: string; employeeId?: string }) => {
+const getAuthLookupId = (payload: {
+  role?: string;
+  id?: string;
+  employeeId?: string;
+}) => {
   if (payload?.role === "EMPLOYEE") return payload?.employeeId ?? payload?.id;
   return payload?.id;
 };
@@ -666,10 +684,14 @@ const getAuthLookupId = (payload: { role?: string; id?: string; employeeId?: str
 export const checkAuthStatus = async (req: Request, res: Response) => {
   try {
     const role = req.user?.role;
-    const lookupId = getAuthLookupId(req.user as { role?: string; id?: string; employeeId?: string });
+    const lookupId = getAuthLookupId(
+      req.user as { role?: string; id?: string; employeeId?: string },
+    );
 
     if (!lookupId) {
-      return res.status(401).json({ success: false, message: "User not authenticated" });
+      return res
+        .status(401)
+        .json({ success: false, message: "User not authenticated" });
     }
 
     if (role === "EMPLOYEE") {
@@ -702,7 +724,9 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
         },
       });
       if (!employee) {
-        return res.status(404).json({ success: false, message: "User not found" });
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
       }
       return res.status(200).json({
         success: true,
@@ -752,7 +776,9 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
       },
     });
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
     const accountInfo = user.accountInfos?.[0] ?? null;
     return res.status(200).json({
@@ -775,6 +801,12 @@ export const checkAuthStatus = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Auth check error:", error);
-    return res.status(500).json({ success: false, message: "Authentication check failed" });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Authentication check failed",
+        error: error.message,
+      });
   }
 };

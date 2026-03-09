@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -11,8 +12,6 @@ import {
   sendInvoiceEmail,
 } from "../../../utils/emailService.utils";
 import redis from "../../../config/redis.config";
-
-const prisma = new PrismaClient();
 
 const extractLengthValue = (value: any): number | null => {
   if (value === null || value === undefined) {
@@ -229,6 +228,7 @@ export const createOrder = async (req: Request, res: Response) => {
       privatePrice: privatePriceFromBody,
       key,
       totalPrice: totalPriceFromClient,
+      vat_rate,
     } = body;
     const privetSupply = key;
 
@@ -287,15 +287,7 @@ export const createOrder = async (req: Request, res: Response) => {
             `insurances[${i}] must contain at least price or description`,
           );
       }
-      const partner = await prisma.user.findUnique({
-        where: { id: partnerId },
-        select: { accountInfos: { select: { vat_country: true } } },
-      });
-      if (!partner) return bad(400, "Partner not found");
-      const acc = partner.accountInfos?.find((a: any) => a.vat_country);
-      if (!acc?.vat_country)
-        return bad(400, "Please set the vat country in your account info");
-      vat_country = acc.vat_country;
+      // vat_country is set from partnerForVat after the parallel fetch below
     }
 
     let normalizedInsoleStandards: any[] = [];
@@ -340,37 +332,72 @@ export const createOrder = async (req: Request, res: Response) => {
       material: true,
       diagnosis_status: true,
       storeId: true,
+      supplyStatus: {
+        select: {
+          vatRate: true,
+        },
+      },
     };
 
-    const [screenerFile, customer, rawShadowOrVersorgung] = await Promise.all([
-      screenerId
-        ? prisma.screener_file.findUnique({
-            where: { id: screenerId },
-            select: { id: true },
-          })
-        : null,
-      prisma.customers.findUnique({
-        where: { id: customerId },
-        select: {
-          fusslange1: true,
-          fusslange2: true,
-          fussbreite1: true,
-          fussbreite2: true,
-          kugelumfang1: true,
-          kugelumfang2: true,
-          rist1: true,
-          rist2: true,
-        },
-      }),
-      privetSupply
-        ? redis.get(privetSupply)
-        : prisma.versorgungen.findUnique({
-            where: { id: versorgungId },
-            select: vSelect,
-          }),
-    ]);
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    const needPartnerVat =
+      bezahlt === "Krankenkasse_Genehmigt" ||
+      bezahlt === "Krankenkasse_Ungenehmigt";
+
+    const [screenerFile, customer, rawShadowOrVersorgung, validPrescription, partnerForVat] =
+      await Promise.all([
+        screenerId
+          ? prisma.screener_file.findUnique({
+              where: { id: screenerId },
+              select: { id: true },
+            })
+          : null,
+        prisma.customers.findUnique({
+          where: { id: customerId },
+          select: {
+            fusslange1: true,
+            fusslange2: true,
+            fussbreite1: true,
+            fussbreite2: true,
+            kugelumfang1: true,
+            kugelumfang2: true,
+            rist1: true,
+            rist2: true,
+          },
+        }),
+        privetSupply
+          ? redis.get(privetSupply)
+          : prisma.versorgungen.findUnique({
+              where: { id: versorgungId },
+              select: vSelect,
+            }),
+        prisma.prescription.findFirst({
+          where: {
+            customerId,
+            prescription_date: { gte: fourWeeksAgo, not: null },
+          },
+          orderBy: { prescription_date: "desc" },
+          select: { id: true },
+        }),
+        needPartnerVat
+          ? prisma.user.findUnique({
+              where: { id: partnerId },
+              select: { accountInfos: { select: { vat_country: true } } },
+            })
+          : Promise.resolve(null),
+      ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
+
+    if (needPartnerVat) {
+      if (!partnerForVat) return bad(400, "Partner not found");
+      const acc = partnerForVat.accountInfos?.find((a: any) => a.vat_country);
+      if (!acc?.vat_country)
+        return bad(400, "Please set the vat country in your account info");
+      vat_country = acc.vat_country;
+    }
+
     // When no screenerId, customer must have foot data to create order
     if (!screenerId) {
       const hasFootData =
@@ -409,13 +436,39 @@ export const createOrder = async (req: Request, res: Response) => {
           "Shadow supply customer does not match order customerId",
         );
 
-      if (shadow.storeId) {
-        const storeFromDb = await prisma.stores.findUnique({
-          where: { id: shadow.storeId },
-          select: { id: true, groessenMengen: true, type: true },
-        });
-        if (!storeFromDb)
-          return bad(404, "Store not found for this private supply");
+      const createData: any = {
+        name: shadow.name,
+        rohlingHersteller: shadow.rohlingHersteller ?? "",
+        artikelHersteller: shadow.artikelHersteller ?? "",
+        versorgung: shadow.versorgung,
+        material: Array.isArray(shadow.material) ? shadow.material : [],
+        diagnosis_status: Array.isArray(shadow.diagnosis_status)
+          ? shadow.diagnosis_status
+          : [],
+        supplyType: "private",
+      };
+      if (shadow.partnerId)
+        createData.partner = { connect: { id: shadow.partnerId } };
+      if (shadow.storeId)
+        createData.store = { connect: { id: shadow.storeId } };
+      if (shadow.supplyStatusId)
+        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
+
+      const [storeFromDb, createdVersorgung] = await Promise.all([
+        shadow.storeId
+          ? prisma.stores.findUnique({
+              where: { id: shadow.storeId },
+              select: { id: true, groessenMengen: true, type: true },
+            })
+          : Promise.resolve(null),
+        prisma.versorgungen.create({
+          data: createData,
+          select: vSelect,
+        }),
+      ]);
+      versorgung = createdVersorgung;
+
+      if (storeFromDb) {
         const gm = storeFromDb.groessenMengen;
         if (!gm || typeof gm !== "object" || !Object.keys(gm).length)
           return bad(
@@ -438,29 +491,9 @@ export const createOrder = async (req: Request, res: Response) => {
               "No matching size in store for this customer's foot length. Add a suitable size or choose another store.",
             );
         }
+      } else if (shadow.storeId) {
+        return bad(404, "Store not found for this private supply");
       }
-
-      const createData: any = {
-        name: shadow.name,
-        rohlingHersteller: shadow.rohlingHersteller ?? "",
-        artikelHersteller: shadow.artikelHersteller ?? "",
-        versorgung: shadow.versorgung,
-        material: Array.isArray(shadow.material) ? shadow.material : [],
-        diagnosis_status: Array.isArray(shadow.diagnosis_status)
-          ? shadow.diagnosis_status
-          : [],
-        supplyType: "private",
-      };
-      if (shadow.partnerId)
-        createData.partner = { connect: { id: shadow.partnerId } };
-      if (shadow.storeId)
-        createData.store = { connect: { id: shadow.storeId } };
-      if (shadow.supplyStatusId)
-        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
-      versorgung = await prisma.versorgungen.create({
-        data: createData,
-        select: vSelect,
-      });
     } else {
       versorgung = rawShadowOrVersorgung;
       if (!versorgung) return bad(404, "Versorgung not found");
@@ -477,9 +510,21 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, msg);
     }
 
+    // Explicit VAT from client (overrides supplyStatus vatRate if provided)
+    const explicitVatRate =
+      vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
+        ? Number(vat_rate)
+        : undefined;
+
     // STEP 3: Use totalPrice from client without recalculation
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
+
+    const orderVatRate: number | undefined =
+      explicitVatRate ??
+      (typeof versorgung?.supplyStatus?.vatRate === "number"
+        ? versorgung.supplyStatus.vatRate
+        : undefined);
 
     const footLengthMm = Math.max(
       Number(customer.fusslange1),
@@ -594,6 +639,11 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.store = { connect: { id: versorgung.storeId } };
       if (finalEmployeeId)
         orderData.employee = { connect: { id: finalEmployeeId } };
+      if (orderVatRate != null) {
+        orderData.vatRate = orderVatRate;
+      }
+      if (validPrescription?.id)
+        orderData.prescription = { connect: { id: validPrescription.id } };
       if (fussanalysePreis != null)
         orderData.fussanalysePreis = Number(fussanalysePreis);
       if (einlagenversorgungPreis != null)
@@ -1078,6 +1128,9 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
           orderStatus: true,
           statusUpdate: true,
           invoice: true,
+          paymnentType: true,
+          insurance_payed: true,
+          private_payed: true,
           createdAt: true,
           updatedAt: true,
           customer: {
@@ -1179,6 +1232,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       updatedAt: true,
       priority: true,
       bezahlt: true,
+      paymnentType: true,
+      insurance_payed: true,
+      private_payed: true,
       barcodeLabel: true,
       fertigstellungBis: true,
       geschaeftsstandort: true,
@@ -1334,6 +1390,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
           updatedAt: Date;
           priority: string | null;
           bezahlt: string | null;
+          paymnentType: string | null;
+          insurance_payed: boolean | null;
+          private_payed: boolean | null;
           barcodeLabel: string | null;
           fertigstellungBis: Date | null;
           geschaeftsstandort: unknown;
@@ -1361,7 +1420,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
       >(Prisma.sql`
         SELECT
           co.id, co."orderNumber", co."totalPrice", co."orderStatus", co."statusUpdate",
-          co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt, co."barcodeLabel",
+          co.invoice, co."createdAt", co."updatedAt", co.priority, co.bezahlt,
+          co."paymnentType", co."insurance_payed", co."private_payed",
+          co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."service_name", co."sonstiges_category",
           co.diagnosis, co."ausführliche_diagnose",
@@ -1395,6 +1456,9 @@ export const getAllOrders = async (req: Request, res: Response) => {
         updatedAt: row.updatedAt,
         priority: row.priority,
         bezahlt: row.bezahlt,
+        paymnentType: row.paymnentType ?? null,
+        insurance_payed: row.insurance_payed ?? false,
+        private_payed: row.private_payed ?? false,
         barcodeLabel: row.barcodeLabel ?? null,
         fertigstellungBis: row.fertigstellungBis,
         geschaeftsstandort: row.geschaeftsstandort,

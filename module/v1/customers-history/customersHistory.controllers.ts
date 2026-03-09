@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import { data } from "../../../assets/v1/data";
 import { baseUrl } from "../../../utils/base_utl";
-
-const prisma = new PrismaClient();
 
 export const createCustomerHistoryNote = async (
   req: Request,

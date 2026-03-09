@@ -1,445 +1,235 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
-import { featureAccessData } from "./feature_access.data";
+import { prisma } from "../../../db";
+import redis from "../../../config/redis.config";
+import { FEATURES } from "./feature_access.data";
 
-const prisma = new PrismaClient();
+const KEYS = FEATURES.map((f) => f.key);
+const KEY_MAP = Object.fromEntries(KEYS.map((k) => [k.toLowerCase(), k]));
+const DEFAULTS = Object.fromEntries(KEYS.map((k) => [k, true]));
+const CACHE_PREFIX = "feature_access:";
 
-const defaultFeatureAccessData = {
-  dashboard: true,
-  teamchat: true,
-  kundensuche: true,
-  neukundenerstellung: true,
-  einlagenauftrage: true,
-  massschuhauftrage: true,
-  massschafte: true,
-  produktverwaltung: true,
-  sammelbestellungen: true,
-  nachrichten: true,
-  terminkalender: true,
-  monatsstatistik: true,
-  mitarbeitercontrolling: true,
-  einlagencontrolling: true,
-  fusubungen: true,
-  musterzettel: true,
-  einstellungen: true,
-  account_settings: true,
-  news_and_aktuelles: true,
-  produktkatalog: true,
-  balance: true,
-  automatisierte_nachrichten: true,
-  kasse_and_abholungen: true,
-  finanzen_and_kasse: true,
-  einnahmen_and_rechnungen: true,
-  statistiken: true,
-  warenwirtschaft: true,
-};
-
-const FEATURE_KEYS = Object.keys(
-  defaultFeatureAccessData
-) as (keyof typeof defaultFeatureAccessData)[];
-
-const validatePartner = async (partnerId: string) => {
-  const partner = await prisma.user.findUnique({
-    where: { id: partnerId, role: "PARTNER" },
-  });
-  return partner;
-};
-
-export const getFeatureAccess = async (req: Request, res: Response) => {
+export async function getFeatureAccess(req: Request, res: Response) {
   try {
     const { partnerId } = req.params;
-
-    const partner = await validatePartner(partnerId);
-    if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+    const cacheKey = CACHE_PREFIX + partnerId;
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      const data = JSON.parse(cached);
+      return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
     }
 
-    const featureAccess = await getOrCreateFeatureAccess(partnerId);
-    const allAvailableFeatures = convertToJSONFormat(featureAccess);
-
-    res.status(200).json({
-      success: true,
-      message: "Feature access retrieved successfully",
-      data: allAvailableFeatures,
+    const partner = await prisma.user.findUnique({
+      where: { id: partnerId, role: "PARTNER" },
+      select: { id: true },
     });
-  } catch (error: any) {
-    console.error("Get Feature Access error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-      error: error.message,
-    });
-  }
-};
-
-export const manageFeatureAccess = async (req: Request, res: Response) => {
-  try {
-    const { partnerId } = req.params;
-    const updates = req.body;
-
-    const partner = await validatePartner(partnerId);
     if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+      return res.status(404).json({ success: false, message: "Partner not found" });
     }
 
-    const featureAccess = await prisma.featureAccess.upsert({
-      where: { partnerId },
-      update: updates,
-      create: {
-        partnerId,
-        ...defaultFeatureAccessData,
-        ...updates,
-      },
-    });
-
-    // Cascade: if admin reduced any feature for partner, revoke it for all employees of this partner
-    const cascadeData: Record<string, boolean> = {};
-    for (const key of FEATURE_KEYS) {
-      if (featureAccess[key] === false) {
-        cascadeData[key] = false;
+    let row = await prisma.featureAccess.findUnique({ where: { partnerId } });
+    if (!row) {
+      row = await prisma.featureAccess.create({
+        data: { partnerId, ...DEFAULTS },
+      });
+    } else {
+      const missing = KEYS.filter((k) => row[k] == null);
+      if (missing.length > 0) {
+        const patch = Object.fromEntries(missing.map((k) => [k, true]));
+        try {
+          row = await prisma.featureAccess.update({
+            where: { partnerId },
+            data: patch,
+          });
+        } catch (e) {
+          row = { ...row, ...patch };
+        }
       }
     }
-    if (Object.keys(cascadeData).length > 0) {
-      await prisma.employee_feature_access.updateMany({
-        where: { partnerId },
-        data: cascadeData,
-      });
-    }
 
-    res.status(200).json({
-      success: true,
-      message: "Feature access updated successfully",
-      data: featureAccess,
-    });
-  } catch (error: any) {
-    console.error("Manage Feature Access error:", error);
+    const access = Object.fromEntries(KEYS.map((k) => [k, !!(row[k] ?? true)]));
+    const data = FEATURES.map((f) => ({
+      title: f.title,
+      action: access[f.key] ?? true,
+      path: f.path,
+      nested: (f.nested ?? []).map((n) => ({ ...n, action: access[f.key] ?? true })),
+    }));
+
+    await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
+
+    res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+  } catch (err) {
+    console.error("Get Feature Access error:", err);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error.message,
+      error: (err as Error).message,
     });
   }
-};
+}
 
-const getOrCreateFeatureAccess = async (partnerId: string) => {
-  let featureAccess = await prisma.featureAccess.findUnique({
-    where: { partnerId },
-  });
-
-  if (!featureAccess) {
-    return await prisma.featureAccess.create({
-      data: {
-        partnerId,
-        ...defaultFeatureAccessData,
-      },
-    });
-  }
-
-  const newFields = [
-    "news_and_aktuelles",
-    "produktkatalog",
-    "balance",
-    "automatisierte_nachrichten",
-    "kasse_and_abholungen",
-    "finanzen_and_kasse",
-    "einnahmen_and_rechnungen",
-    "statistiken",
-    "warenwirtschaft",
-  ];
-
-  const missingFields = newFields.filter(
-    (field) =>
-      featureAccess[field] === null || featureAccess[field] === undefined
-  );
-
-  if (missingFields.length > 0) {
-    const updateData: any = {};
-    missingFields.forEach((field) => {
-      updateData[field] = true;
-    });
-
-    featureAccess = await prisma.featureAccess.update({
-      where: { partnerId },
-      data: updateData,
-    });
-  }
-
-  return featureAccess;
-};
-
-export const partnerFeatureAccess = async (req: Request, res: Response) => {
+export async function manageFeatureAccess(req: Request, res: Response) {
   try {
+    const { partnerId } = req.params;
+    const partner = await prisma.user.findUnique({
+      where: { id: partnerId, role: "PARTNER" },
+      select: { id: true },
+    });
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Partner not found" });
+    }
+
+    const updates = {};
+    for (const [key, value] of Object.entries(req.body || {})) {
+      const schemaKey = KEY_MAP[key?.toLowerCase()];
+      if (schemaKey && typeof value === "boolean") updates[schemaKey] = value;
+    }
+
+    const row = await prisma.featureAccess.upsert({
+      where: { partnerId },
+      update: updates,
+      create: { partnerId, ...DEFAULTS, ...updates },
+    });
+
+    const cascadeOff = KEYS.filter((k) => row[k] === false).reduce((o, k) => ({ ...o, [k]: false }), {});
+    if (Object.keys(cascadeOff).length > 0) {
+      await prisma.employee_feature_access.updateMany({
+        where: { partnerId },
+        data: cascadeOff,
+      });
+    }
+
+    await redis.del(CACHE_PREFIX + partnerId).catch(() => {});
+
+    res.status(200).json({ success: true, message: "Feature access updated successfully", data: row });
+  } catch (err) {
+    console.error("Manage Feature Access error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (err as Error).message,
+    });
+  }
+}
+
+export async function partnerFeatureAccess(req: Request, res: Response) {
+  try {
+    const partnerId = req.user?.id;
     const role = req.user?.role;
-    const partnerId = req.user.id;
 
     if (role === "EMPLOYEE") {
-      const employeeId = req.user.employeeId ?? req.user.id;
+      const employeeId = req.user?.employeeId ?? req.user?.id;
       const employee = await prisma.employees.findFirst({
         where: { id: employeeId, partnerId },
+        select: { id: true },
       });
       if (!employee) {
         return res.status(404).json({ success: false, message: "Employee not found" });
       }
 
-      const partnerAccess = await getOrCreateFeatureAccess(partnerId);
-      let employeeAccess = await prisma.employee_feature_access.findFirst({
-        where: { employeeId: employee.id, partnerId },
-      });
-      if (!employeeAccess) {
-        const data: any = { employeeId: employee.id, partnerId };
-        FEATURE_KEYS.forEach((k) => (data[k] = !!partnerAccess[k]));
-        employeeAccess = await prisma.employee_feature_access.create({ data });
+      const empCacheKey = CACHE_PREFIX + partnerId + ":emp:" + employee.id;
+      const cached = await redis.get(empCacheKey).catch(() => null);
+      if (cached) {
+        const data = JSON.parse(cached);
+        return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
       }
 
-      const effective: any = {};
-      FEATURE_KEYS.forEach((k) => (effective[k] = !!partnerAccess[k] && !!employeeAccess[k]));
+      let partnerRow = await prisma.featureAccess.findUnique({ where: { partnerId } });
+      if (!partnerRow) {
+        partnerRow = await prisma.featureAccess.create({
+          data: { partnerId, ...DEFAULTS },
+        });
+      } else {
+        const missing = KEYS.filter((k) => partnerRow[k] == null);
+        if (missing.length > 0) {
+          const patch = Object.fromEntries(missing.map((k) => [k, true]));
+          try {
+            partnerRow = await prisma.featureAccess.update({
+              where: { partnerId },
+              data: patch,
+            });
+          } catch {
+            partnerRow = { ...partnerRow, ...patch };
+          }
+        }
+      }
+      const partnerAccess = Object.fromEntries(KEYS.map((k) => [k, !!(partnerRow[k] ?? true)]));
 
-      return res.status(200).json({
-        success: true,
-        message: "Feature access retrieved successfully",
-        data: convertToJSONFormat(effective),
+      let empRow = await prisma.employee_feature_access.findFirst({
+        where: { employeeId: employee.id, partnerId },
       });
+      if (!empRow) {
+        empRow = await prisma.employee_feature_access.create({
+          data: { employeeId: employee.id, partnerId, ...partnerAccess },
+        });
+      }
+
+      const effective = Object.fromEntries(
+        KEYS.map((k) => [k, !!(partnerAccess[k] && empRow[k])])
+      );
+      const data = FEATURES.map((f) => ({
+        title: f.title,
+        action: effective[f.key] ?? true,
+        path: f.path,
+        nested: (f.nested ?? []).map((n) => ({ ...n, action: effective[f.key] ?? true })),
+      }));
+
+      await redis.set(empCacheKey, JSON.stringify(data)).catch(() => {});
+
+      return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
     }
 
-    const partner = await validatePartner(partnerId);
+    const cacheKey = CACHE_PREFIX + partnerId;
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      const data = JSON.parse(cached);
+      return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+    }
+
+    const partner = await prisma.user.findUnique({
+      where: { id: partnerId, role: "PARTNER" },
+      select: { id: true },
+    });
     if (!partner) {
       return res.status(404).json({ success: false, message: "Partner not found" });
     }
-    const featureAccess = await getOrCreateFeatureAccess(partnerId);
-    res.status(200).json({
-      success: true,
-      message: "Feature access retrieved successfully",
-      data: convertToJSONFormat(featureAccess),
-    });
-  } catch (error: any) {
-    console.error("Partner Feature Access error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
-  }
-};
 
-function convertToJSONFormat(featureAccess: any) {
-  const fieldMapping = [
-    { field: "dashboard", title: "Dashboard", path: "/dashboard" },
-    { field: "teamchat", title: "Teamchat", path: "/dashboard/teamchat" },
-    {
-      field: "kundensuche",
-      title: "Kundensuche",
-      path: "/dashboard/customers",
-    },
-    {
-      field: "neukundenerstellung",
-      title: "Neukundenerstellung",
-      path: "/dashboard/neukundenerstellung",
-    },
-    {
-      field: "einlagenauftrage",
-      title: "Einlagenaufträge",
-      path: "/dashboard/orders",
-    },
-    {
-      field: "massschuhauftrage",
-      title: "Maßschuhaufträge",
-      path: "/dashboard/massschuhauftraege",
-    },
-    {
-      field: "massschafte",
-      title: "Maßschäfte",
-      path: "/dashboard/custom-shafts",
-    },
-    {
-      field: "produktverwaltung",
-      title: "Produktverwaltung",
-      path: "/dashboard/lager",
-    },
-    {
-      field: "sammelbestellungen",
-      title: "Sammelbestellungen",
-      path: "/dashboard/group-orders",
-    },
-    {
-      field: "nachrichten",
-      title: "Nachrichten",
-      path: "/dashboard/email/inbox",
-    },
-    {
-      field: "terminkalender",
-      title: "Terminkalender",
-      path: "/dashboard/calendar",
-    },
-    {
-      field: "monatsstatistik",
-      title: "Monatsstatistik",
-      path: "/dashboard/monatsstatistik",
-    },
-    {
-      field: "mitarbeitercontrolling",
-      title: "Mitarbeitercontrolling",
-      path: "/dashboard/mitarbeitercontrolling",
-    },
-    {
-      field: "einlagencontrolling",
-      title: "Einlagencontrolling",
-      path: "/dashboard/einlagencontrolling",
-    },
-    {
-      field: "fusubungen",
-      title: "Fußübungen",
-      path: "/dashboard/foot-exercises",
-    },
-    {
-      field: "musterzettel",
-      title: "Musterzettel",
-      path: "/dashboard/musterzettel",
-    },
-    {
-      field: "einstellungen",
-      title: "Einstellungen",
-      path: "/dashboard/settings",
-    },
-    {
-      field: "account_settings",
-      title: "Account Settings",
-      path: "/dashboard/account-settings",
-    },
-    {
-      field: "news_and_aktuelles",
-      title: "News & Aktuelles",
-      path: "/dashboard/news",
-    },
-    {
-      field: "produktkatalog",
-      title: "Produktkatalog",
-      path: "/dashboard/products",
-    },
-    {
-      field: "balance",
-      title: "Balance",
-      path: "/dashboard/balance-dashboard",
-    },
-    {
-      field: "automatisierte_nachrichten",
-      title: "Automatisierte Nachrichten",
-      path: "/dashboard/automatisierte-nachrichten",
-    },
-    {
-      field: "kasse_and_abholungen",
-      title: "Kasse & Abholungen",
-      path: "/dashboard/kasse",
-    },
-    {
-      field: "finanzen_and_kasse",
-      title: "Finanzen & Kasse",
-      path: "/dashboard/finanzen-kasse",
-    },
-    {
-      field: "einnahmen_and_rechnungen",
-      title: "Einnahmen & Rechnungen",
-      path: "/dashboard/einnahmen",
-    },
-    {
-      field: "statistiken",
-      title: "Statistiken",
-      path: "/dashboard/statistiken",
-    },
-    {
-      field: "warenwirtschaft",
-      title: "Warenwirtschaft",
-      path: "/dashboard/warenwirtschaft",
-    },
-  ];
-
-  const result = [];
-
-  for (const mapping of fieldMapping) {
-    const actionValue = featureAccess[mapping.field] ?? true;
-
-    const item: any = {
-      title: mapping.title,
-      action: actionValue,
-      path: mapping.path,
-      nested: [],
-    };
-
-    if (mapping.field === "einstellungen") {
-      item.nested = getSettingsNestedItems(featureAccess.einstellungen);
+    let row = await prisma.featureAccess.findUnique({ where: { partnerId } });
+    if (!row) {
+      row = await prisma.featureAccess.create({
+        data: { partnerId, ...DEFAULTS },
+      });
+    } else {
+      const missing = KEYS.filter((k) => row[k] == null);
+      if (missing.length > 0) {
+        const patch = Object.fromEntries(missing.map((k) => [k, true]));
+        try {
+          row = await prisma.featureAccess.update({
+            where: { partnerId },
+            data: patch,
+          });
+        } catch {
+          row = { ...row, ...patch };
+        }
+      }
     }
 
-    result.push(item);
+    const access = Object.fromEntries(KEYS.map((k) => [k, !!(row[k] ?? true)]));
+    const data = FEATURES.map((f) => ({
+      title: f.title,
+      action: access[f.key] ?? true,
+      path: f.path,
+      nested: (f.nested ?? []).map((n) => ({ ...n, action: access[f.key] ?? true })),
+    }));
+
+    await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
+
+    res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+  } catch (err) {
+    console.error("Partner Feature Access error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (err as Error).message,
+    });
   }
-
-  return result;
 }
-
-function getSettingsNestedItems(parentAction: boolean) {
-  const settingsNested = [
-    { title: "Grundeinstellungen", path: "/dashboard/settings-profile" },
-    {
-      title: "Backup Einstellungen",
-      path: "/dashboard/settings-profile/backup",
-    },
-    {
-      title: "Kundenkommunikation",
-      path: "/dashboard/settings-profile/communication",
-    },
-    {
-      title: "Werkstattzettel",
-      path: "/dashboard/settings-profile/werkstattzettel",
-    },
-    {
-      title: "Benachrichtigungen",
-      path: "/dashboard/settings-profile/benachrichtigungen",
-    },
-    {
-      title: "Lagereinstellungen",
-      path: "/dashboard/settings-profile/notifications",
-    },
-    {
-      title: "Preisverwaltung",
-      path: "/dashboard/settings-profile/preisverwaltung",
-    },
-    {
-      title: "Software Scanstation",
-      path: "/dashboard/settings-profile/software-scanstation",
-    },
-    { title: "Design & Logo", path: "/dashboard/settings-profile/design" },
-    {
-      title: "Passwort ändern",
-      path: "/dashboard/settings-profile/changes-password",
-    },
-    { title: "Sprache", path: "/dashboard/settings-profile/sprache" },
-    { title: "Fragen", path: "/dashboard/settings-profile/fragen" },
-    {
-      title: "Automatische Orders",
-      path: "/dashboard/settings-profile/automatische-orders",
-    },
-  ];
-
-  return settingsNested.map((item) => ({
-    ...item,
-    action: parentAction,
-  }));
-}
-
-// /** Returns only the list of feature field names that exist in the system (no DB). */
-// export const getAllAbleFeatures = async (req: Request, res: Response) => {
-//   try {
-//     res.status(200).json({
-//       success: true,
-//       message: "Features retrieved successfully",
-//       data: featureAccessData,
-//     });
-//   } catch (error: any) {
-//     console.error("Get All Able Features error:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Something went wrong",
-//       error: error.message,
-//     });
-//   }
-// };

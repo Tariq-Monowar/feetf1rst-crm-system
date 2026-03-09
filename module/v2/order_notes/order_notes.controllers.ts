@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { OrderType, PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
+import { OrderType } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 export const createNote = async (req: Request, res: Response) => {
   try {

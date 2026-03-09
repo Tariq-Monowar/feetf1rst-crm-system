@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
-import { leaveRequest, getMyLeaveRequests, updateLeaveRequest } from "./leave_application.controllers";
+import { leaveRequest, getMyLeaveRequests, updateLeaveRequest, deleteLeaveRequest } from "./leave_application.controllers";
 
 const router = express.Router();
 
@@ -10,4 +10,9 @@ router.get("/get-my-requests", verifyUser("EMPLOYEE"), getMyLeaveRequests);
 
 router.patch("/update-leave-request", verifyUser("EMPLOYEE"), updateLeaveRequest);
 
+router.delete("/delete-leave-request/:id", verifyUser("EMPLOYEE"), deleteLeaveRequest);
+
 export default router;
+
+
+

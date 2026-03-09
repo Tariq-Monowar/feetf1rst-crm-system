@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
+import { prisma } from "../../../db";
 import { PrismaClient, notificationType } from "@prisma/client";
 import { notificationSend } from "../../../utils/notification.utils";
-
-const prisma = new PrismaClient();
 
 // Helper function to format appointment response with clean employee structure
 const formatAppointmentResponse = (appointment: any) => {

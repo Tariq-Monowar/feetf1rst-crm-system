@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-
+import { prisma } from "../../../db";
 // Removed getImageUrl - images are now S3 URLs
 import { notificationSend } from "../../../utils/notification.utils";
 import {
@@ -11,9 +10,10 @@ import {
   generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
-import { sendCustomShaftOrderNotification } from "../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
+import {
+  sendCustomShaftOrderNotification,
+  sendLeistenerstellungAccessRequestEmail,
+} from "../../../utils/emailService.utils";
 
 const formatOrderCreatedAt = (d: Date) =>
   d.toLocaleDateString("de-DE", {
@@ -685,20 +685,39 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    const note =
-      otherName && !b.customerId ? `${category} - ${otherName}` : category;
-    await prisma.admin_order_transitions.create({
-      data: {
-        orderNumber: customShaft.orderNumber,
-        partnerId: id,
-        orderFor: "shoes",
-        custom_shafts_id: customShaft.id,
-        custom_shafts_catagoary: category,
-        price: b.totalPrice ? parseFloat(b.totalPrice) : null,
-        note,
-        ...(b.customerId && { customerId: b.customerId }),
-      } as any,
-    });
+    /*
+     * ==================================Admin Order Transitions + partner_total_amount (background) ============
+     * Run in background so response returns fast; use partnerId for partner_total_amount (schema: partnerId @unique).
+     */
+    const orderPrice = b.totalPrice ? parseFloat(b.totalPrice) : 0;
+    (async () => {
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", status, "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, "customerId", "createdAt", "updatedAt")
+          VALUES (gen_random_uuid(), ${customShaft.orderNumber}, ${"shoes"}, ${"panding"}, ${id}, ${customShaft.id}, ${category}, ${orderPrice || null}, ${b.customerId || null}, NOW(), NOW())
+        `;
+        const existing = await prisma.partner_total_amount.findFirst({
+          where: { partnerId: id },
+          select: { id: true, totalAmount: true },
+        });
+        const newTotal = (existing?.totalAmount ?? 0) + Number(orderPrice);
+        if (existing) {
+          await prisma.partner_total_amount.update({
+            where: { id: existing.id },
+            data: { totalAmount: newTotal },
+          });
+        } else {
+          await prisma.partner_total_amount.create({
+            data: { partnerId: id, totalAmount: newTotal },
+          });
+        }
+      } catch (e) {
+        console.error(
+          "Background admin_order_transitions / partner_total_amount error:",
+          e,
+        );
+      }
+    })();
 
     if (isCourier && courierData) {
       await prisma.courierContact.create({
@@ -912,17 +931,36 @@ export const createCustomBodenkonstruktionOrder = async (
 
     const customShaftId = (data as any).id;
 
-    await prisma.admin_order_transitions.create({
-      data: {
-        orderNumber: orderNumber,
-        orderFor: "shoes",
-        partnerId: id,
-        custom_shafts_id: customShaftId,
-        custom_shafts_catagoary: "Bodenkonstruktion",
-        price: parsedTotalPrice,
-        note: "Custom Bodenkonstruktion send to admin",
-      },
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
+    //background service
+    await prisma.$executeRaw`
+      INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, note, "createdAt", "updatedAt")
+      VALUES (gen_random_uuid(), ${orderNumber}, ${"shoes"}, ${id}, ${customShaftId}, ${"Bodenkonstruktion"}, ${parsedTotalPrice ?? null}, ${"Custom Bodenkonstruktion send to admin"}, NOW(), NOW())
+    `;
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: id },
+      select: { id: true, totalAmount: true },
     });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: id, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     // Notify admin by email (fire-and-forget, partner from create select)
     const deliveryDateFormatted = parsedDeliveryDate
@@ -957,6 +995,56 @@ export const createCustomBodenkonstruktionOrder = async (
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+export const requestForLeistenerstellungAccess = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+
+    const partner = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        busnessName: true,
+        image: true,
+        phone: true,
+        hauptstandort: true,
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    sendLeistenerstellungAccessRequestEmail({
+      partnerName: partner.name ?? "—",
+      partnerEmail: partner.email,
+      partnerImage: partner.image,
+      busnessName: partner.busnessName,
+      phone: partner.phone,
+    });
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Anfrage für Zugriff auf Leistenerstellung wurde erfolgreich gesendet",
+    });
+  } catch (error: any) {
+    console.error("Request For Leistenerstellung Access Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
       error: error.message,
     });
   }
@@ -1709,15 +1797,10 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
         status: true,
         orderNumber: true,
         createdAt: true,
-        massschuhe_order: {
+        adminOrderTransitions: {
           select: {
             id: true,
-            adminOrderTransitions: {
-              select: {
-                id: true,
-                price: true,
-              },
-            },
+            price: true,
           },
         },
       },
@@ -1762,8 +1845,8 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
       // Use local date to avoid timezone issues
       const dateKey = formatDateLocal(orderDate);
 
-      // Calculate total price from admin_order_transitions
-      const transitions = shaft.massschuhe_order?.adminOrderTransitions || [];
+      // Calculate total price from admin_order_transitions (linked via custom_shafts_id)
+      const transitions = shaft.adminOrderTransitions || [];
       const orderTotal = transitions.reduce((sum, transition) => {
         return sum + (transition.price || 0);
       }, 0);

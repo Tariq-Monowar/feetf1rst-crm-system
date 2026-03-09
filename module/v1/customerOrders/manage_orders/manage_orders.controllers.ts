@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../../db";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
 import path from "path";
@@ -8,9 +8,6 @@ import {
   sendPdfToEmail,
   sendInvoiceEmail,
 } from "../../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
-
 
 export const updateMultiplePaymentStatus = async (
   req: Request,

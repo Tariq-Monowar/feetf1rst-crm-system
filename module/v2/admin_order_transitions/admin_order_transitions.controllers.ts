@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 // Helper function to validate month and year
 const validateMonthYear = (month: number, year: number) => {
   if (month < 1 || month > 12) {
@@ -72,19 +70,24 @@ export const getTotalPrice = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
 
-    const result = await prisma.$queryRaw<Array<{ total_price: number }>>`
-      SELECT COALESCE(SUM(price), 0)::float as total_price
-      FROM "admin_order_transitions"
-      WHERE "partnerId" = ${id}::text
-    `;
+    // const result = await prisma.$queryRaw<Array<{ total_price: number }>>`
+    //   SELECT COALESCE(SUM(price), 0)::float as total_price
+    //   FROM "admin_order_transitions"
+    //   WHERE "partnerId" = ${id}::text
+    // `;
 
-    const totalPrice = result[0]?.total_price || 0;
+    // const totalPrice = result[0]?.total_price || 0;
+
+    const totalPrice = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: id },
+      select: { totalAmount: true },
+    });
 
     return res.status(200).json({
       success: true,
       message: "Total price calculated successfully",
       data: {
-        totalPrice: parseFloat(totalPrice.toFixed(2)),
+        totalPrice: parseFloat(totalPrice?.totalAmount?.toFixed(2)),
       },
     });
   } catch (error: any) {
@@ -518,6 +521,276 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while calculating one month payment",
+      error: error.message,
+    });
+  }
+};
+
+export const payPartnerToAdminController = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+
+    const { amount } = req.body;
+
+    // Validate amount
+    if (!amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount is required",
+      });
+    }
+
+    // Available = partner total minus sum of already pending payout requests
+    const [partnerTotalRow, pendingSumRow] = await Promise.all([
+      prisma.partner_total_amount.findFirst({
+        where: { partnerId: id },
+        select: { totalAmount: true },
+      }),
+      prisma.request_payout.aggregate({
+        where: { partnerId: id, status: "panding" },
+        _sum: { totalAmount: true },
+      }),
+    ]);
+
+    const total = Number(partnerTotalRow?.totalAmount ?? 0);
+    const pendingSum = Number(pendingSumRow._sum.totalAmount ?? 0);
+    const available = total - pendingSum;
+
+    if (Number(amount) > available || Number(amount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          available <= 0
+            ? "No available balance (total amount minus pending requests)"
+            : "Amount must be positive and not exceed available balance (total minus pending payout requests)",
+      });
+    }
+
+    //create request_payout
+    const requestPayout = await prisma.request_payout.create({
+      data: {
+        partnerId: id,
+        totalAmount: Number(amount),
+        status: "panding",
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Request payout created successfully",
+      data: requestPayout,
+    });
+  } catch (error: any) {
+    console.error("Pay Partner To Admin Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while paying partner to admin",
+      error: error.message,
+    });
+  }
+};
+
+export const getAllRequestPayoutsForPartner = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(
+      Math.max(1, parseInt(req.query.limit as string) || 10),
+      100,
+    );
+
+    const requestPayouts = await prisma.request_payout.findMany({
+      where: { partnerId: id },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      orderBy: { createdAt: "desc" },
+    });
+
+    const hasMore = requestPayouts.length > limit;
+    const data = hasMore ? requestPayouts.slice(0, limit) : requestPayouts;
+
+    return res.status(200).json({
+      success: true,
+      message: "Request payouts fetched successfully",
+      data,
+      hasMore,
+    });
+  } catch (error: any) {
+    console.error("Get All Request Payouts For Partner Error:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        "Something went wrong while getting all request payouts for partner",
+      error: error.message,
+    });
+  }
+};
+
+export const getAllRequestPayoutsForAdmin = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(
+      Math.max(1, parseInt(req.query.limit as string) || 10),
+      100,
+    );
+    const status = req.query.status as string | undefined;
+    if (status) {
+      const validStatuses = ["panding", "complated"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status",
+          validStatuses: validStatuses,
+        });
+      }
+    }
+
+    const search = (req.query.search as string)?.trim();
+    const searchFilter = search
+      ? {
+          partner: {
+            is: {
+              OR: [
+                { name: { contains: search, mode: "insensitive" as const } },
+                { busnessName: { contains: search, mode: "insensitive" as const } },
+                { email: { contains: search, mode: "insensitive" as const } },
+                { phone: { contains: search, mode: "insensitive" as const } },
+              ],
+            },
+          },
+        }
+      : undefined;
+
+    const requestPayouts = await prisma.request_payout.findMany({
+      where: {
+        ...(status && { status: status as "panding" | "complated" }),
+        ...searchFilter,
+      },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        partnerId: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        partner: {
+          select: {
+            name: true,
+            busnessName: true,
+            email: true,
+            phone: true,
+            image: true,
+          },
+        },
+      },
+    });
+
+    const hasMore = requestPayouts.length > limit;
+    const data = hasMore ? requestPayouts.slice(0, limit) : requestPayouts;
+
+    return res.status(200).json({
+      success: true,
+      message: "Request payouts fetched successfully",
+      data,
+      hasMore,
+    });
+  } catch (error: any) {
+    console.error("Get All Request Payouts For Admin Error:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        "Something went wrong while getting all request payouts for admin",
+      error: error.message,
+    });
+  }
+};
+
+export const approvedPayoutRequest = async (req: Request, res: Response) => {
+  try {
+    const requestPayoutId = req.params.id; // route is PATCH /approved-payout-request/:id
+    if (!requestPayoutId) {
+      return res.status(400).json({
+        success: false,
+        message: "Request payout ID is required",
+      });
+    }
+
+    const requestPayout = await prisma.request_payout.findUnique({
+      where: { id: requestPayoutId },
+    });
+
+    if (!requestPayout) {
+      return res.status(404).json({
+        success: false,
+        message: "Request payout not found",
+      });
+    }
+
+    if (requestPayout.status !== "panding") {
+      return res.status(400).json({
+        success: false,
+        message: "Request payout is not pending",
+      });
+    }
+    await prisma.request_payout.update({
+      where: { id: requestPayoutId },
+      data: { status: "complated" },
+    });
+
+    if (requestPayout.partnerId && requestPayout.totalAmount != null) {
+      const existing = await prisma.partner_total_amount.findFirst({
+        where: { partnerId: requestPayout.partnerId },
+        select: { id: true },
+      });
+      if (existing) {
+        await prisma.partner_total_amount.update({
+          where: { id: existing.id },
+          data: { totalAmount: { decrement: requestPayout.totalAmount } },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Request payout approved successfully",
+      data: requestPayout,
+    });
+  } catch (error: any) {
+    console.error("Approved Payout Request Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Request payout not found",
+      });
+    }
+    if (error.code === "P2002") {
+      return res.status(400).json({
+        success: false,
+        message: "Request payout already approved",
+      });
+    }
+    if (error.code === "P2003") {
+      return res.status(400).json({
+        success: false,
+        message: "Partner not found",
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while approving payout request",
       error: error.message,
     });
   }

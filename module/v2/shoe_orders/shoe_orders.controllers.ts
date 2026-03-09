@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from "../../../db";
+import { Prisma } from "@prisma/client";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
-
-const prisma = new PrismaClient();
 
 const SHOE_ORDER_STATUSES = [
   "Auftragserstellung",
@@ -67,14 +66,14 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       /**
        * has_trim_strips: if true → skip step 2.
        * if false → get extra input:
-       *   step 2: material, leistentyp, notes
+       *   step 2: material, leistentyp, notes, leistengröße
        */
       has_trim_strips,
 
       /**
        * bedding_required: if false → skip step 3.
        * if true → get extra input:
-       *   step 3: material, thickness, notes
+       *   step 3: optional(material, thickness, notes) if(zusätzliche_notizen) else (step3_json)
        */
       bedding_required,
 
@@ -98,12 +97,15 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       step2_material,
       step2_leistentyp,
       step2_notes,
+      step2_leistengröße,
       leistentyp: body_leistentyp,
 
       // Step 3 data (when bedding_required is true)
       step3_material,
       step3_thickness,
       step3_notes,
+      zusätzliche_notizen,
+      step3_json,
 
       deposit_provision,
       foot_analysis_price,
@@ -116,7 +118,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
 
     const step2Leistentyp = step2_leistentyp ?? body_leistentyp;
 
-    const num = (v: unknown) => (v != null && v !== "" && !isNaN(Number(v)));
+    const num = (v: unknown) => v != null && v !== "" && !isNaN(Number(v));
     const ins = num(insurance_price);
     const priv = num(private_price);
     const addon = num(addon_price);
@@ -204,17 +206,17 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     // Validate conditional data when required
     if (halfSampleRequired) {
       // Need steps 4 & 5 data when half sample is required
-      if (preparation_date == null || fitting_date == null) {
-        return res.status(400).json({
-          success: false,
-          message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date,  and for step 5: fitting_date are required`,
-        });
-      }
+      // if (preparation_date == null || fitting_date == null) {
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: `When Halbprobe erforderlich? is Ja. for step 4: preparation_date,  and for step 5: fitting_date are required`,
+      //   });
+      // }
     }
 
     if (!hasTrimStrips) {
       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
-      if (step2_material == null || step2Leistentyp == null || step2Leistentyp === "") {
+      if (step2_material == null || step2Leistentyp == null) {
         return res.status(400).json({
           success: false,
           message:
@@ -224,12 +226,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     }
 
     if (beddingRequired) {
-      // Need step 3 data
-      if (step3_material == null || step3_thickness == null) {
+      //bedding_required
+      if (step3_json == null) {
         return res.status(400).json({
           success: false,
-          message:
-            "When bedding_required is true, step3_material and step3_thickness are required",
+          message: "When bedding_required is true, step3_json is required",
         });
       }
     }
@@ -297,25 +298,30 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       //   },
       // });
 
+      const safeDate = (val: unknown): Date | undefined => {
+        if (val == null || val === "") return undefined;
+        const d = new Date(val as string | number);
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      };
+
       // Step 4 & 5: when half_sample_required is true → take data, isCompleted false; when false → no data, isCompleted true
       if (halfSampleRequired) {
+        const step4Data: any = {
+          order: { connect: { id: order.id } },
+          status: "Halbprobenerstellung",
+          isCompleted: false,
+          notes: step4_notes ?? undefined,
+        };
+        const fitDate = safeDate(fitting_date);
+        if (fitDate != null) step4Data.fitting_date = fitDate;
+        await tx.shoe_order_step.create({ data: step4Data });
+
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
-            status: "Halbprobenerstellung",
-            isCompleted: false,
-        
-            preparation_date: new Date(preparation_date),
-            notes: step4_notes ?? undefined,
-          },
-        });
-        await tx.shoe_order_step.create({
-          data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobe_durchführen",
             isCompleted: false,
-           
-            fitting_date: new Date(fitting_date),
+            notes: step4_notes ?? undefined,
             adjustments: adjustments ?? undefined,
             customer_reviews: customer_reviews ?? undefined,
           },
@@ -323,7 +329,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobenerstellung",
             isCompleted: true,
             auto_print: true,
@@ -331,7 +337,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Halbprobe_durchführen",
             isCompleted: true,
             auto_print: true,
@@ -343,19 +349,20 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       if (!hasTrimStrips) {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Leistenerstellung",
             isCompleted: false,
-       
+
             leistentyp: step2Leistentyp?.trim() ?? undefined,
             material: step2_material ?? undefined,
             notes: step2_notes ?? undefined,
+            leistengröße: step2_leistengröße?.trim() ?? undefined,
           },
         });
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Leistenerstellung",
             isCompleted: true,
             auto_print: true,
@@ -363,23 +370,27 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // Step 3: when bedding_required is true → take data, isCompleted false; when false → no data, isCompleted true
+      // Step 3: zusätzliche_notizen is a top-level field; step3_json is separate (e.g. { "hello": "hi" }).
+      const toStr = (v: unknown) =>
+        v == null || v === "" ? undefined : String(v).trim() || undefined;
       if (beddingRequired) {
+        const step3JsonValue: Prisma.InputJsonValue | undefined =
+          typeof step3_json === "object" && step3_json !== null
+            ? (step3_json as Prisma.InputJsonValue)
+            : undefined;
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Bettungserstellung",
             isCompleted: false,
-       
-            material: step3_material ?? undefined,
-            thickness: step3_thickness ?? undefined,
-            notes: step3_notes ?? undefined,
+            zusätzliche_notizen: toStr(zusätzliche_notizen),
+            step3_json: step3JsonValue,
           },
         });
       } else {
         await tx.shoe_order_step.create({
           data: {
-            orderId: order.id,
+            order: { connect: { id: order.id } },
             status: "Bettungserstellung",
             isCompleted: true,
             auto_print: true,
@@ -786,12 +797,15 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     const limitParam = req.query.limit;
     const cursorParam = req.query.cursor;
     const statusParam = req.query.status;
+    const priorityParam = req.query.priority;
+    const paymentTypeParam = req.query.paymentType;
+    const branchLocationTitleParam = req.query.branchLocationTitle;
+    const pickUpLocationTitleParam = req.query.pickUpLocationTitle;
     const searchParam = req.query.search;
 
     const limit = Math.min(Math.max(Number(limitParam) || 10, 1), 100);
     const cursor = typeof cursorParam === "string" ? cursorParam : undefined;
 
-    //valid statuses
     const validStatuses = SHOE_ORDER_STATUSES;
     if (statusParam && !validStatuses.includes(statusParam.toString() as any)) {
       return res.status(400).json({
@@ -801,9 +815,31 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const search = (typeof searchParam === "string" && searchParam.trim())
-      ? searchParam.trim().replace(/\s+/g, " ")
-      : "";
+    const validPriorities = ["Dringend", "Normal"];
+    if (priorityParam && !validPriorities.includes(priorityParam.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priority value",
+        validPriorities,
+      });
+    }
+
+    const validPaymentTypes = ["insurance", "private", "broth"];
+    if (
+      paymentTypeParam &&
+      !validPaymentTypes.includes(paymentTypeParam.toString())
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid paymentType value",
+        validPaymentTypes,
+      });
+    }
+
+    const search =
+      typeof searchParam === "string" && searchParam.trim()
+        ? searchParam.trim().replace(/\s+/g, " ")
+        : "";
 
     if (search) {
       const tokens = search.split(" ").filter(Boolean);
@@ -813,6 +849,30 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       if (statusParam && typeof statusParam === "string") {
         conditions.push(Prisma.sql`so.status = ${statusParam}::text`);
       }
+      if (priorityParam && typeof priorityParam === "string") {
+        conditions.push(Prisma.sql`so.priority = ${priorityParam}::text`);
+      }
+      if (paymentTypeParam && typeof paymentTypeParam === "string") {
+        conditions.push(
+          Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`,
+        );
+      }
+      if (
+        branchLocationTitleParam &&
+        typeof branchLocationTitleParam === "string"
+      ) {
+        conditions.push(
+          Prisma.sql`so."branch_location"->>'title' = ${branchLocationTitleParam}::text`,
+        );
+      }
+      if (
+        pickUpLocationTitleParam &&
+        typeof pickUpLocationTitleParam === "string"
+      ) {
+        conditions.push(
+          Prisma.sql`so."pick_up_location"->>'title' = ${pickUpLocationTitleParam}::text`,
+        );
+      }
       tokens.forEach((token) => {
         const term = `%${token}%`;
         conditions.push(
@@ -820,7 +880,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
             LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
             LOWER(COALESCE(so."orderNumber"::text, '')) LIKE LOWER(${term}::text)
-          )`
+          )`,
         );
       });
       if (cursor) {
@@ -828,7 +888,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
           Prisma.sql`(so."orderNumber", so.id) < (
             SELECT "orderNumber", id FROM "shoe_order"
             WHERE id = ${cursor}::text AND "partnerId" = ${partnerId}::text
-          )`
+          )`,
         );
       }
       const whereClause = Prisma.join(conditions, " AND ");
@@ -894,6 +954,30 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     if (statusParam && typeof statusParam === "string") {
       whereCondition.status = statusParam;
     }
+    if (priorityParam && typeof priorityParam === "string") {
+      whereCondition.priority = priorityParam;
+    }
+    if (paymentTypeParam && typeof paymentTypeParam === "string") {
+      whereCondition.payment_type = paymentTypeParam;
+    }
+    if (
+      branchLocationTitleParam &&
+      typeof branchLocationTitleParam === "string"
+    ) {
+      (whereCondition as any).branch_location = {
+        path: ["title"],
+        equals: branchLocationTitleParam,
+      };
+    }
+    if (
+      pickUpLocationTitleParam &&
+      typeof pickUpLocationTitleParam === "string"
+    ) {
+      (whereCondition as any).pick_up_location = {
+        path: ["title"],
+        equals: pickUpLocationTitleParam,
+      };
+    }
 
     const shoeOrders = await prisma.shoe_order.findMany({
       where: whereCondition,
@@ -915,6 +999,8 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         payment_status: true,
         priority: true,
         total_price: true,
+        insurance_payed: true,
+        private_payed: true,
         shoeOrderStep: {
           orderBy: { createdAt: "asc" },
           where: { isCompleted: true },
@@ -951,10 +1037,254 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
   }
 };
 
-export const updateShoeOrderStatus = async (req: Request, res: Response) => {
+export const updateShoeOrderStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const status = req.query?.status?.toString();
+    const role = req.user?.role;
+    const employeeId = req.user?.employeeId;
+    const body = req.body ?? {};
+
+    const rawFiles = req.files?.files;
+    const fileList = Array.isArray(rawFiles)
+      ? rawFiles
+      : rawFiles
+        ? [rawFiles]
+        : [];
+
+    if (!status || !SHOE_ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid status is required",
+        validStatuses: [...SHOE_ORDER_STATUSES],
+      });
+    }
+
+    const orderWhere =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
+    const order = await prisma.shoe_order.findFirst({
+      where: orderWhere,
+      select: {
+        id: true,
+        shoeOrderStep: {
+          where: { status },
+          take: 1,
+          select: {
+            id: true,
+            startedAt: true,
+            partnerId: true,
+            employeeId: true,
+          },
+        },
+      },
+    });
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shoe order not found" });
+    }
+    const existingStep = order.shoeOrderStep[0] ?? null;
+
+    const {
+      notes,
+      leistentyp,
+      material,
+      preparation_date,
+      checkliste_halbprobe,
+      fitting_date,
+      adjustments,
+      customer_reviews,
+      started_at,
+      feedback_status,
+      feedback_notes,
+      Kleine_Nacharbeit,
+      schafttyp_intem_note,
+      schafttyp_extem_note,
+      bodenkonstruktion_intem_note,
+      bodenkonstruktion_extem_note,
+    } = body;
+
+    const parseJson = (val) => {
+      if (val == null || val === "") return undefined;
+      if (typeof val === "string") {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return undefined;
+        }
+      }
+      return val;
+    };
+    const parseDate = (val) =>
+      val != null && val !== "" ? new Date(val) : undefined;
+    const str = (val) =>
+      val == null || typeof val !== "string"
+        ? undefined
+        : val.trim() || undefined;
+
+    const stepPayload = {
+      notes: str(notes),
+      leistentyp: str(leistentyp),
+      material: str(material),
+      preparation_date: parseDate(preparation_date),
+      checkliste_halbprobe: parseJson(checkliste_halbprobe),
+      fitting_date: parseDate(fitting_date),
+      adjustments: str(adjustments),
+      customer_reviews: str(customer_reviews),
+      ...(status === "Halbprobe_durchführen"
+        ? {
+            feedback_status: feedback_status ?? undefined,
+            feedback_notes: str(feedback_notes),
+            Kleine_Nacharbeit: parseJson(Kleine_Nacharbeit),
+            schafttyp_intem_note: str(schafttyp_intem_note),
+            schafttyp_extem_note: str(schafttyp_extem_note),
+            bodenkonstruktion_intem_note: str(bodenkonstruktion_intem_note),
+            bodenkonstruktion_extem_note: str(bodenkonstruktion_extem_note),
+          }
+        : {}),
+    };
+
+    const startedAtValue =
+      started_at != null && started_at !== ""
+        ? new Date(started_at)
+        : new Date();
+    const completedAt = new Date();
+    const hasAssignee =
+      existingStep &&
+      (existingStep.partnerId != null || existingStep.employeeId != null);
+    const assigneeData = hasAssignee
+      ? {}
+      : role === "PARTNER"
+        ? { partnerId: partnerId ?? undefined }
+        : role === "EMPLOYEE"
+          ? { employeeId: employeeId ?? undefined }
+          : {};
+    const assigneeRelation = hasAssignee
+      ? {}
+      : role === "PARTNER" && partnerId
+        ? { partner: { connect: { id: partnerId } } }
+        : role === "EMPLOYEE" && employeeId
+          ? { employee: { connect: { id: employeeId } } }
+          : {};
+
+    const clean = (obj) => {
+      Object.keys(obj).forEach((k) => obj[k] === undefined && delete obj[k]);
+      return obj;
+    };
+
+    let stepId;
+    if (existingStep) {
+      const updateData = clean({
+        isCompleted: true,
+        complatedAt: completedAt,
+        ...assigneeData,
+        ...stepPayload,
+        ...(existingStep.startedAt == null
+          ? { startedAt: startedAtValue }
+          : {}),
+      });
+      await prisma.shoe_order_step.update({
+        where: { id: existingStep.id },
+        data: updateData,
+      });
+      stepId = existingStep.id;
+    } else {
+      const createData = clean({
+        order: { connect: { id } },
+        status,
+        isCompleted: true,
+        startedAt: startedAtValue,
+        complatedAt: completedAt,
+        ...assigneeRelation,
+        ...stepPayload,
+      });
+      const newStep = await prisma.shoe_order_step.create({ data: createData });
+      stepId = newStep.id;
+    }
+
+    const filesToCreate = fileList
+      .filter((f) => f?.location)
+      .map((f) => ({
+        shoeOrderStepId: stepId,
+        fileUrl: f.location,
+        fileName: f.originalname,
+        fileType: f.mimetype,
+        fileSize: f.size,
+      }));
+
+    await Promise.all([
+      filesToCreate.length > 0
+        ? prisma.files.createMany({ data: filesToCreate })
+        : Promise.resolve(),
+      prisma.shoe_order.update({ where: { id }, data: { status } }),
+    ]);
+
+    const stepWithFiles = await prisma.shoe_order_step.findUnique({
+      where: { id: stepId },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        isCompleted: true,
+        complatedAt: true,
+        startedAt: true,
+        notes: true,
+        leistentyp: true,
+        material: true,
+        leistengröße: true,
+        step3_json: true,
+        zusätzliche_notizen: true,
+        preparation_date: true,
+        checkliste_halbprobe: true,
+        fitting_date: true,
+        adjustments: true,
+        customer_reviews: true,
+        auto_print: true,
+        employeeId: true,
+        partnerId: true,
+        createdAt: true,
+        updatedAt: true,
+        feedback_status: true,
+        feedback_notes: true,
+        Kleine_Nacharbeit: true,
+        schafttyp_intem_note: true,
+        schafttyp_extem_note: true,
+        bodenkonstruktion_intem_note: true,
+        bodenkonstruktion_extem_note: true,
+        files: { select: { id: true, fileUrl: true, fileName: true } },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: existingStep
+        ? "Shoe order step updated successfully"
+        : "Shoe order status updated successfully",
+      data: stepWithFiles,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Status Error:", error);
+    if (error?.code === "P2025") {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shoe order or step not found" });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order status",
+      error: error?.message,
+    });
+  }
+};
+
+export const updateShoeOrderStep = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    const employeeId = req.user?.employeeId;
+    const role = req.user?.role;
+
     const status = req.query?.status?.toString();
 
     const body = req.body ?? {};
@@ -969,6 +1299,8 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       adjustments,
       customer_reviews,
       started_at,
+      // complated_at,
+      // is_completed,
     } = body;
 
     // multer.fields({ name: "files" }) → req.files.files is array of S3 file objects (each has .location)
@@ -987,10 +1319,11 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    // Single query: order + existing step for this status.
-    // Only this one step is created/updated; no other steps (e.g. Bettungserstellung, Halbprobenerstellung) are auto-completed.
+    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
+    const orderWhereStep =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
     const order = await prisma.shoe_order.findFirst({
-      where: { id, partnerId },
+      where: orderWhereStep,
       select: {
         id: true,
         shoeOrderStep: {
@@ -1019,6 +1352,7 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       return val as Prisma.InputJsonValue;
     };
 
+    // Schema: shoe_order_step has no "thickness" (commented out); omit to avoid Prisma validation on host.
     const stepPayload = {
       notes: notes !== undefined ? (notes?.trim() ?? undefined) : undefined,
       leistentyp:
@@ -1027,8 +1361,6 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
           : undefined,
       material:
         material !== undefined ? (material?.trim() ?? undefined) : undefined,
-      thickness:
-        thickness !== undefined ? (thickness?.trim() ?? undefined) : undefined,
       preparation_date:
         preparation_date !== undefined && preparation_date !== ""
           ? new Date(preparation_date)
@@ -1046,10 +1378,33 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
         customer_reviews !== undefined
           ? (customer_reviews?.trim() ?? undefined)
           : undefined,
+      employeeId: role === "EMPLOYEE" ? employeeId : undefined,
+      partnerId: role === "PARTNER" ? partnerId : undefined,
+      // complatedAt:
+      //   complated_at !== undefined && complated_at !== ""
+      //     ? new Date(complated_at)
+      //     : undefined,
+      // isCompleted:
+      //   is_completed !== undefined
+      //     ? (is_completed === true || is_completed === "true")
+      //     : undefined,
     };
 
+    // For create(), use relation form for assignee (no scalar partnerId/employeeId).
+    const assigneeRelationStep =
+      role === "PARTNER" && partnerId
+        ? { partner: { connect: { id: partnerId } } }
+        : role === "EMPLOYEE" && employeeId
+          ? { employee: { connect: { id: employeeId } } }
+          : {};
+    const {
+      employeeId: _e,
+      partnerId: _p,
+      ...stepPayloadForCreate
+    } = stepPayload;
+
     // Actual start time: from body (if work started before scheduled) or now
-    const startedAtValue =
+    const startedAtValue: any =
       started_at !== undefined && started_at !== ""
         ? new Date(started_at)
         : new Date();
@@ -1057,12 +1412,10 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
     let stepId: string;
 
     if (existingStep) {
-      // Update existing step: only set fields that were sent (undefined = do not change)
-      const updateData: Record<string, unknown> = {
-        isCompleted: true,
+      const updateData: any = {
         ...stepPayload,
       };
-      // Set startedAt on first update if not already set (actual starting time)
+
       if (existingStep.startedAt == null) {
         updateData.startedAt = startedAtValue;
       }
@@ -1077,15 +1430,21 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       });
       stepId = existingStep.id;
     } else {
-      // Create new step for this status; record actual start time
+      // Only pass defined values to create (host Prisma rejects unknown/undefined args)
+      const createPayloadStep: Record<string, unknown> = {
+        order: { connect: { id } },
+        status,
+        startedAt: startedAtValue,
+        ...assigneeRelationStep,
+        ...stepPayloadForCreate,
+      };
+      Object.keys(createPayloadStep).forEach(
+        (k) =>
+          (createPayloadStep as any)[k] === undefined &&
+          delete (createPayloadStep as any)[k],
+      );
       const newStep = await prisma.shoe_order_step.create({
-        data: {
-          orderId: id,
-          status,
-          isCompleted: true,
-          startedAt: startedAtValue,
-          ...stepPayload,
-        },
+        data: createPayloadStep as any,
       });
       stepId = newStep.id;
     }
@@ -1110,13 +1469,38 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
 
     const stepWithFiles = await prisma.shoe_order_step.findUnique({
       where: { id: stepId },
-      include: {
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        isCompleted: true,
+        complatedAt: true,
+        startedAt: true,
+        notes: true,
+        leistentyp: true,
+        material: true,
+        leistengröße: true,
+        step3_json: true,
+        zusätzliche_notizen: true,
+        preparation_date: true,
+        checkliste_halbprobe: true,
+        fitting_date: true,
+        adjustments: true,
+        customer_reviews: true,
+        auto_print: true,
+        employeeId: true,
+        partnerId: true,
+        createdAt: true,
+        updatedAt: true,
+        feedback_status: true,
+        feedback_notes: true,
+        Kleine_Nacharbeit: true,
+        schafttyp_intem_note: true,
+        schafttyp_extem_note: true,
+        bodenkonstruktion_intem_note: true,
+        bodenkonstruktion_extem_note: true,
         files: {
-          select: {
-            id: true,
-            fileUrl: true,
-            fileName: true,
-          },
+          select: { id: true, fileUrl: true, fileName: true },
         },
       },
     });
@@ -1129,7 +1513,13 @@ export const updateShoeOrderStatus = async (req: Request, res: Response) => {
       data: stepWithFiles!,
     });
   } catch (error: any) {
-    console.error("Update Shoe Order Status Error:", error);
+    console.error("Update Shoe Order Step Error:", error);
+    if (error?.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order or step not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating shoe order status",
@@ -1147,6 +1537,7 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
+    //valoid status
     if (statusParam && !SHOE_ORDER_STATUSES.includes(statusParam as any)) {
       return res.status(400).json({
         success: false,
@@ -1174,12 +1565,71 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           ...(statusParam ? { status: statusParam } : {}),
         },
         orderBy: { createdAt: "asc" },
-        include: { files: true },
+        select: {
+          id: true,
+          orderId: true,
+          status: true,
+          isCompleted: true,
+          complatedAt: true,
+          startedAt: true,
+          notes: true,
+          leistentyp: true,
+          material: true,
+          leistengröße: true,
+          step3_json: true,
+          zusätzliche_notizen: true,
+          preparation_date: true,
+          checkliste_halbprobe: true,
+          fitting_date: true,
+          adjustments: true,
+          customer_reviews: true,
+          auto_print: true,
+          employeeId: true,
+          partnerId: true,
+          createdAt: true,
+          updatedAt: true,
+          feedback_status: true,
+          feedback_notes: true,
+          Kleine_Nacharbeit: true,
+          schafttyp_intem_note: true,
+          schafttyp_extem_note: true,
+          bodenkonstruktion_intem_note: true,
+          bodenkonstruktion_extem_note: true,
+          files: true,
+          order: {
+            select: {
+              half_sample_required: true,
+            },
+          },
+          partner: {
+            select: {
+              id: true,
+              name: true,
+              busnessName: true,
+              role: true,
+              image: true,
+            },
+          },
+          employee: {
+            select: {
+              id: true,
+              employeeName: true,
+              accountName: true,
+              role: true,
+              image: true,
+            },
+          },
+        },
       }),
       prisma.shoe_order_step.findMany({
         where: { orderId: id },
         orderBy: { createdAt: "asc" },
-        select: { status: true, isCompleted: true, auto_print: true, createdAt: true },
+        select: {
+          status: true,
+          isCompleted: true,
+          auto_print: true,
+          createdAt: true,
+        },
       }),
     ]);
 
@@ -1213,29 +1663,43 @@ export const updateShoeOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const role = req.user?.role;
 
-    const { status_note } = req.body;
+    const { status_note, order_note, supply_note } = req.body;
 
-    if (!status_note) {
-      return res.status(400).json({
+    // PARTNER: order must belong to them. EMPLOYEE: can update by order id.
+    const orderWhere =
+      role === "PARTNER" && partnerId ? { id, partnerId } : { id };
+    const existing = await prisma.shoe_order.findFirst({
+      where: orderWhere,
+      select: { id: true },
+    });
+    if (!existing) {
+      return res.status(404).json({
         success: false,
-        message: "Status note is required",
+        message: "Shoe order not found",
       });
     }
 
     const order = await prisma.shoe_order.update({
-      where: { id, partnerId },
-      data: { status_note },
+      where: { id: existing.id },
+      data: { status_note, order_note, supply_note },
+      select: {
+        id: true,
+        status_note: true,
+        order_note: true,
+        supply_note: true,
+      },
     });
 
     return res.status(200).json({
       success: true,
       message: "Shoe order updated successfully",
-      data: order?.status_note,
+      data: order,
     });
   } catch (error: any) {
     console.error("Update Shoe Order Error:", error);
-    if (error.code === "P2025") {
+    if (error?.code === "P2025") {
       return res.status(404).json({
         success: false,
         message: "Shoe order not found",
@@ -1253,11 +1717,21 @@ export const getShoeOrderStatusNote = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
 
     const order = await prisma.shoe_order.findFirst({
       where: { id, partnerId },
       select: {
         id: true,
+        orderNumber: true,
         status_note: true,
       },
     });
@@ -1269,16 +1743,38 @@ export const getShoeOrderStatusNote = async (req: Request, res: Response) => {
       });
     }
 
+    const notesRows = await prisma.order_notes.findMany({
+      where: { shoeOrderId: id },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      select: {
+        id: true,
+        note: true,
+        status: true,
+        type: true,
+        isImportant: true,
+        createdAt: true,
+      },
+    });
+
+    const notesHasMore = notesRows.length > limit;
+    const notes = notesHasMore ? notesRows.slice(0, limit) : notesRows;
+
     return res.status(200).json({
       success: true,
       data: order,
+      notes: {
+        data: notes,
+        hasMore: notesHasMore,
+      },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get Shoe Order Status Note Error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong while getting shoe order status note",
-      error: error.message,
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 };
@@ -1355,15 +1851,28 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
 
         createdAt: true,
 
-        // steps with auto_print false only (for time-spent calculation)
+        // steps with auto_print false only (real workflow steps; skipped steps have auto_print true)
         shoeOrderStep: {
           where: { auto_print: false },
           orderBy: { createdAt: "asc" },
           select: {
             id: true,
             status: true,
+            isCompleted: true,
             createdAt: true,
             startedAt: true,
+            complatedAt: true,
+            partner: {
+              select: { id: true, name: true, busnessName: true, image: true },
+            },
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                accountName: true,
+                image: true,
+              },
+            },
           },
         },
       },
@@ -1376,23 +1885,49 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
       });
     }
 
-    // time spent per status (only auto_print false steps); use startedAt when set (actual start), else createdAt
+    // Time spent: only for steps that are completed (isCompleted true). Ignore steps created at order creation and never completed.
+    // End time = complatedAt (completion time) when set, else now.
+    // First step (Auftragserstellung) started when the order was created; others use step startedAt or createdAt.
     const steps = order.shoeOrderStep || [];
+    const completedSteps = steps.filter((s) => s.isCompleted === true);
     const now = new Date();
-    const timeSpentByStatus = steps.map((step, i) => {
-      const stepStartedAt = step.startedAt ?? step.createdAt;
-      const nextStep = steps[i + 1];
-      const nextStartedAt = nextStep
-        ? (nextStep.startedAt ?? nextStep.createdAt)
-        : null;
-      const endedAt = nextStartedAt ?? now;
-      const durationMs = endedAt.getTime() - stepStartedAt.getTime();
+    const orderCreatedAt = order.createdAt;
+    const timeSpentByStatus = completedSteps.map((step) => {
+      const stepStartedAt =
+        step.status === "Auftragserstellung"
+          ? orderCreatedAt
+          : (step.startedAt ?? step.createdAt);
+      const endedAt = step.complatedAt ?? now;
+      const durationMs = Math.max(
+        0,
+        endedAt.getTime() - stepStartedAt.getTime(),
+      );
+      const performedBy =
+        (step as any).partner != null
+          ? {
+              type: "partner" as const,
+              id: (step as any).partner.id,
+              name: (step as any).partner.name,
+              busnessName: (step as any).partner.busnessName,
+              image: (step as any).partner.image,
+            }
+          : (step as any).employee != null
+            ? {
+                type: "employee" as const,
+                id: (step as any).employee.id,
+                employeeName: (step as any).employee.employeeName,
+                accountName: (step as any).employee.accountName,
+                image: (step as any).employee.image,
+              }
+            : null;
       return {
         status: step.status,
+        isCompleted: true,
         startedAt: stepStartedAt,
         endedAt,
         durationMs,
         durationHours: Math.round((durationMs / (1000 * 60 * 60)) * 100) / 100,
+        performedBy,
       };
     });
 
@@ -1407,6 +1942,12 @@ export const getShoeOrderDetails = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get Shoe Order Details Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while getting shoe order details",
@@ -1463,7 +2004,7 @@ export const removeShoeOrderFile = async (req: Request, res: Response) => {
 
     if (fileUrlToDelete) {
       deleteFileFromS3(fileUrlToDelete).catch((err) =>
-        console.error("S3 cleanup after file remove:", err)
+        console.error("S3 cleanup after file remove:", err),
       );
     }
 
@@ -1473,9 +2014,158 @@ export const removeShoeOrderFile = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Remove Shoe Order File Error:", error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "File not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong while removing file",
+    });
+  }
+};
+
+export const updateShoeOrderPriority = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const existingOrder = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: { priority: true },
+    });
+
+    if (!existingOrder) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const currentPriority = existingOrder.priority ?? "Normal";
+    const newPriority = currentPriority === "Dringend" ? "Normal" : "Dringend";
+
+    const order = await prisma.shoe_order.update({
+      where: { id },
+      data: { priority: newPriority },
+      select: { priority: true, id: true, status: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shoe order priority updated successfully",
+      data: order,
+    });
+  } catch (error: any) {
+    console.error("Update Shoe Order Priority Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating shoe order priority",
+    });
+  }
+};
+
+export const getShoeOrderNote = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        status_note: true,
+        order_note: true,
+        supply_note: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const notes = await prisma.order_notes.findMany({
+      where: { shoeOrderId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        note: true,
+        status: true,
+        type: true,
+        isImportant: true,
+        createdAt: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      orderNote: order,
+      notes,
+    });
+  } catch (error) {
+    console.error("Get Shoe Order Note Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting shoe order note",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+const STEP4_AND_5_STATUSES = ["Halbprobenerstellung", "Halbprobe_durchführen"];
+
+export const manageStep4and5Steps = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: { id: true, half_sample_required: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const newHalfSampleRequired = !order.half_sample_required;
+
+    await prisma.shoe_order.update({
+      where: { id },
+      data: { half_sample_required: newHalfSampleRequired },
+    });
+
+    // Update only existing step 4 & 5 records: set auto_print (no create)
+    await prisma.shoe_order_step.updateMany({
+      where: {
+        orderId: id,
+        status: { in: STEP4_AND_5_STATUSES },
+      },
+      data: { auto_print: !newHalfSampleRequired },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: newHalfSampleRequired
+        ? "Step 4 and 5 steps started"
+        : "Step 4 and 5 steps skipped",
+    });
+  } catch (error: any) {
+    console.error("Manage Step 4 and 5 Steps Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while managing step 4 and 5 steps",
     });
   }
 };

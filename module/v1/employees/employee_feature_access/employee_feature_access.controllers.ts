@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { Request, Response } from "express";
-
-const prisma = new PrismaClient();
+import { prisma } from "../../../../db";
+import redis from "../../../../config/redis.config";
 
 const defaultEmployeeFeatureAccessData = {
   dashboard: true,
@@ -474,6 +473,9 @@ export const manageEmployeeFeatureAccess = async (
         },
       });
     }
+
+    // Invalidate employee feature-access cache so next fetch is fresh
+    await redis.del("feature_access:" + partnerId + ":emp:" + employeeId).catch(() => {});
 
     // Return effective access (partner ∩ employee) so response reflects what employee actually has
     const effectiveAccess = getEffectiveFeatureAccess(

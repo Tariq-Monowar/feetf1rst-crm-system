@@ -9,7 +9,10 @@ import {
   getAllAdminOrders,
   getSingleAllAdminOrders,
   createCourierContact,
-  customerListOrderContact
+  customerListOrderContact,
+  halbprobenerstellungOrder,
+  uploadChecklisteHalbprobenerstellung,
+  getChecklisteHalbprobenerstellung,
 } from "./admin_order.controllers";
 
 //make send to admin a order by partner it's first step
@@ -22,8 +25,34 @@ router.post(
     { name: "image3d_1", maxCount: 1 },
     { name: "image3d_2", maxCount: 1 },
     { name: "invoice", maxCount: 1 },
+    { name: "Halbprobenerstellung_pdf", maxCount: 1 },
   ]),
-  sendToAdminOrder_1
+  sendToAdminOrder_1,
+);
+
+router.post(
+  "/halbprobenerstellung/create",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  upload.fields([
+    { name: "image3d_1", maxCount: 1 },
+    { name: "image3d_2", maxCount: 1 },
+    { name: "invoice", maxCount: 1 },
+    { name: "Halbprobenerstellung_pdf", maxCount: 1 },
+  ]),
+  halbprobenerstellungOrder,
+);
+
+//uploade set checkliste_halbprobe
+router.post(
+  "/halbprobenerstellung/upload-checkliste/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  uploadChecklisteHalbprobenerstellung,
+);
+
+router.get(
+  "/halbprobenerstellung/get-checkliste/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getChecklisteHalbprobenerstellung,
 );
 
 // approve admin 1 order
@@ -47,7 +76,7 @@ router.post(
     { name: "custom_models_image", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
   ]),
-  sendToAdminOrder_2
+  sendToAdminOrder_2,
 );
 
 router.post(
@@ -57,14 +86,31 @@ router.post(
     { name: "invoice", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
   ]),
-  sendToAdminOrder_3
+  sendToAdminOrder_3,
 );
 
-router.get("/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAdminOrders);
-router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getSingleAllAdminOrders);
+router.get(
+  "/get",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAllAdminOrders,
+);
+router.get(
+  "/get/:id",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getSingleAllAdminOrders,
+);
 
 // courier contact
-router.post("/courier-contact/create", verifyUser("PARTNER", "EMPLOYEE"), createCourierContact);
-router.get("/courier-contact/customer-list-order-contact/:customerId", verifyUser("PARTNER", "EMPLOYEE"), customerListOrderContact);
+router.post(
+  "/courier-contact/create",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  createCourierContact,
+);
+
+router.get(
+  "/courier-contact/customer-list-order-contact/:customerId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  customerListOrderContact,
+);
 
 export default router;

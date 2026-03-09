@@ -10,11 +10,16 @@ import {
   getShoeOrderStatusNote,
   getShoeOrderDetails,
   removeShoeOrderFile,
+  updateShoeOrderPriority,
+  updateShoeOrderStep,
+  getShoeOrderNote,
+  manageStep4and5Steps,
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
 
 router.post("/create", verifyUser("PARTNER", "EMPLOYEE"), createShoeOrder);
+
 router.get("/get-all", verifyUser("PARTNER", "EMPLOYEE"), getAllShoeOrders);
 
 router.patch(
@@ -24,8 +29,16 @@ router.patch(
   updateShoeOrderStatus,
 );
 
+router.patch(
+  "/update-step/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  upload.fields([{ name: "files", maxCount: 20 }]),
+  updateShoeOrderStep,
+);
+
 router.get(
   "/get-status/:id",
+  upload.fields([{ name: "files", maxCount: 20 }]),
   verifyUser("PARTNER", "EMPLOYEE"),
   getShoeOrderStatus,
 );
@@ -52,6 +65,25 @@ router.delete(
   "/remove-file/:fileId",
   verifyUser("PARTNER", "EMPLOYEE"),
   removeShoeOrderFile,
+);
+
+router.patch(
+  "/update-priority/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  updateShoeOrderPriority,
+);
+
+//get notes
+router.get(
+  "/get-notes/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getShoeOrderNote,
+);
+
+router.post(
+  "/manage-step4and5/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  manageStep4and5Steps,
 );
 
 export default router;
