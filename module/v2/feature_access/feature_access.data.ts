@@ -1,255 +1,72 @@
-export const featureAccessData = [
+/**
+ * Single source of truth for feature access.
+ * To add a new feature:
+ * 1. Add one row below (key = schema field name, must match Prisma FeatureAccess / employee_feature_access).
+ * 2. Add the same column in prisma/schema.prisma to both FeatureAccess and employee_feature_access.
+ * 3. Run: npx prisma generate && npx prisma db push
+ * For items with sub-menus (e.g. Einstellungen), add optional `nested: [{ title, path }, ...]`.
+ */
+export type FeatureItem = {
+  key: string;
+  title: string;
+  path: string;
+  nested?: { title: string; path: string }[];
+};
+
+export const FEATURES: FeatureItem[] = [
+  { key: "dashboard", title: "Dashboard", path: "/dashboard" },
+  { key: "teamchat", title: "Teamchat", path: "/dashboard/teamchat" },
+  { key: "kundensuche", title: "Kundensuche", path: "/dashboard/customers" },
+  { key: "neukundenerstellung", title: "Neukundenerstellung", path: "/dashboard/neukundenerstellung" },
+  { key: "einlagenauftrage", title: "Einlagenaufträge", path: "/dashboard/orders" },
+  { key: "massschuhauftrage", title: "Maßschuhaufträge", path: "/dashboard/massschuhauftraege" },
+  { key: "massschafte", title: "Maßschäfte", path: "/dashboard/custom-shafts" },
+  { key: "produktverwaltung", title: "Produktverwaltung", path: "/dashboard/lager" },
+  { key: "sammelbestellungen", title: "Sammelbestellungen", path: "/dashboard/group-orders" },
+  { key: "nachrichten", title: "Nachrichten", path: "/dashboard/email/inbox" },
+  { key: "terminkalender", title: "Terminkalender", path: "/dashboard/calendar" },
+  { key: "monatsstatistik", title: "Monatsstatistik", path: "/dashboard/monatsstatistik" },
+  { key: "mitarbeitercontrolling", title: "Mitarbeitercontrolling", path: "/dashboard/mitarbeitercontrolling" },
+  { key: "einlagencontrolling", title: "Einlagencontrolling", path: "/dashboard/einlagencontrolling" },
+  { key: "fusubungen", title: "Fußübungen", path: "/dashboard/foot-exercises" },
+  { key: "musterzettel", title: "Musterzettel", path: "/dashboard/musterzettel" },
   {
-    title: "Dashboard",
-    action: true,
-    path: "/dashboard",
-    nested: [],
-  },
-  {
-    title: "Teamchat",
-    action: true,
-    path: "/dashboard/teamchat",
-    nested: [],
-  },
-  {
-    title: "Kundensuche",
-    action: true,
-    path: "/dashboard/customers",
-    nested: [],
-  },
-  {
-    title: "Neukundenerstellung",
-    action: true,
-    path: "/dashboard/neukundenerstellung",
-    nested: [],
-  },
-  {
-    title: "Einlagenaufträge",
-    action: true,
-    path: "/dashboard/orders",
-    nested: [],
-  },
-  {
-    title: "Maßschuhaufträge",
-    action: true,
-    path: "/dashboard/massschuhauftraege",
-    nested: [],
-  },
-  {
-    title: "Maßschäfte",
-    action: true,
-    path: "/dashboard/custom-shafts",
-    nested: [],
-  },
-  {
-    title: "Produktverwaltung",
-    action: true,
-    path: "/dashboard/lager",
-    nested: [],
-  },
-  {
-    title: "Sammelbestellungen",
-    action: true,
-    path: "/dashboard/group-orders",
-    nested: [],
-  },
-  {
-    title: "Nachrichten",
-    action: true,
-    path: "/dashboard/email/inbox",
-    nested: [],
-  },
-  {
-    title: "Terminkalender",
-    action: true,
-    path: "/dashboard/calendar",
-    nested: [],
-  },
-  {
-    title: "Monatsstatistik",
-    action: true,
-    path: "/dashboard/monatsstatistik",
-    nested: [],
-  },
-  {
-    title: "Mitarbeitercontrolling",
-    action: true,
-    path: "/dashboard/mitarbeitercontrolling",
-    nested: [],
-  },
-  {
-    title: "Einlagencontrolling",
-    action: true,
-    path: "/dashboard/einlagencontrolling",
-    nested: [],
-  },
-  {
-    title: "Fußübungen",
-    action: true,
-    path: "/dashboard/foot-exercises",
-    nested: [],
-  },
-  {
-    title: "Musterzettel",
-    action: true,
-    path: "/dashboard/musterzettel",
-    nested: [],
-  },
-  {
-    title: "Users",
-    action: true,
-    path: "/dashboard/users",
-    nested: [],
-  },
-  {
+    key: "einstellungen",
     title: "Einstellungen",
-    action: true,
     path: "/dashboard/settings",
     nested: [
-      {
-        title: "Grundeinstellungen",
-        action: true,
-        path: "/dashboard/settings-profile",
-      },
-      {
-        title: "Backup Einstellungen",
-        action: true,
-        path: "/dashboard/settings-profile/backup",
-      },
-      {
-        title: "Kundenkommunikation",
-        action: true,
-        path: "/dashboard/settings-profile/communication",
-      },
-      {
-        title: "Werkstattzettel",
-        action: true,
-        path: "/dashboard/settings-profile/werkstattzettel",
-      },
-      {
-        title: "Benachrichtigungen",
-        action: true,
-        path: "/dashboard/settings-profile/benachrichtigungen",
-      },
-      {
-        title: "Lagereinstellungen",
-        action: true,
-        path: "/dashboard/settings-profile/notifications",
-      },
-      {
-        title: "Preisverwaltung",
-        action: true,
-        path: "/dashboard/settings-profile/preisverwaltung",
-      },
-      {
-        title: "Software Scanstation",
-        action: true,
-        path: "/dashboard/settings-profile/software-scanstation",
-      },
-      {
-        title: "Design & Logo",
-        action: true,
-        path: "/dashboard/settings-profile/design",
-      },
-      {
-        title: "Passwort ändern",
-        action: true,
-        path: "/dashboard/settings-profile/changes-password",
-      },
-      {
-        title: "Sprache",
-        action: true,
-        path: "/dashboard/settings-profile/sprache",
-      },
-      {
-        title: "Fragen",
-        action: true,
-        path: "/dashboard/settings-profile/fragen",
-      },
-      {
-        title: "Automatische Orders",
-        action: true,
-        path: "/dashboard/settings-profile/automatische-orders",
-      },
+      { title: "Grundeinstellungen", path: "/dashboard/settings-profile" },
+      { title: "Backup Einstellungen", path: "/dashboard/settings-profile/backup" },
+      { title: "Kundenkommunikation", path: "/dashboard/settings-profile/communication" },
+      { title: "Werkstattzettel", path: "/dashboard/settings-profile/werkstattzettel" },
+      { title: "Benachrichtigungen", path: "/dashboard/settings-profile/benachrichtigungen" },
+      { title: "Lagereinstellungen", path: "/dashboard/settings-profile/notifications" },
+      { title: "Preisverwaltung", path: "/dashboard/settings-profile/preisverwaltung" },
+      { title: "Software Scanstation", path: "/dashboard/settings-profile/software-scanstation" },
+      { title: "Design & Logo", path: "/dashboard/settings-profile/design" },
+      { title: "Passwort ändern", path: "/dashboard/settings-profile/changes-password" },
+      { title: "Sprache", path: "/dashboard/settings-profile/sprache" },
+      { title: "Fragen", path: "/dashboard/settings-profile/fragen" },
+      { title: "Automatische Orders", path: "/dashboard/settings-profile/automatische-orders" },
     ],
   },
-  {
-    title: "Account Settings",
-    action: true,
-    path: "/dashboard/account-settings",
-    nested: [],
-  },
-  {
-    title: "News & Aktuelles",
-    action: true,
-    path: "/dashboard/news",
-    nested: [],
-  },
-  {
-    title: "Produktkatalog",
-    action: true,
-    path: "/dashboard/products",
-    nested: [],
-  },
-  {
-    title: "Balance",
-    action: true,
-    path: "/dashboard/balance-dashboard",
-    nested: [],
-  },
-
-    /**
-   * title: Automatisierte Nachrichten
-   * /dashboard/automatisierte-nachrichten
-
-   * title: Kasse & Abholungen
-   * /dashboard/kasse
-
-   * title: Finanzen & Kasse
-   * /dashboard/finanzen-kasse
-
-   * title: Einnahmen & Rechnungen
-   * /dashboard/einnahmen
-  
-    automatisierte_nachrichten Boolean @default(true)
-    kasse_and_abholungen       Boolean @default(true)
-    finanzen_and_kasse         Boolean @default(true)
-    einnahmen_and_rechnungen    Boolean @default(true)
- */  
-  {
-    title: "Automatisierte Nachrichten",
-    action: true,
-    path: "/dashboard/automatisierte-nachrichten",
-    nested: [],
-  },
-  {
-    title: "Kasse & Abholungen",
-    action: true,
-    path: "/dashboard/kasse",
-    nested: [],
-  },
-  {
-    title: "Finanzen & Kasse",
-    action: true,
-    path: "/dashboard/finanzen-kasse",
-    nested: [],
-  },
-  {
-    title: "Einnahmen & Rechnungen",
-    action: true,
-    path: "/dashboard/einnahmen",
-    nested: [],
-  },
-  {
-    title: "Statistiken",
-    action: true,
-    path: "/dashboard/statistiken",
-    nested: [],
-  },
-  {
-    title: "Warenwirtschaft",
-    action: true,
-    path: "/dashboard/warenwirtschaft",
-    nested: [],
-  },
+  { key: "account_settings", title: "Account Settings", path: "/dashboard/account-settings" },
+  { key: "news_and_aktuelles", title: "News & Aktuelles", path: "/dashboard/news" },
+  { key: "produktkatalog", title: "Produktkatalog", path: "/dashboard/products" },
+  { key: "balance", title: "Balance", path: "/dashboard/balance-dashboard" },
+  { key: "automatisierte_nachrichten", title: "Automatisierte Nachrichten", path: "/dashboard/automatisierte-nachrichten" },
+  { key: "kasse_and_abholungen", title: "Kasse & Abholungen", path: "/dashboard/kasse" },
+  { key: "finanzen_and_kasse", title: "Finanzen & Kasse", path: "/dashboard/finanzen-kasse" },
+  { key: "einnahmen_and_rechnungen", title: "Einnahmen & Rechnungen", path: "/dashboard/einnahmen" },
+  { key: "statistiken", title: "Statistiken", path: "/dashboard/statistiken" },
+  { key: "warenwirtschaft", title: "Warenwirtschaft", path: "/dashboard/warenwirtschaft" },
+  { key: "leistenerstellung", title: "Leistenerstellung", path: "/dashboard/digitale-leistenerstellung" },
 ];
+
+/** Legacy format for consumers that expect { title, action, path, nested }. */
+export const featureAccessData = FEATURES.map((f) => ({
+  title: f.title,
+  action: true,
+  path: f.path,
+  nested: (f.nested ?? []).map((n) => ({ ...n, action: true })),
+}));

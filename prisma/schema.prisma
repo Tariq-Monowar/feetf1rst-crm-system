@@ -2146,6 +2146,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2169,6 +2171,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2494,6 +2498,7 @@ enum request_payout_status {
 
 //==================================Massschuhe Order Ended==========================================
 
+/// Feature flags for partner dashboard. Keep in sync with module/v2/feature_access/feature_access.data.ts FEATURES (key = field name).
 model FeatureAccess {
   id String @id @default(uuid())
 
@@ -2542,6 +2547,7 @@ model FeatureAccess {
   einnahmen_and_rechnungen   Boolean @default(true)
   statistiken                Boolean @default(true)
   warenwirtschaft            Boolean @default(true)
+  leistenerstellung          Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2593,6 +2599,7 @@ model employee_feature_access {
   einnahmen_and_rechnungen   Boolean @default(false)
   statistiken                Boolean @default(false)
   warenwirtschaft            Boolean @default(false)
+  leistenerstellung          Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
