@@ -682,20 +682,39 @@ export const createTustomShafts = async (req, res) => {
       });
     }
 
-    const note =
-      otherName && !b.customerId ? `${category} - ${otherName}` : category;
-    await prisma.admin_order_transitions.create({
-      data: {
-        orderNumber: customShaft.orderNumber,
-        partnerId: id,
-        orderFor: "shoes",
-        custom_shafts_id: customShaft.id,
-        custom_shafts_catagoary: category,
-        price: b.totalPrice ? parseFloat(b.totalPrice) : null,
-        note,
-        ...(b.customerId && { customerId: b.customerId }),
-      } as any,
-    });
+    /*
+     * ==================================Admin Order Transitions + partner_total_amount (background) ============
+     * Run in background so response returns fast; use partnerId for partner_total_amount (schema: partnerId @unique).
+     */
+    const orderPrice = b.totalPrice ? parseFloat(b.totalPrice) : 0;
+    (async () => {
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", status, "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, "customerId", "createdAt", "updatedAt")
+          VALUES (gen_random_uuid(), ${customShaft.orderNumber}, ${"shoes"}, ${"panding"}, ${id}, ${customShaft.id}, ${category}, ${orderPrice || null}, ${b.customerId || null}, NOW(), NOW())
+        `;
+        const existing = await prisma.partner_total_amount.findFirst({
+          where: { partnerId: id },
+          select: { id: true, totalAmount: true },
+        });
+        const newTotal = (existing?.totalAmount ?? 0) + Number(orderPrice);
+        if (existing) {
+          await prisma.partner_total_amount.update({
+            where: { id: existing.id },
+            data: { totalAmount: newTotal },
+          });
+        } else {
+          await prisma.partner_total_amount.create({
+            data: { partnerId: id, totalAmount: newTotal },
+          });
+        }
+      } catch (e) {
+        console.error(
+          "Background admin_order_transitions / partner_total_amount error:",
+          e,
+        );
+      }
+    })();
 
     if (isCourier && courierData) {
       await prisma.courierContact.create({
@@ -909,17 +928,36 @@ export const createCustomBodenkonstruktionOrder = async (
 
     const customShaftId = (data as any).id;
 
-    await prisma.admin_order_transitions.create({
-      data: {
-        orderNumber: orderNumber,
-        orderFor: "shoes",
-        partnerId: id,
-        custom_shafts_id: customShaftId,
-        custom_shafts_catagoary: "Bodenkonstruktion",
-        price: parsedTotalPrice,
-        note: "Custom Bodenkonstruktion send to admin",
-      },
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
+    //background service
+    await prisma.$executeRaw`
+      INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, note, "createdAt", "updatedAt")
+      VALUES (gen_random_uuid(), ${orderNumber}, ${"shoes"}, ${id}, ${customShaftId}, ${"Bodenkonstruktion"}, ${parsedTotalPrice ?? null}, ${"Custom Bodenkonstruktion send to admin"}, NOW(), NOW())
+    `;
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: id },
+      select: { id: true, totalAmount: true },
     });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: id, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     // Notify admin by email (fire-and-forget, partner from create select)
     const deliveryDateFormatted = parsedDeliveryDate
@@ -1706,15 +1744,10 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
         status: true,
         orderNumber: true,
         createdAt: true,
-        massschuhe_order: {
+        adminOrderTransitions: {
           select: {
             id: true,
-            adminOrderTransitions: {
-              select: {
-                id: true,
-                price: true,
-              },
-            },
+            price: true,
           },
         },
       },
@@ -1759,8 +1792,8 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
       // Use local date to avoid timezone issues
       const dateKey = formatDateLocal(orderDate);
 
-      // Calculate total price from admin_order_transitions
-      const transitions = shaft.massschuhe_order?.adminOrderTransitions || [];
+      // Calculate total price from admin_order_transitions (linked via custom_shafts_id)
+      const transitions = shaft.adminOrderTransitions || [];
       const orderTotal = transitions.reduce((sum, transition) => {
         return sum + (transition.price || 0);
       }, 0);

@@ -61,31 +61,51 @@ export function initUserActivity(r: Redis, s: SocketIOServer, p: PrismaLike) {
 // --- Helpers: timeline_analytics (join = create row, leave = set leaveAt) ---
 
 async function recordPartnerJoin(partnerId: string): Promise<void> {
-  await prisma.timeline_analytics.create({
-    data: { partnerId, joinAt: new Date() },
-  });
+  try {
+    await prisma.timeline_analytics.create({
+      data: { partnerId, joinAt: new Date() },
+    });
+  } catch (e: any) {
+    if (e?.code !== "P2021") throw e; // P2021 = table does not exist
+    console.warn("timeline_analytics table missing; skipping recordPartnerJoin");
+  }
 }
 
 async function recordPartnerLeave(partnerId: string): Promise<void> {
-  const now = new Date();
-  await prisma.timeline_analytics.updateMany({
-    where: { partnerId, leaveAt: null },
-    data: { leaveAt: now },
-  });
+  try {
+    const now = new Date();
+    await prisma.timeline_analytics.updateMany({
+      where: { partnerId, leaveAt: null },
+      data: { leaveAt: now },
+    });
+  } catch (e: any) {
+    if (e?.code !== "P2021") throw e;
+    console.warn("timeline_analytics table missing; skipping recordPartnerLeave");
+  }
 }
 
 async function recordEmployeeJoin(partnerId: string, employeeId: string): Promise<void> {
-  await prisma.timeline_analytics.create({
-    data: { partnerId, employeeId, joinAt: new Date() },
-  });
+  try {
+    await prisma.timeline_analytics.create({
+      data: { partnerId, employeeId, joinAt: new Date() },
+    });
+  } catch (e: any) {
+    if (e?.code !== "P2021") throw e;
+    console.warn("timeline_analytics table missing; skipping recordEmployeeJoin");
+  }
 }
 
 async function recordEmployeeLeave(employeeId: string): Promise<void> {
-  const now = new Date();
-  await prisma.timeline_analytics.updateMany({
-    where: { employeeId, leaveAt: null },
-    data: { leaveAt: now },
-  });
+  try {
+    const now = new Date();
+    await prisma.timeline_analytics.updateMany({
+      where: { employeeId, leaveAt: null },
+      data: { leaveAt: now },
+    });
+  } catch (e: any) {
+    if (e?.code !== "P2021") throw e;
+    console.warn("timeline_analytics table missing; skipping recordEmployeeLeave");
+  }
 }
 
 // --- Helpers: Redis presence ---

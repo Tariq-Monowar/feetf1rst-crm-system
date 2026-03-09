@@ -138,12 +138,16 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
     // Generate orderNumber for this partner
     const orderNumber = await generateNextOrderNumber(userId);
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
+
     // Create transition record - use parsedTotalPrice directly to ensure it's not null
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         custom_shafts_id: data.id,
         customerId: order.customerId,
         partnerId: userId,
@@ -152,6 +156,27 @@ export const sendToAdminOrder_1 = async (req: Request, res: Response) => {
         note: "Halbprobenerstellung send to admin",
       },
     });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
@@ -530,11 +555,14 @@ export const sendToAdminOrder_2 = async (req, res) => {
 
     const orderNumber = await generateNextOrderNumber(id);
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
     await prisma.admin_order_transitions.create({
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         partnerId: id,
         customerId: order.customerId,
         custom_shafts_id: customShaft.id,
@@ -544,6 +572,25 @@ export const sendToAdminOrder_2 = async (req, res) => {
       },
     });
 
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: id },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: id, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
     if (isCourier && courierContactData) {
       await prisma.courierContact.create({
         data: {
@@ -737,6 +784,10 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: { isPanding: true, production_startedAt: new Date() },
     });
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
     // Generate orderNumber for this partner (transition)
     const orderNumber = await generateNextOrderNumber(userId);
 
@@ -745,7 +796,6 @@ export const sendToAdminOrder_3 = async (req, res) => {
       data: {
         orderNumber: orderNumber,
         orderFor: "shoes",
-        massschuhe_order_id: orderId,
         customerId: order.customerId,
         partnerId: userId,
         custom_shafts_id: data.id,
@@ -754,6 +804,28 @@ export const sendToAdminOrder_3 = async (req, res) => {
         note: "Bodenkonstruktion send to admin",
       },
     });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
@@ -875,6 +947,10 @@ export const halbprobenerstellungOrder = async (
     // Generate orderNumber for this partner
     const orderNumber = await generateNextOrderNumber(userId);
 
+    /*
+     * ==================================Admin Order Transitions Started==========================================
+     * =============================================================================================================
+     */
     // Create transition record (no massschuhe_order link)
     await prisma.admin_order_transitions.create({
       data: {
@@ -887,6 +963,27 @@ export const halbprobenerstellungOrder = async (
         note: "Halbprobenerstellung send to admin",
       },
     });
+
+    //partner_total_amount old + new
+    const old = await prisma.partner_total_amount.findFirst({
+      where: { partnerId: userId },
+      select: { id: true, totalAmount: true },
+    });
+    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
+    if (old) {
+      await prisma.partner_total_amount.update({
+        where: { id: old.id },
+        data: { totalAmount: newTotal },
+      });
+    } else {
+      await prisma.partner_total_amount.create({
+        data: { partnerId: userId, totalAmount: newTotal },
+      });
+    }
+    /*
+     * ==================================Admin Order Transitions Ended==========================================
+     * =============================================================================================================
+     */
 
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
@@ -937,10 +1034,15 @@ export const uploadChecklisteHalbprobenerstellung = async (
     }
 
     if (!orderId) {
-      return res.status(400).json({ success: false, message: "Order ID is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Order ID is required" });
     }
     if (checkliste_halbprobe === undefined) {
-      return res.status(400).json({ success: false, message: "checkliste_halbprobe is required in body" });
+      return res.status(400).json({
+        success: false,
+        message: "checkliste_halbprobe is required in body",
+      });
     }
 
     const order = await prisma.custom_shafts.findUnique({
@@ -948,7 +1050,9 @@ export const uploadChecklisteHalbprobenerstellung = async (
       select: { id: true },
     });
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
     await prisma.custom_shafts.update({
@@ -963,7 +1067,11 @@ export const uploadChecklisteHalbprobenerstellung = async (
     });
   } catch (error: any) {
     console.error("Upload Checkliste Halbprobenerstellung Error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 

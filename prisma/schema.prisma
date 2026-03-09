@@ -87,6 +87,9 @@ model User {
   workTypes                   work_types[]
   shoeOrderSteps              shoe_order_step[]
   timelineAnalytics           timeline_analytics[]
+  partnerTotalAmounts         partner_total_amount?
+  partnerPayoutHistories      partner_payout_history[]
+  requestPayouts              request_payout[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -1621,7 +1624,7 @@ model massschuhe_order {
   massschuheOrderInsurances massschuhe_order_insurance[]
   // massschuheOrderAdmin1s   massschuhe_order_admin_1[]
   customShafts              custom_shafts[]
-  adminOrderTransitions     admin_order_transitions[]
+  // adminOrderTransitions     admin_order_transitions[]
 
   isPanding       Boolean?         @default(false)
   courierContacts CourierContact[]
@@ -2013,6 +2016,11 @@ model shoe_order_insurance {
  * @ custom_shafts হচ্ছে যখন ধরো পার্টনারের পোডাকশনে এই জুতা যেই যেটা তার কাষ্টমার চাচ্ছে। এখন পার্টনার maßschaft_kollektion থেকে জুতা বাছাই করে কাষ্টমারের বর্ত্মন ওইয়ার্ডারকে কমপ্লিট করবে।
  */
 //---------------------------------------------------------------------------
+
+/**
+ * ==================================Maßschaft Kollektion Started==========================================
+ * ==========================================================================================================
+ */
 model maßschaft_kollektion {
   id String @id @default(uuid())
 
@@ -2138,19 +2146,6 @@ model custom_shafts {
    * /**
    * /**
    * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2174,25 +2169,6 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
-   * /**
    * /**
    * /**
    * /**
@@ -2361,73 +2337,6 @@ model damian_count {
   count Int    @default(0)
 }
 
-/**
- * date when created the order
- * name of the customer if this transitions related with customer
- * status (panding and complated) handle form admin panal
- */
-
-model admin_order_transitions {
-  id                String  @id @default(uuid())
-  orderNumber       String?
-  transitionsNumber String?
-
-  status   admin_order_transitions_status @default(panding)
-  orderFor transitions_for?
-
-  /**
-   * if transitions for shoes
-   */
-  massschuhe_order_id     String?
-  custom_shafts_catagoary custom_shafts_catagoary?
-  massschuhe_order        massschuhe_order?        @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
-
-  custom_shafts_id String?
-  custom_shafts    custom_shafts? @relation(fields: [custom_shafts_id], references: [id], onDelete: SetNull)
-
-  customerId String?
-  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-
-  /**
-   * if transitions for store
-   */
-  storeId String?
-  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
-
-  price Float?
-  note  String?
-
-  partnerId String?
-  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([custom_shafts_id])
-  @@index([massschuhe_order_id])
-  @@index([storeId])
-  @@index([partnerId])
-  @@index([orderFor])
-  @@index([createdAt])
-  @@index([partnerId, orderNumber]) // Composite index for fast orderNumber lookup per partner
-  // High-scale indexes for getAllTransitions (billions of rows, thousands of concurrent users)
-  @@index([partnerId, createdAt(sort: Desc)]) // Main list + cursor pagination
-  @@index([partnerId, status, createdAt(sort: Desc)]) // With status filter
-  @@index([partnerId, orderFor, createdAt(sort: Desc)]) // With orderFor filter
-  @@index([partnerId, id]) // Fast cursor lookup by id
-}
-
-enum admin_order_transitions_status {
-  panding
-  complated
-}
-
-enum transitions_for {
-  insole
-  shoes
-  store
-}
-
 model CourierContact {
   id String @id @default(uuid())
 
@@ -2454,6 +2363,134 @@ model CourierContact {
 
   @@index([custom_shafts_id])
 }
+
+/**
+ * ================================== CUSTOM SHAFT ENDED=====================================================
+ * =============================================================================================================
+ */
+/**
+ * date when created the order
+ * name of the customer if this transitions related with customer
+ * status (panding and complated) handle form admin panal
+ */
+
+/**
+ * ==================================Admin Order Transitions Started==========================================
+ * =============================================================================================================
+ */
+model admin_order_transitions {
+  id                String  @id @default(uuid())
+  orderNumber       String?
+  transitionsNumber String?
+
+  status   admin_order_transitions_status @default(panding)
+  orderFor transitions_for?
+
+  /**
+   * if transitions for shoes
+   */
+  // massschuhe_order_id     String?
+  custom_shafts_catagoary custom_shafts_catagoary?
+  // massschuhe_order        massschuhe_order?        @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
+
+  custom_shafts_id String?
+  custom_shafts    custom_shafts? @relation(fields: [custom_shafts_id], references: [id], onDelete: SetNull)
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  /**
+   * if transitions for store
+   */
+  storeId String?
+  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  price Float?
+  note  String?
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([custom_shafts_id])
+  @@index([storeId])
+  @@index([partnerId])
+  @@index([orderFor])
+  @@index([createdAt])
+  @@index([partnerId, orderNumber]) // Composite index for fast orderNumber lookup per partner
+  // High-scale indexes for getAllTransitions (billions of rows, thousands of concurrent users)
+  @@index([partnerId, createdAt(sort: Desc)]) // Main list + cursor pagination
+  @@index([partnerId, status, createdAt(sort: Desc)]) // With status filter
+  @@index([partnerId, orderFor, createdAt(sort: Desc)]) // With orderFor filter
+  @@index([partnerId, id]) // Fast cursor lookup by id
+}
+
+model partner_total_amount {
+  id String @id @default(uuid())
+
+  partnerId String @unique
+  partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  totalAmount Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
+model request_payout {
+  id String @id @default(uuid())
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  totalAmount Float?
+  status      request_payout_status @default(panding)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([partnerId])
+}
+
+model partner_payout_history {
+  id String @id @default(uuid())
+
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  totalAmount Float?
+
+  createdAt DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([createdAt])
+}
+
+enum admin_order_transitions_status {
+  panding
+  complated
+}
+
+enum transitions_for {
+  insole
+  shoes
+  store
+}
+
+enum request_payout_status {
+  panding
+  complated
+}
+
+/**
+ * ==================================TRANSITIONS ENDED==========================================
+ * ===============================================================================================
+ */
 
 //==================================Massschuhe Order Ended==========================================
 
@@ -3028,7 +3065,7 @@ model timeline_analytics {
   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   // partner join/leave (employeeId optional for partner-only sessions)
-  joinAt DateTime?
+  joinAt  DateTime?
   leaveAt DateTime?
 
   createdAt DateTime @default(now())

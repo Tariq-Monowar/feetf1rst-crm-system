@@ -1976,10 +1976,10 @@ export const deleteAllMassschuheOrders = async (req: Request, res: Response) => 
         },
       });
 
-      // Delete all admin_order_transitions
+      // Delete admin_order_transitions linked to custom_shafts that belong to massschuhe_orders (transitions use custom_shafts_id, not massschuhe_order_id)
       await tx.admin_order_transitions.deleteMany({
         where: {
-          massschuhe_order_id: { not: null },
+          custom_shafts: { massschuhe_order_id: { not: null } },
         },
       });
 
