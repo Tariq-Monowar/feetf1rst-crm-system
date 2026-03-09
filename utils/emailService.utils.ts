@@ -15,6 +15,10 @@ import {
   customShaftOrderEmailTemplate,
   CustomShaftOrderEmailPayload,
 } from "../constants/order_email";
+import {
+  leistenerstellungAccessEmailTemplate,
+  LeistenerstellungAccessEmailPayload,
+} from "../constants/leistenerstellung_access_email";
 
 dotenv.config();
 
@@ -44,7 +48,7 @@ export const generateOTP = (): string => {
 export const sendEmail = async (
   to: string,
   subject: string,
-  htmlContent: string
+  htmlContent: string,
 ): Promise<void> => {
   await getMailTransporter().sendMail({
     from: getMailFrom(),
@@ -60,7 +64,7 @@ export const sendEmail = async (
 
 export const sendForgotPasswordOTP = async (
   email: string,
-  otp: string
+  otp: string,
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "OTP Code for Password Reset", htmlContent);
@@ -68,7 +72,7 @@ export const sendForgotPasswordOTP = async (
 
 export const sendTwoFactorOtp = async (
   email: string,
-  otp: string
+  otp: string,
 ): Promise<void> => {
   const htmlContent = emailForgotPasswordOTP(email, otp);
   await sendEmail(email, "Two-Factor Authentication OTP", htmlContent);
@@ -83,7 +87,7 @@ export const sendPartnershipWelcomeEmail = async (
   setPasswordLink: string,
   busnessName?: string | null,
   vatNumber?: string | null,
-  mainLocation?: string | null
+  mainLocation?: string | null,
 ): Promise<void> => {
   try {
     const htmlContent = partnershipWelcomeEmail(
@@ -91,7 +95,7 @@ export const sendPartnershipWelcomeEmail = async (
       setPasswordLink,
       busnessName,
       vatNumber,
-      mainLocation
+      mainLocation,
     );
     await getMailTransporter().sendMail({
       from: getMailFrom(),
@@ -114,7 +118,7 @@ export const sendNewSuggestionEmail = async (
   email: string,
   phone: string,
   firma: string,
-  suggestion: string
+  suggestion: string,
 ): Promise<void> => {
   const htmlContent = newSuggestionEmail(name, email, phone, firma, suggestion);
   await sendEmail("info@feetf1rst.com", "New Suggestion Received", htmlContent);
@@ -124,13 +128,13 @@ export const sendImprovementEmail = async (
   company: string,
   phone: string,
   reason: string,
-  message: string
+  message: string,
 ): Promise<void> => {
   const htmlContent = newImprovementEmail(company, phone, reason, message);
   await sendEmail(
     "info@feetf1rst.com",
     "New Improvement Suggestion Received",
-    htmlContent
+    htmlContent,
   );
 };
 
@@ -141,13 +145,13 @@ export const sendImprovementEmail = async (
 export const sendAdminLoginNotification = async (
   adminEmail: string,
   adminName: string,
-  ipAddress: string
+  ipAddress: string,
 ): Promise<void> => {
   const htmlContent = adminLoginNotificationEmail(
     adminEmail,
     adminName,
     new Date(),
-    ipAddress
+    ipAddress,
   );
   await sendEmail(adminEmail, "New admin panel login detected", htmlContent);
 };
@@ -171,7 +175,7 @@ const getPdfBuffer = async (pdf: {
 
 export const sendPdfToEmail = async (
   email: string,
-  pdf: { location?: string; path?: string; originalname?: string }
+  pdf: { location?: string; path?: string; originalname?: string },
 ): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
@@ -204,7 +208,7 @@ const INVOICE_MAX_SIZE_BYTES = 20 * 1024 * 1024;
 export const sendInvoiceEmail = async (
   toEmail: string,
   pdf: { location?: string; path?: string; originalname?: string },
-  options?: { customerName?: string; total?: number }
+  options?: { customerName?: string; total?: number },
 ): Promise<void> => {
   try {
     const pdfBuffer = await getPdfBuffer(pdf);
@@ -213,7 +217,7 @@ export const sendInvoiceEmail = async (
     }
     const htmlContent = invoiceEmailTemplate(
       options?.customerName || "Customer",
-      options?.total
+      options?.total,
     );
     await getMailTransporter().sendMail({
       from: getMailFrom(),
@@ -238,12 +242,37 @@ export const sendInvoiceEmail = async (
   CUSTOM SHAFT ORDER
 ------------------------*/
 
-const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "info@feetf1rst.com";
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "tqmhosain@gmail.com"; // "info@feetf1rst.com";
 
 export const sendCustomShaftOrderNotification = async (
-  payload: CustomShaftOrderEmailPayload
+  payload: CustomShaftOrderEmailPayload,
 ): Promise<void> => {
   const htmlContent = customShaftOrderEmailTemplate(payload);
   const subject = `FeetF1rst Neue Bestellung – ${payload.category}`;
   await sendEmail(CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL, subject, htmlContent);
+};
+
+/*-----------------------
+  LEISTENERSTELLUNG ACCESS REQUEST
+------------------------*/
+
+const LEISTENERSTELLUNG_ACCESS_REQUEST_EMAIL = "tqmhosain@gmail.com";
+
+const getDashboardBaseUrl = (): string => {
+  const isProduction = process.env.NODE_ENV === "production";
+  return isProduction
+    ? (process.env.APP_URL_PRODUCTION || "https://feetf1rst.tech").trim()
+    : (process.env.APP_URL_DEVELOPMENT || "http://localhost:3003").trim();
+};
+
+export const sendLeistenerstellungAccessRequestEmail = async (
+  payload: LeistenerstellungAccessEmailPayload,
+): Promise<void> => {
+  const payloadWithUrl = {
+    ...payload,
+    dashboardBaseUrl: getDashboardBaseUrl(),
+  };
+  const htmlContent = leistenerstellungAccessEmailTemplate(payloadWithUrl);
+  const subject = "FeetF1rst – Anfrage: Zugang Leistenerstellung";
+  await sendEmail(LEISTENERSTELLUNG_ACCESS_REQUEST_EMAIL, subject, htmlContent);
 };

@@ -14,6 +14,7 @@ import {
   deleteCustomShaft,
   totalPriceResponse,
   createCustomBodenkonstruktionOrder,
+  requestForLeistenerstellungAccess,
   cancelAdminOrder,
   getDamianCount,
   manageDamianCount,
@@ -81,6 +82,11 @@ router.post(
   createCustomBodenkonstruktionOrder
 );
 
+router.post(
+  "/request-for-leistenerstellung/access",
+  verifyUser("PARTNER", "ADMIN"),
+  requestForLeistenerstellungAccess
+);
 
 router.get("/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getTustomShafts);
 

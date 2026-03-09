@@ -303,29 +303,34 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       //   },
       // });
 
+      const safeDate = (val: unknown): Date | undefined => {
+        if (val == null || val === "") return undefined;
+        const d = new Date(val as string | number);
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      };
+
       // Step 4 & 5: when half_sample_required is true → take data, isCompleted false; when false → no data, isCompleted true
       if (halfSampleRequired) {
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Halbprobenerstellung",
-            isCompleted: false,
+        const step4Data: any = {
+          order: { connect: { id: order.id } },
+          status: "Halbprobenerstellung",
+          isCompleted: false,
+          notes: step4_notes ?? undefined,
+        };
+        const prepDate = safeDate(preparation_date);
+        if (prepDate != null) step4Data.preparation_date = prepDate;
+        await tx.shoe_order_step.create({ data: step4Data });
 
-            preparation_date: new Date(preparation_date),
-            notes: step4_notes ?? undefined,
-          },
-        });
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Halbprobe_durchführen",
-            isCompleted: false,
-
-            fitting_date: new Date(fitting_date),
-            adjustments: adjustments ?? undefined,
-            customer_reviews: customer_reviews ?? undefined,
-          },
-        });
+        const step5Data: any = {
+          order: { connect: { id: order.id } },
+          status: "Halbprobe_durchführen",
+          isCompleted: false,
+          adjustments: adjustments ?? undefined,
+          customer_reviews: customer_reviews ?? undefined,
+        };
+        const fitDate = safeDate(fitting_date);
+        if (fitDate != null) step5Data.fitting_date = fitDate;
+        await tx.shoe_order_step.create({ data: step5Data });
       } else {
         await tx.shoe_order_step.create({
           data: {

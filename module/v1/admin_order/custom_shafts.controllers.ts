@@ -10,7 +10,10 @@ import {
   generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
-import { sendCustomShaftOrderNotification } from "../../../utils/emailService.utils";
+import {
+  sendCustomShaftOrderNotification,
+  sendLeistenerstellungAccessRequestEmail,
+} from "../../../utils/emailService.utils";
 
 const formatOrderCreatedAt = (d: Date) =>
   d.toLocaleDateString("de-DE", {
@@ -992,6 +995,55 @@ export const createCustomBodenkonstruktionOrder = async (
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+export const requestForLeistenerstellungAccess = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+
+    const partner = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        busnessName: true,
+        image: true,
+        phone: true,
+        hauptstandort: true,
+      },
+    });
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    await sendLeistenerstellungAccessRequestEmail({
+      partnerName: partner.name ?? "—",
+      partnerEmail: partner.email,
+      partnerImage: partner.image,
+      busnessName: partner.busnessName,
+      phone: partner.phone,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Request for Leistenerstellung access has been sent successfully.",
+    });
+  } catch (error: any) {
+    console.error("Request For Leistenerstellung Access Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
       error: error.message,
     });
   }
