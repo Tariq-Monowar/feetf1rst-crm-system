@@ -49,7 +49,8 @@ export const allowedOrigins = [
   "https://feetf1rst-landing-page.vercel.app",
   "https://feetf1rst.tech",
   "https://admin.feetf1rst.tech",
-  "https://boc-diet-hartford-featured.trycloudflare.com"
+  "https://boc-diet-hartford-featured.trycloudflare.com",
+  "https://2rn0d13r-3003.asse.devtunnels.ms"
 ];
 
 app.use(

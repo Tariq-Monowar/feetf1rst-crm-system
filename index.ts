@@ -8,6 +8,64 @@ import app, { allowedOrigins } from "./app";
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 1971;
 
+// Ensures the pos_receipt table always exists, using a direct (non-pooler) connection
+// so DDL works even through PgBouncer. Runs on every startup — safe and idempotent.
+async function ensurePosReceiptTable() {
+  const directClient = new PrismaClient({
+    datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL } },
+  });
+  try {
+    await directClient.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "pos_receipt" (
+        "id"                       TEXT             NOT NULL PRIMARY KEY,
+        "orderId"                  TEXT             NOT NULL,
+        "orderType"                TEXT             NOT NULL,
+        "paymentMethod"            TEXT             NOT NULL,
+        "amount"                   DOUBLE PRECISION NOT NULL,
+        "vatRate"                  DOUBLE PRECISION NOT NULL,
+        "vatAmount"                DOUBLE PRECISION NOT NULL,
+        "subtotal"                 DOUBLE PRECISION NOT NULL,
+        "fiskalyRecordId"          TEXT,
+        "fiskalyIntentionId"       TEXT,
+        "fiskalySignature"         TEXT,
+        "fiscalizedAt"             TIMESTAMP(3),
+        "fiskalyMetadata"          JSONB,
+        "storniert"                BOOLEAN          NOT NULL DEFAULT false,
+        "storniertAt"              TIMESTAMP(3),
+        "storniertRecordId"        TEXT,
+        "storniertIntentionId"     TEXT,
+        "fiskalyTxId"              TEXT,
+        "fiskalyTxNumber"          INTEGER,
+        "fiskalyTssSerialNumber"   TEXT,
+        "fiskalyClientSerialNumber" TEXT,
+        "fiskalyTimeStart"         TIMESTAMP(3),
+        "fiskalyTimeEnd"           TIMESTAMP(3),
+        "fiskalySignatureValue"    TEXT,
+        "fiskalySignatureAlgorithm" TEXT,
+        "fiskalySignatureCounter"  INTEGER,
+        "fiskalySignaturePublicKey" TEXT,
+        "fiskalyQrCodeData"        TEXT,
+        "receiptData"              JSONB,
+        "partnerId"                TEXT,
+        "employeeId"               TEXT,
+        "createdAt"                TIMESTAMP(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt"                TIMESTAMP(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await directClient.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "pos_receipt_partnerId_idx" ON "pos_receipt" ("partnerId")`
+    );
+    await directClient.$executeRawUnsafe(
+      `CREATE INDEX IF NOT EXISTS "pos_receipt_employeeId_idx" ON "pos_receipt" ("employeeId")`
+    );
+    console.log("[startup] pos_receipt table ensured.");
+  } catch (err) {
+    console.error("[startup] Failed to ensure pos_receipt table:", err);
+  } finally {
+    await directClient.$disconnect();
+  }
+}
+
 // Create HTTP server from Express
 const server = createServer(app);
 
@@ -65,6 +123,7 @@ server.listen(PORT, async () => {
     console.log(`Server running on http://localhost:${PORT}`);
     await prisma.$connect();
     console.log("Database connected...");
+    await ensurePosReceiptTable();
 
     console.log("Redis connected...");
     dailyReport();

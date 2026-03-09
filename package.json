@@ -7,6 +7,8 @@
     "start": "node build/index.js",
     "build": "tsc",
     "dev": "nodemon --exec ts-node index.ts",
+    "db:push": "npx prisma db push",
+    "db:generate": "npx prisma generate",
     "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
     "migrate:diagnosis-status-to-string": "ts-node scripts/migrate-diagnosis-status-to-string.ts",
     "fix:cache-lookup": "ts-node scripts/fix-cache-lookup.ts",
@@ -32,7 +34,8 @@
     "all:employees": "ts-node scripts/all-employees.ts",
     "clean:leave-application": "ts-node scripts/clean-leave-application.ts",
     "allaing:partnerId": "ts-node scripts/align-partnerId.ts",
-    "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts"
+    "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts",
+    "seed:pickups": "ts-node scripts/seed-pickup-orders.ts"
   },
   "keywords": [],
   "author": "",

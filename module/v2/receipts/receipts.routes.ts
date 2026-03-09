@@ -4,7 +4,9 @@ import {
   createReceipt,
   getReceiptByOrder,
   getReceiptById,
+  listReceipts,
   emailReceipt,
+  cancelReceipt,
 } from "./receipts.controllers";
 
 const router = express.Router();
@@ -35,6 +37,20 @@ router.post(
   "/email/:receiptId",
   verifyUser("PARTNER", "EMPLOYEE"),
   emailReceipt,
+);
+
+// List all receipts for the authenticated partner
+router.get(
+  "/list",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  listReceipts,
+);
+
+// Stornierung — cancel a fiscal receipt (fiskaly SIGN IT cancellation)
+router.post(
+  "/cancel/:receiptId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  cancelReceipt,
 );
 
 export default router;

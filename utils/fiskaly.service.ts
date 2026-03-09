@@ -1,32 +1,64 @@
+/**
+ * Fiskaly SIGN IT service – Italian fiscal compliance (documento commerciale).
+ *
+ * Two-step record flow (verified against test.api.fiskaly.com):
+ *   1. POST /records → INTENTION (reserves a slot on the system journal)
+ *   2. POST /records → TRANSACTION::RECEIPT (submits the actual receipt data)
+ *
+ * For cancellations:
+ *   1. POST /records → INTENTION
+ *   2. POST /records → TRANSACTION::CANCELLATION
+ *
+ * All request bodies are wrapped in { content: { ... } }.
+ * All amounts are in CENTS (e.g. €120.00 → "12000").
+ */
 import { v4 as uuidv4 } from "uuid";
 
 const FISKALY_BASE_URL =
-  process.env.FISKALY_BASE_URL ||
-  "https://kassensichv-middleware.fiskaly.com/api/v2";
+  process.env.FISKALY_BASE_URL || "https://test.api.fiskaly.com";
 const FISKALY_API_KEY = process.env.FISKALY_API_KEY || "";
 const FISKALY_API_SECRET = process.env.FISKALY_API_SECRET || "";
-const FISKALY_TSS_ID = process.env.FISKALY_TSS_ID || "";
-const FISKALY_CLIENT_ID = process.env.FISKALY_CLIENT_ID || "";
+const FISKALY_API_VERSION = process.env.FISKALY_API_VERSION || "2026-02-03";
+const FISKALY_SYSTEM_ID = process.env.FISKALY_SYSTEM_ID || "";
 
-// Cached auth token
+// ─── VAT rate codes ─────────────────────────────────────────────────
+// Italian VAT rates as defined by the fiskaly system:
+//   STANDARD   = 22%
+//   REDUCED_1  = 10%
+//   REDUCED_2  = 5%
+//   REDUCED_3  = 4%  (orthopedic devices, medical aids)
+const VAT_RATE_MAP: Record<number, { code: string; percentage: string }> = {
+  22: { code: "STANDARD", percentage: "22" },
+  10: { code: "REDUCED_1", percentage: "10" },
+  5: { code: "REDUCED_2", percentage: "5" },
+  4: { code: "REDUCED_3", percentage: "4" },
+};
+
+// ─── Token cache ─────────────────────────────────────────────────────
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
 /**
- * Authenticate with Fiskaly and get a JWT token.
- * Caches the token in memory until it expires.
+ * POST /tokens — authenticate and cache the JWT.
  */
 export async function getAuthToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiresAt) {
     return cachedToken;
   }
 
-  const res = await fetch(`${FISKALY_BASE_URL}/auth`, {
+  const res = await fetch(`${FISKALY_BASE_URL}/tokens`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Version": FISKALY_API_VERSION,
+      "X-Idempotency-Key": uuidv4(),
+    },
     body: JSON.stringify({
-      api_key: FISKALY_API_KEY,
-      api_secret: FISKALY_API_SECRET,
+      content: {
+        type: "API_KEY",
+        key: FISKALY_API_KEY,
+        secret: FISKALY_API_SECRET,
+      },
     }),
   });
 
@@ -36,158 +68,196 @@ export async function getAuthToken(): Promise<string> {
   }
 
   const data = await res.json();
-  cachedToken = data.access_token;
-  // Expire 60s before actual expiry to avoid edge cases
-  tokenExpiresAt = Date.now() + (data.access_token_expires_in - 60) * 1000;
+  cachedToken = data.content.authentication.bearer;
+  const expiresAt = new Date(
+    data.content.authentication.expires_at,
+  ).getTime();
+  tokenExpiresAt = expiresAt - 60_000;
   return cachedToken!;
 }
 
-/**
- * Start a Fiskaly transaction (set state to ACTIVE).
- */
-export async function startTransaction(
-  tssId: string,
-  txId: string,
-  clientId: string,
-) {
-  const token = await getAuthToken();
+// ─── Low-level API call ─────────────────────────────────────────────
 
-  const res = await fetch(
-    `${FISKALY_BASE_URL}/tss/${tssId}/tx/${txId}?tx_revision=1`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state: "ACTIVE",
-        client_id: clientId,
-      }),
+async function fiskalyPost(path: string, body: object): Promise<any> {
+  const token = await getAuthToken();
+  const res = await fetch(`${FISKALY_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "X-Api-Version": FISKALY_API_VERSION,
+      "X-Idempotency-Key": uuidv4(),
     },
-  );
+    body: JSON.stringify(body),
+  });
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Fiskaly startTransaction failed (${res.status}): ${body}`);
+    const errBody = await res.text();
+    throw new Error(`Fiskaly POST ${path} failed (${res.status}): ${errBody}`);
   }
 
   return res.json();
 }
 
-/**
- * Finish a Fiskaly transaction (set state to FINISHED with receipt schema).
- */
-export async function finishTransaction(
-  tssId: string,
-  txId: string,
-  clientId: string,
-  schema: {
-    amounts_per_vat_rate: Array<{
-      vat_rate: "NORMAL" | "REDUCED_1" | "NULL";
-      amount: string;
-    }>;
-    amounts_per_payment_type: Array<{
-      payment_type: "CASH" | "NON_CASH";
-      amount: string;
-      currency_code?: string;
-    }>;
-  },
-) {
-  const token = await getAuthToken();
+// ─── Step 1: INTENTION ──────────────────────────────────────────────
 
-  const res = await fetch(
-    `${FISKALY_BASE_URL}/tss/${tssId}/tx/${txId}?tx_revision=2`,
-    {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        state: "FINISHED",
-        client_id: clientId,
-        schema: {
-          standard_v1: {
-            receipt: {
-              receipt_type: "RECEIPT",
-              amounts_per_vat_rate: schema.amounts_per_vat_rate,
-              amounts_per_payment_type: schema.amounts_per_payment_type,
-            },
+async function createIntention(): Promise<string> {
+  const data = await fiskalyPost("/records", {
+    content: {
+      type: "INTENTION",
+      system: { id: FISKALY_SYSTEM_ID },
+      operation: { type: "TRANSACTION" },
+    },
+  });
+  return data.content.id;
+}
+
+// ─── Step 2: TRANSACTION (RECEIPT) ──────────────────────────────────
+
+export interface FiskalyReceiptResult {
+  recordId: string;
+  intentionId: string;
+  signature: string;
+  signedAt: string;
+  complianceData: string;
+  complianceUrl: string;
+  raw: any;
+}
+
+/**
+ * Create a signed fiscal receipt (documento commerciale).
+ *
+ * Two-step flow:
+ *   1. INTENTION  — reserves a journal slot
+ *   2. TRANSACTION::RECEIPT — submits line items + payment
+ *
+ * All monetary values are in cents. VAT is computed from the total (inclusive).
+ */
+export async function createSignedReceipt(opts: {
+  orderId: string;
+  orderReference: string;
+  amount: number; // total in cents (e.g. 12000 for €120.00)
+  vatRatePercent: number; // 4, 5, 10, or 22
+  productDescription: string;
+  quantity: number;
+  unitPrice: number; // unit price in cents
+}): Promise<FiskalyReceiptResult> {
+  if (!FISKALY_SYSTEM_ID) {
+    throw new Error("FISKALY_SYSTEM_ID must be set");
+  }
+
+  const vatInfo = VAT_RATE_MAP[opts.vatRatePercent];
+  if (!vatInfo) {
+    throw new Error(
+      `Unsupported VAT rate: ${opts.vatRatePercent}%. Use 4, 5, 10, or 22.`,
+    );
+  }
+
+  // Amounts in cents (strings for the API)
+  const inclusive = Math.round(opts.amount);
+  const exclusive = Math.round(
+    inclusive / (1 + opts.vatRatePercent / 100),
+  );
+  const vatAmount = inclusive - exclusive;
+
+  // Step 1: INTENTION
+  const intentionId = await createIntention();
+
+  // Step 2: TRANSACTION::RECEIPT
+  const data = await fiskalyPost("/records", {
+    content: {
+      type: "TRANSACTION",
+      record: { id: intentionId },
+      operation: {
+        type: "RECEIPT",
+        document: {
+          number: opts.orderReference.replace(/[^0-9A-Z_/\\\-.]/gi, "").slice(0, 20) || "1",
+          total_vat: {
+            amount: String(vatAmount),
+            exclusive: String(exclusive),
+            inclusive: String(inclusive),
           },
         },
-      }),
+        entries: [
+          {
+            type: "SALE",
+            data: {
+              type: "ITEM",
+              text: opts.productDescription,
+              unit: {
+                quantity: String(opts.quantity),
+                price: String(Math.round(opts.unitPrice)),
+              },
+              value: {
+                base: String(inclusive),
+              },
+              vat: {
+                type: "VAT_RATE",
+                code: vatInfo.code,
+                percentage: vatInfo.percentage,
+                amount: String(vatAmount),
+                exclusive: String(exclusive),
+                inclusive: String(inclusive),
+              },
+            },
+            details: {
+              concept: "GOOD",
+            },
+          },
+        ],
+        payments: [
+          {
+            type: "CASH",
+            details: {
+              amount: String(inclusive),
+            },
+          },
+        ],
+      },
     },
-  );
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(
-      `Fiskaly finishTransaction failed (${res.status}): ${body}`,
-    );
-  }
-
-  return res.json();
-}
-
-/**
- * Map a numeric VAT percentage to Fiskaly's vat_rate enum.
- */
-function mapVatRate(
-  vatPercent: number,
-): "NORMAL" | "REDUCED_1" | "NULL" {
-  if (vatPercent >= 19) return "NORMAL";
-  if (vatPercent >= 7) return "REDUCED_1";
-  return "NULL";
-}
-
-/**
- * High-level: create a signed receipt via Fiskaly.
- * Generates a UUID for the transaction, starts it, finishes it with the
- * receipt schema, and returns the full Fiskaly response.
- */
-export async function createSignedReceipt(
-  amount: number,
-  vatRatePercent: number,
-  paymentType: "CASH" | "NON_CASH",
-) {
-  const tssId = FISKALY_TSS_ID;
-  const clientId = FISKALY_CLIENT_ID;
-  const txId = uuidv4();
-
-  if (!tssId || !clientId) {
-    throw new Error(
-      "FISKALY_TSS_ID and FISKALY_CLIENT_ID must be set in environment",
-    );
-  }
-
-  // Step 1: Start transaction
-  await startTransaction(tssId, txId, clientId);
-
-  // Step 2: Finish transaction with receipt data
-  const fiskalyVatRate = mapVatRate(vatRatePercent);
-  const amountStr = amount.toFixed(5);
-
-  const result = await finishTransaction(tssId, txId, clientId, {
-    amounts_per_vat_rate: [
-      {
-        vat_rate: fiskalyVatRate,
-        amount: amountStr,
-      },
-    ],
-    amounts_per_payment_type: [
-      {
-        payment_type: paymentType,
-        amount: amountStr,
-        currency_code: "EUR",
-      },
-    ],
   });
 
   return {
-    txId,
-    tssId,
-    clientId,
-    fiskalyResponse: result,
+    recordId: data.content.id,
+    intentionId,
+    signature: data.content.journal?.signature || "",
+    signedAt: data.content.journal?.signed_at || "",
+    complianceData: data.content.compliance?.data || "",
+    complianceUrl: data.content.compliance?.url || "",
+    raw: data.content,
+  };
+}
+
+// ─── CANCELLATION ───────────────────────────────────────────────────
+
+/**
+ * Cancel a previously issued receipt (two-step: INTENTION → CANCELLATION).
+ */
+export async function createCancellation(opts: {
+  originalIntentionId: string;
+}): Promise<any> {
+  if (!FISKALY_SYSTEM_ID) {
+    throw new Error("FISKALY_SYSTEM_ID must be set");
+  }
+
+  // Step 1: INTENTION
+  const intentionId = await createIntention();
+
+  // Step 2: TRANSACTION::CANCELLATION
+  const data = await fiskalyPost("/records", {
+    content: {
+      type: "TRANSACTION",
+      record: { id: intentionId },
+      operation: {
+        type: "CANCELLATION",
+        record: { id: opts.originalIntentionId },
+      },
+    },
+  });
+
+  return {
+    recordId: data.content.id,
+    intentionId,
+    raw: data.content,
   };
 }

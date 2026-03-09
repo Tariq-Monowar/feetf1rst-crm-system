@@ -968,30 +968,57 @@ export const posReceipt = async (req: Request, res: Response) => {
         order.Versorgungen?.supplyStatus?.name ??
         "Maßeinlagen – Orthopädische Einlagen";
 
+      // Fetch stored pos_receipt for fiskaly SIGN IT fiscal data
+      const posReceiptRecord = await prisma.pos_receipt.findUnique({
+        where: { orderId_orderType: { orderId, orderType: "insole" } },
+      }).catch(() => null);
+
       const receipt = {
-        company: {
-          companyName: order.partner?.busnessName ?? "",
-          address: address || "",
-          phone: order.partner?.phone ?? "",
-          vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+        id: posReceiptRecord?.id ?? orderId,
+        orderId,
+        orderType: "insole",
+        paymentMethod: posReceiptRecord?.paymentMethod ?? "CASH",
+        amount: total,
+        vatRate,
+        vatAmount,
+        subtotal,
+        fiskalyRecordId: posReceiptRecord?.fiskalyRecordId ?? null,
+        fiskalyIntentionId: posReceiptRecord?.fiskalyIntentionId ?? null,
+        fiskalySignature: posReceiptRecord?.fiskalySignature ?? null,
+        fiscalizedAt: posReceiptRecord?.fiscalizedAt ?? null,
+        fiskalyMetadata: posReceiptRecord?.fiskalyMetadata ?? null,
+        fiskalyTxId: posReceiptRecord?.fiskalyTxId ?? null,
+        fiskalyTxNumber: posReceiptRecord?.fiskalyTxNumber ?? null,
+        storniert: posReceiptRecord?.storniert ?? false,
+        storniertAt: posReceiptRecord?.storniertAt ?? null,
+        storniertRecordId: posReceiptRecord?.storniertRecordId ?? null,
+        storniertIntentionId: posReceiptRecord?.storniertIntentionId ?? null,
+        receiptData: {
+          company: {
+            companyName: order.partner?.busnessName ?? "",
+            address: address || "",
+            phone: order.partner?.phone ?? "",
+            vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+          },
+          transaction: {
+            order: `#${order.orderNumber}`,
+            customer: customerName,
+          },
+          product: {
+            description: productName,
+            quantity: qty,
+            unitPrice: unitPrice,
+            itemTotal: total,
+          },
+          financial: {
+            subtotal: subtotal,
+            vatRate: vatRate,
+            vatAmount: vatAmount,
+            total: total,
+          },
+          servedBy: order.employee?.employeeName ?? "",
         },
-        transaction: {
-          order: `#${order.orderNumber}`,
-          customer: customerName,
-        },
-        product: {
-          description: productName,
-          quantity: qty,
-          unitPrice: unitPrice,
-          itemTotal: total,
-        },
-        financial: {
-          subtotal: subtotal,
-          vatRate: vatRate,
-          vatAmount: vatAmount,
-          total: total,
-        },
-        servedBy: order.employee?.employeeName ?? "",
+        createdAt: posReceiptRecord?.createdAt ?? order.createdAt,
       };
 
       return res.status(200).json({
@@ -1060,30 +1087,57 @@ export const posReceipt = async (req: Request, res: Response) => {
           .filter(Boolean)
           .join(" ") || "–";
 
+      // Fetch stored pos_receipt for fiskaly SIGN IT fiscal data
+      const posReceiptRecord = await prisma.pos_receipt.findUnique({
+        where: { orderId_orderType: { orderId, orderType: "shoes" } },
+      }).catch(() => null);
+
       const receipt = {
-        company: {
-          companyName: order.partner?.busnessName ?? "",
-          address: address || "",
-          phone: order.partner?.phone ?? "",
-          vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+        id: posReceiptRecord?.id ?? orderId,
+        orderId,
+        orderType: "shoes",
+        paymentMethod: posReceiptRecord?.paymentMethod ?? "CASH",
+        amount: total,
+        vatRate,
+        vatAmount,
+        subtotal,
+        fiskalyRecordId: posReceiptRecord?.fiskalyRecordId ?? null,
+        fiskalyIntentionId: posReceiptRecord?.fiskalyIntentionId ?? null,
+        fiskalySignature: posReceiptRecord?.fiskalySignature ?? null,
+        fiscalizedAt: posReceiptRecord?.fiscalizedAt ?? null,
+        fiskalyMetadata: posReceiptRecord?.fiskalyMetadata ?? null,
+        fiskalyTxId: posReceiptRecord?.fiskalyTxId ?? null,
+        fiskalyTxNumber: posReceiptRecord?.fiskalyTxNumber ?? null,
+        storniert: posReceiptRecord?.storniert ?? false,
+        storniertAt: posReceiptRecord?.storniertAt ?? null,
+        storniertRecordId: posReceiptRecord?.storniertRecordId ?? null,
+        storniertIntentionId: posReceiptRecord?.storniertIntentionId ?? null,
+        receiptData: {
+          company: {
+            companyName: order.partner?.busnessName ?? "",
+            address: address || "",
+            phone: order.partner?.phone ?? "",
+            vatNumber: order.partner?.accountInfos?.[0]?.vat_number ?? "",
+          },
+          transaction: {
+            order: `#${order.orderNumber ?? ""}`,
+            customer: customerName,
+          },
+          product: {
+            description: "Orthopädische Maßschuhe",
+            quantity: qty,
+            unitPrice,
+            itemTotal: total,
+          },
+          financial: {
+            subtotal,
+            vatRate,
+            vatAmount,
+            total,
+          },
+          servedBy: order.employee?.employeeName ?? "",
         },
-        transaction: {
-          order: `#${order.orderNumber ?? ""}`,
-          customer: customerName,
-        },
-        product: {
-          description: "Orthopädische Maßschuhe",
-          quantity: qty,
-          unitPrice,
-          itemTotal: total,
-        },
-        financial: {
-          subtotal,
-          vatRate,
-          vatAmount,
-          total,
-        },
-        servedBy: order.employee?.employeeName ?? "",
+        createdAt: posReceiptRecord?.createdAt ?? order.createdAt,
       };
 
       return res.status(200).json({
@@ -1174,37 +1228,41 @@ export const handcashPayment = async (req: Request, res: Response) => {
         });
       }
 
-      const updatedOrder = await prisma.customerOrders.update({
-        where: { id: orderId },
-        data: { bezahlt: "Privat_Bezahlt" },
-        select: {
-          id: true,
-          orderNumber: true,
-          bezahlt: true,
-        },
-      });
+      const updatedOrder = await prisma.$transaction(async (tx) => {
+        const updated = await tx.customerOrders.update({
+          where: { id: orderId },
+          data: { bezahlt: "Privat_Bezahlt" },
+          select: {
+            id: true,
+            orderNumber: true,
+            bezahlt: true,
+          },
+        });
 
-      if (isPickup) {
-        if (order.orderStatus !== "Abholbereit_Versandt") {
-          await prisma.customerOrders.update({
-            where: { id: orderId },
-            data: { orderStatus: "Ausgeführt" },
-          });
+        if (isPickup) {
+          if (order.orderStatus !== "Abholbereit_Versandt") {
+            await tx.customerOrders.update({
+              where: { id: orderId },
+              data: { orderStatus: "Ausgeführt" },
+            });
+          }
         }
-      }
 
-      await prisma.customerOrdersHistory.create({
-        data: {
-          orderId,
-          statusFrom: order.orderStatus,
-          statusTo: order.orderStatus,
-          paymentFrom: order.bezahlt ?? "Privat_offen",
-          paymentTo: "Privat_Bezahlt",
-          isPrementChange: true,
-          partnerId,
-          employeeId: req.user.id,
-          note: "Order paid successfully",
-        },
+        await tx.customerOrdersHistory.create({
+          data: {
+            orderId,
+            statusFrom: order.orderStatus,
+            statusTo: order.orderStatus,
+            paymentFrom: order.bezahlt ?? "Privat_offen",
+            paymentTo: "Privat_Bezahlt",
+            isPrementChange: true,
+            partnerId,
+            employeeId: req.user.employeeId ?? null,
+            note: "Order paid successfully",
+          },
+        });
+
+        return updated;
       });
 
       return res.status(200).json({

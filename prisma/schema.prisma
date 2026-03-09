@@ -5,8 +5,9 @@ generator client {
 // The datasource `url` property is deprecated in Prisma 5+. Connection info should be moved
 // to prisma.config.ts, and the schema only retains the provider.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -2886,21 +2887,34 @@ model database_backup {
   updatedAt DateTime @updatedAt
 }
 
-// ===================== POS Receipt (Fiskaly TSE) ======================
+// ===================== POS Receipt (Fiskaly SIGN IT — Italy) ======================
 model pos_receipt {
   id String @id @default(uuid())
 
   orderId   String
   orderType String // "insole" | "shoes"
 
-  paymentMethod String // "CASH" | "NON_CASH"
+  paymentMethod String // "CASH"
 
   amount    Float
   vatRate   Float
   vatAmount Float
   subtotal  Float
 
-  // Fiskaly TSE signature fields
+  // Fiskaly SIGN IT fields (per integration PDF)
+  fiskalyRecordId    String?    // record_id from fiskaly response (TRANSACTION)
+  fiskalyIntentionId String?    // intention_id from fiskaly (needed for cancellation reference)
+  fiskalySignature   String?    // fiscal signature from fiskaly
+  fiscalizedAt       DateTime?  // when the receipt was fiscalized
+  fiskalyMetadata    Json?      // full fiskaly response (receipt metadata, PDF endpoint, etc.)
+
+  // Stornierung (cancellation) — fiskaly SIGN IT INTENTION → TRANSACTION::CANCELLATION
+  storniert            Boolean   @default(false)
+  storniertAt          DateTime?
+  storniertRecordId    String?   // fiskaly record ID of the cancellation transaction
+  storniertIntentionId String?   // fiskaly intention ID used for the cancellation
+
+  // Legacy TSE fields (German KassenSichV — kept for historical receipts)
   fiskalyTxId                String?
   fiskalyTxNumber            Int?
   fiskalyTssSerialNumber     String?
