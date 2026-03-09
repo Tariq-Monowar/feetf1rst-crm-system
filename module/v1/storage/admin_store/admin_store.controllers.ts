@@ -695,7 +695,11 @@ export const createBrandStore = async (req: any, res: any) => {
     const trimmedBrand = brand.trim();
 
     let parsedGroessenMengen: any = null;
-    if (groessenMengen !== undefined && groessenMengen !== null && groessenMengen !== "") {
+    if (
+      groessenMengen !== undefined &&
+      groessenMengen !== null &&
+      groessenMengen !== ""
+    ) {
       try {
         parsedGroessenMengen = parseJsonSafely(groessenMengen);
       } catch (parseError: any) {
@@ -716,7 +720,9 @@ export const createBrandStore = async (req: any, res: any) => {
       brandStore = await prisma.brand_store.update({
         where: { id: existing.id },
         data: {
-          ...(parsedGroessenMengen !== null && { groessenMengen: parsedGroessenMengen }),
+          ...(parsedGroessenMengen !== null && {
+            groessenMengen: parsedGroessenMengen,
+          }),
         },
       });
       return res.status(200).json({
@@ -745,6 +751,64 @@ export const createBrandStore = async (req: any, res: any) => {
       success: false,
       message: "Something went wrong",
       error: error.message,
+    });
+  }
+};
+
+export const getAllBrandStoreByAdmin = async (req: any, res: any) => {
+  try {
+    const search = (req.query.search as string)?.trim() || "";
+    const brand = (req.query.brand as string)?.trim() || "";
+    const type = (req.query.type as string)?.trim() || "";
+    const cursor = (req.query.cursor as string)?.trim() || undefined;
+    const limit = Math.min(
+      Math.max(1, parseInt(req.query.limit as string, 10) || 10),
+      100,
+    );
+
+    if (type && !VALID_STORE_TYPES.includes(type as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type. It must be rady_insole or milling_block",
+        validTypes: VALID_STORE_TYPES,
+      });
+    }
+
+    const where: Prisma.brand_storeWhereInput = {};
+    if (type) {
+      where.type = type as StoreType;
+    }
+
+    const brandSearch = search || brand;
+    if (brandSearch) {
+      where.brand = { contains: brandSearch, mode: "insensitive" };
+    }
+
+    const take = limit + 1;
+    const items = await prisma.brand_store.findMany({
+      where,
+      orderBy: { id: "desc" },
+      take,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+    });
+
+    const hasMore = items.length > limit;
+    const data = hasMore ? items.slice(0, limit) : items;
+    const nextCursor = hasMore ? data[data.length - 1]?.id : null;
+
+    res.status(200).json({
+      success: true,
+      message: "Brand stores fetched successfully",
+      data,
+      nextCursor,
+      hasMore: !!nextCursor,
+    });
+  } catch (error: any) {
+    console.error("Error in getAllBrandStoreByAdmin:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? "Unknown error",
     });
   }
 };
@@ -779,11 +843,14 @@ export const getSingleBrandStore = async (req, res) => {
 export const updateBrandStore = async (req, res) => {
   try {
     const { id } = req.params;
-    const { groessenMengen } = req.body;
+
+    const { groessenMengen, brand } = req.body;
+
     const brandStore = await prisma.brand_store.update({
       where: { id },
-      data: { groessenMengen: parseJsonSafely(groessenMengen) },
+      data: { groessenMengen: parseJsonSafely(groessenMengen), brand },
     });
+
     res.status(200).json({
       success: true,
       message: "Brand store updated successfully",
@@ -791,6 +858,12 @@ export const updateBrandStore = async (req, res) => {
     });
   } catch (error: any) {
     console.log(error);
+    if (error.code === "P2025") {
+      return res.status(404).json({
+        success: false,
+        message: "Brand store not found",
+      });
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -907,6 +980,36 @@ export const deleteBrandStore = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("Error in deleteBrandStore:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getSingleBrandStoreByAdmin = async (req: any, res: any) => {
+  try {
+    const { id } = req.params;
+
+    const brandStore = await prisma.brand_store.findUnique({
+      where: { id },
+    });
+
+    if (!brandStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Brand store not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Brand store fetched successfully",
+      data: brandStore,
+    });
+  } catch (error: any) {
+    console.error("Error in getSingleBrandStoreByAdmin:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
