@@ -1027,7 +1027,7 @@ export const requestForLeistenerstellungAccess = async (
       });
     }
 
-    await sendLeistenerstellungAccessRequestEmail({
+    sendLeistenerstellungAccessRequestEmail({
       partnerName: partner.name ?? "—",
       partnerEmail: partner.email,
       partnerImage: partner.image,
@@ -1037,7 +1037,8 @@ export const requestForLeistenerstellungAccess = async (
 
     res.status(200).json({
       success: true,
-      message: "Request for Leistenerstellung access has been sent successfully.",
+      message:
+        "Anfrage für Zugriff auf Leistenerstellung wurde erfolgreich gesendet",
     });
   } catch (error: any) {
     console.error("Request For Leistenerstellung Access Error:", error);

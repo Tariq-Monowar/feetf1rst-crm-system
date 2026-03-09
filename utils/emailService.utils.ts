@@ -242,7 +242,7 @@ export const sendInvoiceEmail = async (
   CUSTOM SHAFT ORDER
 ------------------------*/
 
-const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "tqmhosain@gmail.com"; // "info@feetf1rst.com";
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL =  "info@feetf1rst.com"; //"tqmhosain@gmail.com";
 
 export const sendCustomShaftOrderNotification = async (
   payload: CustomShaftOrderEmailPayload,
@@ -256,7 +256,7 @@ export const sendCustomShaftOrderNotification = async (
   LEISTENERSTELLUNG ACCESS REQUEST
 ------------------------*/
 
-const LEISTENERSTELLUNG_ACCESS_REQUEST_EMAIL = "tqmhosain@gmail.com";
+const LEISTENERSTELLUNG_ACCESS_REQUEST_EMAIL = "info@feetf1rst.com";
 
 const getDashboardBaseUrl = (): string => {
   const isProduction = process.env.NODE_ENV === "production";

@@ -226,17 +226,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     }
 
     if (beddingRequired) {
-      // Step 3: if zusätzliche_notizen provided → material, thickness, notes optional; else → dicke_ferse, dicke_ballen, dicke_spitze required
-      const hasZusätzlicheNotizen =
-        zusätzliche_notizen != null && zusätzliche_notizen !== "";
-      if (!hasZusätzlicheNotizen) {
-        if (step3_json == null) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "When bedding_required is true and zusätzliche_notizen is not provided, step3 json is required",
-          });
-        }
+      //bedding_required
+      if (step3_json == null) {
+        return res.status(400).json({
+          success: false,
+          message: "When bedding_required is true, step3_json is required",
+        });
       }
     }
 
@@ -317,20 +312,20 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           isCompleted: false,
           notes: step4_notes ?? undefined,
         };
-        const prepDate = safeDate(preparation_date);
-        if (prepDate != null) step4Data.preparation_date = prepDate;
+        const fitDate = safeDate(fitting_date);
+        if (fitDate != null) step4Data.fitting_date = fitDate;
         await tx.shoe_order_step.create({ data: step4Data });
 
-        const step5Data: any = {
-          order: { connect: { id: order.id } },
-          status: "Halbprobe_durchführen",
-          isCompleted: false,
-          adjustments: adjustments ?? undefined,
-          customer_reviews: customer_reviews ?? undefined,
-        };
-        const fitDate = safeDate(fitting_date);
-        if (fitDate != null) step5Data.fitting_date = fitDate;
-        await tx.shoe_order_step.create({ data: step5Data });
+        await tx.shoe_order_step.create({
+          data: {
+            order: { connect: { id: order.id } },
+            status: "Halbprobe_durchführen",
+            isCompleted: false,
+            notes: step4_notes ?? undefined,
+            adjustments: adjustments ?? undefined,
+            customer_reviews: customer_reviews ?? undefined,
+          },
+        });
       } else {
         await tx.shoe_order_step.create({
           data: {
@@ -1124,7 +1119,9 @@ export const updateShoeOrderStatus = async (req, res) => {
     const parseDate = (val) =>
       val != null && val !== "" ? new Date(val) : undefined;
     const str = (val) =>
-      val == null || typeof val !== "string" ? undefined : (val.trim() || undefined);
+      val == null || typeof val !== "string"
+        ? undefined
+        : val.trim() || undefined;
 
     const stepPayload = {
       notes: str(notes),
@@ -1148,7 +1145,10 @@ export const updateShoeOrderStatus = async (req, res) => {
         : {}),
     };
 
-    const startedAtValue = started_at != null && started_at !== "" ? new Date(started_at) : new Date();
+    const startedAtValue =
+      started_at != null && started_at !== ""
+        ? new Date(started_at)
+        : new Date();
     const completedAt = new Date();
     const hasAssignee =
       existingStep &&
@@ -1596,6 +1596,11 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           bodenkonstruktion_intem_note: true,
           bodenkonstruktion_extem_note: true,
           files: true,
+          order: {
+            select: {
+              half_sample_required: true,
+            },
+          },
           partner: {
             select: {
               id: true,
@@ -2108,6 +2113,59 @@ export const getShoeOrderNote = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong while getting shoe order note",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+const STEP4_AND_5_STATUSES = ["Halbprobenerstellung", "Halbprobe_durchführen"];
+
+export const manageStep4and5Steps = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const order = await prisma.shoe_order.findFirst({
+      where: { id, partnerId },
+      select: { id: true, half_sample_required: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Shoe order not found",
+      });
+    }
+
+    const newHalfSampleRequired = !order.half_sample_required;
+
+    await prisma.shoe_order.update({
+      where: { id },
+      data: { half_sample_required: newHalfSampleRequired },
+    });
+
+    // Update only existing step 4 & 5 records: set auto_print (no create)
+    await prisma.shoe_order_step.updateMany({
+      where: {
+        orderId: id,
+        status: { in: STEP4_AND_5_STATUSES },
+      },
+      data: { auto_print: !newHalfSampleRequired },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: newHalfSampleRequired
+        ? "Step 4 and 5 steps started"
+        : "Step 4 and 5 steps skipped",
+    });
+  } catch (error: any) {
+    console.error("Manage Step 4 and 5 Steps Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while managing step 4 and 5 steps",
     });
   }
 };

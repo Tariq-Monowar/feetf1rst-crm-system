@@ -13,6 +13,7 @@ import {
   updateShoeOrderPriority,
   updateShoeOrderStep,
   getShoeOrderNote,
+  manageStep4and5Steps,
 } from "./shoe_orders.controllers";
 
 const router = express.Router();
@@ -77,6 +78,12 @@ router.get(
   "/get-notes/:id",
   verifyUser("PARTNER", "EMPLOYEE"),
   getShoeOrderNote,
+);
+
+router.post(
+  "/manage-step4and5/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  manageStep4and5Steps,
 );
 
 export default router;
