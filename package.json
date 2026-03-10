@@ -8,7 +8,9 @@
     "build": "prisma generate && tsc",
     "postinstall": "prisma generate",
     "dev": "nodemon --exec ts-node index.ts",
-    "fix:payment": "ts-node scripts/fix-payment.ts"
+    "fix:payment": "ts-node scripts/fix-payment.ts",
+    "clear-store-overviews": "ts-node scripts/clear-store-overviews.ts",
+    "drop-store-overview-unique": "ts-node scripts/drop-store-overview-unique.ts"
   },
   "keywords": [],
   "author": "",

@@ -90,6 +90,8 @@ model User {
   partnerTotalAmounts         partner_total_amount?
   partnerPayoutHistories      partner_payout_history[]
   requestPayouts              request_payout[]
+  //store_brand_settings
+  storeBrandSettings          store_brand_settings[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -1452,18 +1454,16 @@ model StoreOrderOverview {
   id String @id @default(uuid())
 
   storeId String
-  store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store   Stores  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   partnerId String
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  size                Int
-  length              Float
-  quantity            Int
-  auto_order_limit    Int
-  auto_order_quantity Int
+  /// Per-size data: rady_insole e.g. "35".."48" => { length, quantity }; milling_block e.g. "1","2","3" => { length, quantity }
+  groessenMengen Json
 
   status StoreOrderOverviewStatus?
+  type   StoreType?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1541,12 +1541,26 @@ model stock_material {
   updatedAt DateTime @updatedAt
 }
 
+model store_brand_settings {
+  id String @id @default(cuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  brand String
+  type  StoreType @default(rady_insole)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
 /**
  * ----------------------------------------------------------------------
  * ============================Store end=================================
  */
 model Bestellubersicht {
-  id     String @id @default(uuid())
+  id     String @id @default(cuid())
   number Int
 
   userId String @unique
@@ -1566,7 +1580,7 @@ model Bestellubersicht {
 
 //  ================= V1========================
 model massschuhe_order {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderNumber Int?
 
@@ -1649,7 +1663,7 @@ enum massschuhe_order_status {
 }
 
 model massschuhe_order_insurance {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String
   order   massschuhe_order @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1671,7 +1685,7 @@ model massschuhe_order_insurance {
 }
 
 model massschuhe_order_history {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   statusFrom massschuhe_order_status?
   statusTo   massschuhe_order_status
@@ -2151,6 +2165,13 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2174,6 +2195,13 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2726,6 +2754,8 @@ model partners_settings {
   @@index([updatedAt])
   @@map("partners_settings")
 }
+
+//store settings
 
 model order_settings {
   id        Int      @id @default(autoincrement())

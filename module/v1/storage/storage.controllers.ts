@@ -1435,32 +1435,26 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
     const totalItems = await prisma.storeOrderOverview.count();
     const totalPages = Math.ceil(totalItems / limit);
 
-    // i need to search by store name
+    const whereClause =
+      search.trim() === ""
+        ? {}
+        : {
+            OR: [
+              {
+                partner: {
+                  OR: [
+                    { busnessName: { contains: search.trim(), mode: "insensitive" as const } },
+                    { name: { contains: search.trim(), mode: "insensitive" as const } },
+                    { email: { contains: search.trim(), mode: "insensitive" as const } },
+                  ],
+                },
+              },
+              { store: { produktname: { contains: search.trim(), mode: "insensitive" as const } } },
+            ],
+          };
+
     const storeOverviews = await prisma.storeOrderOverview.findMany({
-      where: {
-        OR: [
-          {
-            partner: {
-              OR: [
-                { busnessName: { contains: search, mode: "insensitive" } },
-                { name: { contains: search, mode: "insensitive" } },
-                { email: { contains: search, mode: "insensitive" } },
-              ],
-            },
-          },
-          { store: { produktname: { contains: search, mode: "insensitive" } } },
-        ],
-        partner: {
-          OR: [
-            { busnessName: { contains: search, mode: "insensitive" } },
-            { name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
-          ],
-        },
-        store: {
-          produktname: { contains: search, mode: "insensitive" },
-        },
-      },
+      where: whereClause,
       include: {
         partner: {
           select: {
@@ -1468,6 +1462,14 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
             name: true,
             busnessName: true,
             email: true,
+          },
+        },
+        store: {
+          select: {
+            id: true,
+            produktname: true,
+            hersteller: true,
+            type: true,
           },
         },
       },
@@ -1545,9 +1547,8 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
       });
     }
 
-    // If status is "Geliefert", update store quantities before updating status
+    // If status is "Geliefert", update store quantities from overview groessenMengen before updating status
     if (status === "Geliefert") {
-      // Fetch StoreOrderOverview records with full data including store relation
       const orderOverviews = await prisma.storeOrderOverview.findMany({
         where: { id: { in: ids } },
         include: {
@@ -1561,79 +1562,54 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
         },
       });
 
-      // Group by storeId to update each store once
-      const storeUpdates = new Map<
-        string,
-        {
-          store: any;
-          orders: typeof orderOverviews;
-        }
-      >();
+      for (const overview of orderOverviews) {
+        if (!overview.store) continue;
 
-      for (const order of orderOverviews) {
-        if (!order.store) continue;
-
-        const storeId = order.store.id;
-        if (!storeUpdates.has(storeId)) {
-          storeUpdates.set(storeId, {
-            store: order.store,
-            orders: [],
-          });
-        }
-        storeUpdates.get(storeId)!.orders.push(order);
-      }
-
-      // Update each store's groessenMengen
-      for (const [storeId, { store, orders }] of storeUpdates) {
-        const groessenMengen = store.groessenMengen as Record<string, any>;
-        const mindestbestand = store.mindestbestand || 0;
+        const storeId = overview.store.id;
+        const groessenMengen = overview.store.groessenMengen as Record<
+          string,
+          { length?: number; quantity?: number; mindestmenge?: number }
+        >;
+        const mindestbestand = overview.store.mindestbestand || 0;
         const updatedGroessenMengen = { ...groessenMengen };
+        const overviewSizes = (overview.groessenMengen || {}) as Record<
+          string,
+          { length?: number; quantity?: number }
+        >;
 
-        // Process each order for this store
-        for (const order of orders) {
-          const sizeKey = String(order.size);
-
+        for (const [sizeKey, ovEntry] of Object.entries(overviewSizes)) {
+          const addQty = Number(ovEntry?.quantity ?? 0);
+          const addLength = Number(ovEntry?.length ?? 0);
           if (!updatedGroessenMengen[sizeKey]) {
-            // If size doesn't exist, create it
             updatedGroessenMengen[sizeKey] = {
-              length: order.length,
-              quantity: order.auto_order_quantity,
+              length: addLength,
+              quantity: addQty,
               mindestmenge: mindestbestand,
             };
           } else {
-            // Update existing size entry
             const sizeEntry = updatedGroessenMengen[sizeKey];
             const currentQuantity =
               typeof sizeEntry === "object" && "quantity" in sizeEntry
                 ? Number(sizeEntry.quantity || 0)
-                : typeof sizeEntry === "number"
-                  ? sizeEntry
-                  : 0;
-
-            const newQuantity = currentQuantity + order.auto_order_quantity;
+                : 0;
             const mindestmenge =
-              sizeEntry &&
-              typeof sizeEntry === "object" &&
-              "mindestmenge" in sizeEntry
-                ? Number(sizeEntry.mindestmenge || mindestbestand)
+              sizeEntry && typeof sizeEntry === "object" && "mindestmenge" in sizeEntry
+                ? Number(sizeEntry.mindestmenge ?? mindestbestand)
                 : mindestbestand;
-
             updatedGroessenMengen[sizeKey] = {
               ...(typeof sizeEntry === "object" ? sizeEntry : {}),
-              length: order.length,
-              quantity: newQuantity,
-              mindestmenge: mindestmenge,
+              length: addLength,
+              quantity: currentQuantity + addQty,
+              mindestmenge,
             };
           }
         }
 
-        // Recalculate overall Status
         const newStatus = calculateStatus(
           updatedGroessenMengen,
           mindestbestand,
         );
 
-        // Update the store
         await prisma.stores.update({
           where: { id: storeId },
           data: {
