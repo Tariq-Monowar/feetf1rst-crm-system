@@ -13,16 +13,12 @@ import {
 
 const PORT = process.env.PORT || 1971;
 
-// Ensures the pos_receipt table always exists, using a direct (non-pooler) connection
-// so DDL works even through PgBouncer. Runs on every startup — safe and idempotent.
+// Ensures the pos_receipt table always exists — safe and idempotent.
+// Uses the shared prisma instance (table is already in schema.prisma,
+// so `prisma db push` creates it; this is a safety net).
 async function ensurePosReceiptTable() {
-  const directClient = new PrismaClient({
-    datasources: {
-      db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL },
-    },
-  });
   try {
-    await directClient.$executeRawUnsafe(`
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "pos_receipt" (
         "id"                       TEXT             NOT NULL PRIMARY KEY,
         "orderId"                  TEXT             NOT NULL,
@@ -59,17 +55,15 @@ async function ensurePosReceiptTable() {
         "updatedAt"                TIMESTAMP(3)     NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    await directClient.$executeRawUnsafe(
+    await prisma.$executeRawUnsafe(
       `CREATE INDEX IF NOT EXISTS "pos_receipt_partnerId_idx" ON "pos_receipt" ("partnerId")`,
     );
-    await directClient.$executeRawUnsafe(
+    await prisma.$executeRawUnsafe(
       `CREATE INDEX IF NOT EXISTS "pos_receipt_employeeId_idx" ON "pos_receipt" ("employeeId")`,
     );
     console.log("[startup] pos_receipt table ensured.");
   } catch (err) {
     console.error("[startup] Failed to ensure pos_receipt table:", err);
-  } finally {
-    await directClient.$disconnect();
   }
 }
 

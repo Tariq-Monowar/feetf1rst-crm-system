@@ -4,7 +4,8 @@ import {
     setSecretPassword,
     systemLogin,
     findAllProfiles,
-    localLogin
+    localLogin,
+    generateCrmToken,
 } from "./auth.controllers";
 
 const router = express.Router();
@@ -44,7 +45,13 @@ router.get("/profile-selection", verifyUser("ANY"), findAllProfiles);
 */
 router.post("/logical-login/:id", verifyUser("ANY"), localLogin);
 
-
+/*
+* SSO: Generate a short-lived CRM token
+* @route GET /auth/crm-token
+* @access PARTNER, EMPLOYEE (must be logged in via logical-login)
+* @description Generates a 5-minute JWT for CRM (Django) SSO handoff
+*/
+router.get("/crm-token", verifyUser("PARTNER", "EMPLOYEE"), generateCrmToken);
 
 
 export default router;

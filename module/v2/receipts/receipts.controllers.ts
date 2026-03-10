@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../../../db";
 import { createSignedReceipt, createCancellation, FiskalyReceiptResult } from "../../../utils/fiskaly.service";
 import { sendEmail } from "../../../utils/emailService.utils";
-
-const prisma = new PrismaClient();
 
 /**
  * POST /v2/receipts/create/:orderId?type=insole|shoes

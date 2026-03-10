@@ -62,6 +62,66 @@ export const setSecretPassword = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * SSO: Generate a short-lived CRM token from the current Dashboard session.
+ * The CRM (Django) validates this token using the same JWT_SECRET.
+ */
+export const generateCrmToken = async (req: Request, res: Response) => {
+  try {
+    const { id, role, employeeId } = req.user;
+
+    if (!id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid session. Please login first.",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, role: true, busnessName: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Build CRM token payload — matches what Django expects
+    const payload: Record<string, unknown> = {
+      userId: user.id,
+      email: user.email,
+      role: role || user.role,
+      busnessName: user.busnessName,
+      source: "dashboard",
+    };
+
+    if (employeeId) {
+      payload.employeeId = employeeId;
+    }
+
+    const crmToken = jwt.sign(
+      payload,
+      process.env.JWT_SECRET as string,
+      { expiresIn: "5m" }, // short-lived for SSO handoff
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "CRM token generated",
+      token: crmToken,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message || "Unknown error",
+    });
+  }
+};
+
 export const systemLogin = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -108,8 +168,9 @@ export const systemLogin = async (req: Request, res: Response) => {
       });
     }
     const token = jwt.sign(
-      { id: partner.id, email: partner.email},
+      { id: partner.id, userId: partner.id, email: partner.email },
       process.env.JWT_SECRET as string,
+      { expiresIn: "8h" },
     );
 
     return res.status(200).json({
@@ -280,17 +341,21 @@ export const localLogin = async (req: Request, res: Response) => {
       query.role === "EMPLOYEE"
         ? {
             id: data.partnerId,
+            userId: data.partnerId,
             employeeId: data.id,
             email: data.email,
             role: query.role,
           }
         : {
             id: data.id,
+            userId: data.id,
             email: data.email,
             role: query.role,
           };
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET as string);
+    const token = jwt.sign(payload, process.env.JWT_SECRET as string, {
+      expiresIn: "8h",
+    });
 
     // Exclude sensitive fields from response
     const { password: _p, secretPassword: _s, ...safeData } = data as Record<
