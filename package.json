@@ -37,6 +37,9 @@
     "allaing:partnerId": "ts-node scripts/align-partnerId.ts",
     "total_price:TO:private_price": "ts-node scripts/total_price-to-private_price.ts",
     "seed:pickups": "ts-node scripts/seed-pickup-orders.ts"
+    "fix:payment": "ts-node scripts/fix-payment.ts",
+    "clear-store-overviews": "ts-node scripts/clear-store-overviews.ts",
+    "drop-store-overview-unique": "ts-node scripts/drop-store-overview-unique.ts"
   },
   "keywords": [],
   "author": "",

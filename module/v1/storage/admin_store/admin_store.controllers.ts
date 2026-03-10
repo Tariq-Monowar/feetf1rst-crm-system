@@ -952,16 +952,27 @@ export const deleteBrandStore = async (req: any, res: any) => {
       });
     }
 
-    // Check if any of the brand stores exist
+    // Check if any of the brand stores exist and get their brand names
     const existingBrandStores = await prisma.brand_store.findMany({
       where: { id: { in: ids } },
-      select: { id: true },
+      select: { id: true, brand: true },
     });
 
     if (existingBrandStores.length === 0) {
       return res.status(404).json({
         success: false,
         message: "No brand stores found with the provided ids",
+      });
+    }
+
+    const brandNames = existingBrandStores
+      .map((bs) => bs.brand)
+      .filter((b): b is string => b != null && b.trim() !== "");
+
+    // Delete partner settings that reference these brands
+    if (brandNames.length > 0) {
+      await prisma.store_brand_settings.deleteMany({
+        where: { brand: { in: brandNames } },
       });
     }
 
