@@ -5,10 +5,6 @@ import {
   getTotalPriceRatio,
   getAllTransitions,
   getOneMonthPayment,
-  payPartnerToAdminController,
-  getAllRequestPayoutsForPartner,
-  getAllRequestPayoutsForAdmin,
-  approvedPayoutRequest,
 } from "./admin_order_transitions.controllers";
 
 const router = express.Router();
@@ -40,32 +36,5 @@ router.get(
   getOneMonthPayment,
 );
 
-//---------------------------------Partner Payout Started---------------------------------
-//pay partner to admin
-router.post(
-  "/pay-partner-to-admin",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  payPartnerToAdminController,
-);
-
-//get all request payouts
-router.get(
-  "/get-all-request-payouts-for-partner",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  getAllRequestPayoutsForPartner,
-);
-
-router.get(
-  "/get-all-request-payouts-for-admin",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  getAllRequestPayoutsForAdmin,
-);
-
-//update request payout status
-router.patch(
-  "/approved-payout-request/:id",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  approvedPayoutRequest,
-);
 
 export default router;

@@ -348,10 +348,14 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
       await prisma.user.update({ where: { id: userId }, data: userData });
     }
 
-    const hasAccountInfoPayload =
-      [vat_number, vat_country, bankName, bankNumber, bic, name].some(
-        (v) => v !== undefined
-      );
+    const hasAccountInfoPayload = [
+      vat_number,
+      vat_country,
+      bankName,
+      bankNumber,
+      bic,
+      name,
+    ].some((v) => v !== undefined);
 
     if (!hasAccountInfoPayload) {
       const updated = await prisma.user.findUnique({
@@ -379,14 +383,18 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
     const trimOrNull = (v) =>
       v != null && String(v).trim() !== "" ? String(v).trim() : null;
     const vatValue =
-      vat_number !== undefined ? trimOrNull(vat_number) : (primary?.vat_number ?? null);
+      vat_number !== undefined
+        ? trimOrNull(vat_number)
+        : (primary?.vat_number ?? null);
     const vatCountryValue =
       vat_country !== undefined
         ? trimOrNull(vat_country)
         : (primary?.vat_country ?? null);
 
     const currentBank = (primary?.bankInfo || {}) as any;
-    const hasBankPayload = [bankName, bankNumber, bic].some((v) => v !== undefined);
+    const hasBankPayload = [bankName, bankNumber, bic].some(
+      (v) => v !== undefined,
+    );
     const bankInfo = hasBankPayload
       ? {
           bankName: bankName ?? currentBank.bankName ?? null,
@@ -448,117 +456,191 @@ export const updatePartnerInfo = async (req: Request, res: Response) => {
 };
 
 export const getAllPartners = async (req: Request, res: Response) => {
-  try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
-    const skip = (page - 1) * limit;
+  const SEARCH_MIN_LENGTH = 2;
+  const SEARCH_MAX_LENGTH = 100;
+  const normalizeSearchTerm = (raw: string): string =>
+    raw.trim().replace(/\s+/g, " ").slice(0, SEARCH_MAX_LENGTH);
 
-    const whereCondition = {
+  try {
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit as string) || 10, 1),
+      100,
+    );
+    const rawSearch = (req.query.search as string) || "";
+    const status = (req.query.status as string | undefined)?.toLowerCase();
+    const searchTerm = normalizeSearchTerm(rawSearch);
+
+    const whereCondition: Record<string, unknown> = {
       role: "PARTNER",
-      ...(search && {
-        OR: [
-          { name: { contains: search, mode: "insensitive" } },
-          { email: { contains: search, mode: "insensitive" } },
-        ],
-      }),
     };
 
-    const [partners, totalCount] = await Promise.all([
-      prisma.user.findMany({
-        where: {
-          role: "PARTNER",
-          OR: search
-            ? [
-                {
-                  name: {
-                    contains: search,
-                    mode: "insensitive" as const,
-                  },
-                },
-                {
-                  email: {
-                    contains: search,
-                    mode: "insensitive" as const,
-                  },
-                },
-              ]
-            : undefined,
-        },
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          busnessName: true,
-          image: true,
-          createdAt: true,
-          accountInfos: {
-            select: {
-              vat_number: true,
-              vat_country: true,
-              bankInfo: true,
-              barcodeLabel: true,
-            },
-          },
-          mentor: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              email: true,
-              timeline: true,
-              phone: true,
-            },
-          },
-        },
-      }),
-      prisma.user.count({
-        where: {
-          role: "PARTNER",
-          OR: search
-            ? [
-                {
-                  name: {
-                    contains: search,
-                    mode: "insensitive" as const,
-                  },
-                },
-                {
-                  email: {
-                    contains: search,
-                    mode: "insensitive" as const,
-                  },
-                },
-              ]
-            : undefined,
-        },
-      }),
-    ]);
-
-    const activePartnerIds = new Set<string>();
-    for (const p of partners) {
-      const count = await redis.scard(partnerSocketsKey(p.id));
-      if (count > 0) activePartnerIds.add(p.id);
+    // Filter by high-level status buckets for pagination tabs
+    if (status === "active") {
+      // Has an open session: at least one timeline row with joinAt set and leaveAt still null
+      (whereCondition as any).timelineAnalytics = {
+        some: { joinAt: { not: null }, leaveAt: null },
+      };
+    } else if (status === "inactive") {
+      // Has only closed sessions: at least one leaveAt, but no open session with leaveAt null
+      (whereCondition as any).timelineAnalytics = {
+        some: { leaveAt: { not: null } },
+      };
+      (whereCondition as any).NOT = {
+        timelineAnalytics: { some: { leaveAt: null } },
+      };
+    } else if (status === "payment_overdue") {
+      // Partner has positive open balance
+      (whereCondition as any).partnerTotalAmounts = {
+        totalAmount: { gt: 0 },
+      };
+    } else if (status === "never_logged_in") {
+      // No timeline rows at all
+      (whereCondition as any).timelineAnalytics = {
+        none: {},
+      };
     }
 
-    const partnersWithImageUrls = partners.map((partner) => {
-      const accountInfo = partner.accountInfos?.[0];
-      const bankInfo = accountInfo?.bankInfo as {
-        bankName?: string;
-        bankNumber?: string;
-      } | null;
+    // Only apply search when term is long enough (case-insensitive); avoids expensive 1-char scan at scale
+    if (searchTerm.length >= SEARCH_MIN_LENGTH) {
+      const term = searchTerm;
+      whereCondition.OR = [
+        { name: { contains: term, mode: "insensitive" as const } },
+        { email: { contains: term, mode: "insensitive" as const } },
+        { busnessName: { contains: term, mode: "insensitive" as const } },
+        { phone: { contains: term, mode: "insensitive" as const } },
+        {
+          accountInfos: {
+            some: {
+              vat_number: { contains: term, mode: "insensitive" as const },
+            },
+          },
+        },
+        {
+          accountInfos: {
+            some: {
+              vat_country: { contains: term, mode: "insensitive" as const },
+            },
+          },
+        },
+        {
+          accountInfos: {
+            some: {
+              barcodeLabel: { contains: term, mode: "insensitive" as const },
+            },
+          },
+        },
+      ];
+    }
+
+    if (cursor) {
+      const cursorPartner = await prisma.user.findUnique({
+        where: { id: cursor, role: "PARTNER" },
+        select: { createdAt: true },
+      });
+
+      if (!cursorPartner) {
+        return res.status(200).json({
+          success: true,
+          data: [],
+          hasMore: false,
+        });
+      }
+
+      const cursorCondition = {
+        createdAt: { lt: cursorPartner.createdAt },
+      };
+
+      if (whereCondition.OR) {
+        whereCondition.AND = [{ OR: whereCondition.OR }, cursorCondition];
+        delete whereCondition.OR;
+      } else {
+        whereCondition.createdAt = cursorCondition.createdAt;
+      }
+    }
+
+    const partners = await prisma.user.findMany({
+      where: whereCondition,
+      take: limit + 1,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        busnessName: true,
+        image: true,
+        createdAt: true,
+        // accountInfos: {
+        //   take: 1,
+        //   select: {
+        //     vat_number: true,
+        //     vat_country: true,
+        //     bankInfo: true,
+        //     barcodeLabel: true,
+        //   },
+        // },
+        timelineAnalytics: {
+          take: 1,
+          orderBy: { createdAt: "desc" },
+          select: {
+            joinAt: true,
+            // leaveAt: true,
+          },
+        },
+        partnerTotalAmounts: {
+          select: {
+            totalAmount: true,
+          },
+        },
+        mentor: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            email: true,
+            // timeline: true,
+            // phone: true,
+          },
+        },
+        _count: {
+          select: { custom_shafts: true },
+        },
+      },
+    });
+
+    const hasMore = partners.length > limit;
+    const dataPartners = hasMore ? partners.slice(0, limit) : partners;
+
+    // Single Redis round-trip: batch SCARD for all partners (avoids N+1)
+    const activePartnerIds = new Set<string>();
+    if (dataPartners.length > 0) {
+      const pipeline = redis.pipeline();
+      dataPartners.forEach((p) => pipeline.scard(partnerSocketsKey(p.id)));
+      const replies = await pipeline.exec();
+      if (replies) {
+        replies.forEach((reply, i) => {
+          const count = reply[1] as number | undefined;
+          if (typeof count === "number" && count > 0 && dataPartners[i])
+            activePartnerIds.add(dataPartners[i].id);
+        });
+      }
+    }
+
+    const partnersWithImageUrls = dataPartners.map((partner) => {
+      // const accountInfo = partner.accountInfos?.[0];
+      // const bankInfo = accountInfo?.bankInfo as {
+      //   bankName?: string;
+      //   bankNumber?: string;
+      // } | null;
       return {
         ...partner,
         image: partner.image || null,
-        bankName: bankInfo?.bankName || null,
-        bankNumber: bankInfo?.bankNumber || null,
-        barcodeLabel: accountInfo?.barcodeLabel || null,
-        vat_country: accountInfo?.vat_country || null,
-        vat_number: accountInfo?.vat_number || null,
+        // bankName: bankInfo?.bankName || null,
+        // bankNumber: bankInfo?.bankNumber || null,
+        // barcodeLabel: accountInfo?.barcodeLabel || null,
+        // vat_country: accountInfo?.vat_country || null,
+        // vat_number: accountInfo?.vat_number || null,
         isActive: activePartnerIds.has(partner.id),
       };
     });
@@ -566,18 +648,99 @@ export const getAllPartners = async (req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       data: partnersWithImageUrls,
-      pagination: {
-        total: totalCount,
-        page,
-        limit,
-        totalPages: Math.ceil(totalCount / limit),
-      },
+      hasMore,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: "Something went wrong",
       error,
+    });
+  }
+};
+
+export const getCalculations = async (req: Request, res: Response) => {
+  try {
+    // tottal partnet
+    const totalPartners = await prisma.user.count({
+      where: { role: "PARTNER" },
+    });
+
+    //active today
+    // model timeline_analytics {
+    //   id String @id @default(cuid())
+
+    //   partnerId String
+    //   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+    //   employeeId String?
+    //   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+    //   // partner join/leave (employeeId optional for partner-only sessions)
+    //   joinAt  DateTime?
+    //   leaveAt DateTime?
+
+    //   createdAt DateTime @default(now())
+    //   updatedAt DateTime @updatedAt
+    // }
+
+    const activeTodayPartners = await prisma.user.count({
+      where: {
+        role: "PARTNER",
+        timelineAnalytics: {
+          some: {
+            joinAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          },
+        },
+      },
+    });
+
+    //inactive no timeline_analytics data
+    const inactivePartners = await prisma.user.count({
+      where: { role: "PARTNER", timelineAnalytics: { none: {} } },
+    });
+
+    //open balance request_payout is panding
+    // model request_payout {
+    //   id String @id @default(uuid())
+
+    //   partnerId String?
+    //   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+    //   totalAmount Float?
+    //   status      request_payout_status @default(panding)
+    //   createdAt   DateTime              @default(now())
+    //   updatedAt   DateTime              @updatedAt
+
+    //   @@index([partnerId])
+    // }
+    // Sum of total amounts for partners who have pending payout and balance > 0 (not record count)
+    const openBalanceResult = await prisma.partner_total_amount.aggregate({
+      _sum: { totalAmount: true },
+      where: {
+        totalAmount: { gt: 0 },
+        partner: {
+          role: "PARTNER",
+          requestPayouts: { some: { status: "panding" } },
+        },
+      },
+    });
+    const openBalancePartners = Number(openBalanceResult._sum.totalAmount ?? 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalPartners,
+        activeTodayPartners,
+        inactivePartners,
+        openBalancePartners,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : error,
     });
   }
 };
@@ -590,7 +753,12 @@ export const getPartnerSocketsDebug = async (req: Request, res: Response) => {
     const socketIds = await redis.smembers(key);
     res.status(200).json({
       success: true,
-      data: { redisKey: key, socketCount, socketIds, isActive: socketCount > 0 },
+      data: {
+        redisKey: key,
+        socketCount,
+        socketIds,
+        isActive: socketCount > 0,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -691,9 +859,16 @@ export const getPartnerById = async (req: Request, res: Response) => {
 export const getPartnerActivity = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const limit = Math.min(Math.max(1, parseInt(String(req.query.limit), 10) || 10), 100);
+    const limit = Math.min(
+      Math.max(1, parseInt(String(req.query.limit), 10) || 10),
+      100,
+    );
 
-    type SummaryRow = { seconds_today: string; seconds_week: string; seconds_month: string };
+    type SummaryRow = {
+      seconds_today: string;
+      seconds_week: string;
+      seconds_month: string;
+    };
     const [summary] = await prisma.$queryRaw<SummaryRow[]>(Prisma.sql`
       SELECT
         COALESCE(SUM(
@@ -739,7 +914,9 @@ export const getPartnerActivity = async (req: Request, res: Response) => {
       const leaveAtOrNow = row.leaveAt ?? now;
       const join = row.joinAt ? new Date(row.joinAt).getTime() : 0;
       const leave = leaveAtOrNow.getTime();
-      const durationSeconds = join ? Math.max(0, Math.floor((leave - join) / 1000)) : 0;
+      const durationSeconds = join
+        ? Math.max(0, Math.floor((leave - join) / 1000))
+        : 0;
       return {
         id: row.id,
         partnerId: row.partnerId,

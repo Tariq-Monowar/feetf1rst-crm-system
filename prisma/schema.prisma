@@ -93,6 +93,7 @@ model User {
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
+  @@index([role, createdAt(sort: Desc)]) // Cursor pagination + filter (getAllPartners)
   @@map("users")
 }
 
