@@ -38,6 +38,7 @@ import bestellubersicht from "./bestellubersicht/Bestellubersicht.routes";
 import custom_shafts from "./admin_order/custom_shafts.routes";
 import admin_product from "./admin_order/admin_product/admin_product.routes";
 import delivery_dates from "./admin_order/delivery_dates/delivery_dates.routes";
+import statistics from "./admin_order/statistics/statistics.routes";
 
 import customer_files from "./customer_files/customer_files.routes";
 import massschuhe_order from "./massschuhe_order/massschuhe_order.routes";
@@ -95,6 +96,7 @@ const moduleRoutes = [
   { path: "/custom_shafts", route: custom_shafts },
   { path: "/admin_product", route: admin_product },
   { path: "/custom_shafts/delivery-dates", route: delivery_dates },
+  { path: "/custom_shafts/statistics", route: statistics },
 
   { path: "/customer-files", route: customer_files },
 

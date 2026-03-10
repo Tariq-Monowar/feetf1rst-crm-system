@@ -4,6 +4,7 @@ import {
   updatePartnerProfile,
   updatePartnerInfo,
   getAllPartners,
+  getCalculations,
   getPartnerById,
   getPartnerSocketsDebug,
   updatePartnerByAdmin,
@@ -42,6 +43,7 @@ router.post(
   upload.single("image"),
   createPartnership,
 );
+router.get("/calculations", verifyUser("ADMIN"), getCalculations);
 
 router.get("/get-partner-by-id/:id", verifyUser("ADMIN"), getPartnerById);
 router.get("/partner-activity/:id", verifyUser("ADMIN"), getPartnerActivity);
@@ -56,7 +58,11 @@ router.post(
 );
 router.get("/get-partner-settings", verifyUser("PARTNER"), getPartnerSettings);
 
+
+
 router.get("/", verifyUser("ADMIN"), getAllPartners);
+
+
 
 router.get("/:id", verifyUser("ADMIN"), getPartnerById);
 

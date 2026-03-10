@@ -10,7 +10,11 @@ import order_settings from "./order_settings/order_settings.routes";
 import partner_chat from "./partner_chat/partner_chat.routes";
 import partner_payout from "./partner_payout/partner_payout.routes";
 import pickups from "./pickups/pickups.routes";
+
 import admin_order_transitions from "./admin_order_transitions/admin_order_transitions.routes";
+import calculations from "./admin_order_transitions/calculations/calculations.routes";
+import finance from "./admin_order_transitions/finance/finance.routes";
+
 import news from "./news/news.routes";
 import feetf1rst_shop from "./feetf1rst_shop/feetf1rst_shop.routes";
 import auth from "./auth/auth.routes";
@@ -46,7 +50,11 @@ const moduleRoutes = [
   { path: "/partner-chat", route: partner_chat },
   { path: "/partner-payout", route: partner_payout },
   { path: "/pickups", route: pickups },
+
   { path: "/admin-order-transitions", route: admin_order_transitions },
+  { path: "/admin-order-transitions/calculations", route: calculations },
+  { path: "/admin-order-transitions/finance", route: finance },
+
   { path: "/news", route: news },
   { path: "/feetf1rst-shop", route: feetf1rst_shop },
   { path: "/auth", route: auth },

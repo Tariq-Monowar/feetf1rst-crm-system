@@ -36,7 +36,9 @@ router.post("/buy", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), buyStorage);
 
 // এখনে পার্টনার স্টক অ্যাাড কতে পারবে কিনা ছাড়া
 router.post("/add-storage", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), addStorage);
+
 // Add quantity from admin store to existing partner store (by_admin only); creates tracking
+//admin er tai kinche
 router.post("/add-storage-from-admin", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), addStorageFromAdmin);
 
 
