@@ -421,14 +421,16 @@ export const buyStorage = async (req, res) => {
     const sourceGroessenMengen =
       bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
         ? (bodyGroessenMengen as Record<string, any>)
-        : (adminStore.groessenMengen as Record<string, any> | null) ?? {};
+        : ((adminStore.groessenMengen as Record<string, any> | null) ?? {});
     const transformedGroessenMengen = transformGroessenMengenForStore(
       sourceGroessenMengen,
       storeType,
     );
 
     const lagerortFinal =
-      req.body.lagerort !== undefined ? req.body.lagerort : (null as string | null);
+      req.body.lagerort !== undefined
+        ? req.body.lagerort
+        : (null as string | null);
     const sellingPriceFinal =
       req.body.selling_price !== undefined ? selling_price : 0;
     const priceFinal =
@@ -438,7 +440,7 @@ export const buyStorage = async (req, res) => {
     const featuresFinal =
       bodyFeatures !== undefined && bodyFeatures !== null && bodyFeatures !== ""
         ? bodyFeatures
-        : (adminStore as any).features ?? null;
+        : ((adminStore as any).features ?? null);
 
     // Create Stores record: body overrides when provided, else admin_store
     const createdStore = await prisma.stores.create({
@@ -709,11 +711,17 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
       });
     }
 
-    const { admin_store_id, storeId, lagerort = null, groessenMengen: bodyGroessenMengen } = req.body;
+    const {
+      admin_store_id,
+      storeId,
+      lagerort = null,
+      groessenMengen: bodyGroessenMengen,
+    } = req.body;
 
     const missingField = ["storeId", "groessenMengen"].find((field) => {
       const val = req.body[field];
-      if (field === "groessenMengen") return val == null || typeof val !== "object" || Array.isArray(val);
+      if (field === "groessenMengen")
+        return val == null || typeof val !== "object" || Array.isArray(val);
       return val == null || val === "";
     });
     if (missingField) {
@@ -751,7 +759,10 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
       });
     }
     const type = storeType;
-    const toAdd = transformGroessenMengenForStore(bodyGroessenMengen as Record<string, any>, type);
+    const toAdd = transformGroessenMengenForStore(
+      bodyGroessenMengen as Record<string, any>,
+      type,
+    );
 
     const current = (store.groessenMengen as Record<string, any>) || {};
     const merged: Record<string, any> = { ...current };
@@ -793,10 +804,12 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
         lagerort: lagerort ?? updatedStore.lagerort ?? null,
         groessenMengen: toAdd,
         admin_storeId: admin_store_id ?? null,
-        price: adminStore ? (adminStore as any).price ?? null : null,
+        price: adminStore ? ((adminStore as any).price ?? null) : null,
         image: adminStore?.image ?? store.image ?? null,
         type,
-        features: adminStore ? (adminStore as any).features ?? null : store.features,
+        features: adminStore
+          ? ((adminStore as any).features ?? null)
+          : store.features,
       },
     });
 
@@ -1427,69 +1440,115 @@ export const getStoragePerformer = async (req: Request, res: Response) => {
 //-----------------------------------------------------------------------------
 export const getStoreOverviews = async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
+    const cursor = req.query.cursor as string | undefined;
     const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
     const search = (req.query.search as string) || "";
+    const type = (req.query.type as string) || "";
 
-    const totalItems = await prisma.storeOrderOverview.count();
-    const totalPages = Math.ceil(totalItems / limit);
+    const whereClause: any = {};
 
-    const whereClause =
-      search.trim() === ""
-        ? {}
-        : {
+    if (type.trim()) {
+      if (type !== "rady_insole" && type !== "milling_block") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid type",
+          validTypes: ["rady_insole", "milling_block"],
+        });
+      }
+      whereClause.type = type.trim();
+    }
+
+    if (search.trim()) {
+      whereClause.OR = [
+        {
+          partner: {
             OR: [
               {
-                partner: {
-                  OR: [
-                    { busnessName: { contains: search.trim(), mode: "insensitive" as const } },
-                    { name: { contains: search.trim(), mode: "insensitive" as const } },
-                    { email: { contains: search.trim(), mode: "insensitive" as const } },
-                  ],
+                busnessName: {
+                  contains: search.trim(),
+                  mode: "insensitive" as const,
                 },
               },
-              { store: { produktname: { contains: search.trim(), mode: "insensitive" as const } } },
+              {
+                name: {
+                  contains: search.trim(),
+                  mode: "insensitive" as const,
+                },
+              },
+              {
+                email: {
+                  contains: search.trim(),
+                  mode: "insensitive" as const,
+                },
+              },
             ],
-          };
+          },
+        },
+        {
+          produktname: {
+            contains: search.trim(),
+            mode: "insensitive" as const,
+          },
+        },
+      ];
+    }
+
+    if (cursor) {
+      const cursorOverview = await prisma.storeOrderOverview.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+
+      if (!cursorOverview) {
+        return res.status(200).json({
+          success: true,
+          message: "Store overviews fetched successfully",
+          data: [],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+
+      const cursorCondition = {
+        createdAt: {
+          lt: cursorOverview.createdAt,
+        },
+      };
+
+      if (whereClause.OR) {
+        whereClause.AND = [{ OR: whereClause.OR }, cursorCondition];
+        delete whereClause.OR;
+      } else {
+        whereClause.createdAt = cursorCondition.createdAt;
+      }
+    }
 
     const storeOverviews = await prisma.storeOrderOverview.findMany({
       where: whereClause,
-      include: {
-        partner: {
-          select: {
-            id: true,
-            name: true,
-            busnessName: true,
-            email: true,
-          },
-        },
-        store: {
-          select: {
-            id: true,
-            produktname: true,
-            hersteller: true,
-            type: true,
-          },
-        },
-      },
-      skip,
-      take: limit,
+      take: limit + 1,
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        produktname: true,
+        hersteller: true,
+        artikelnummer: true,
+        groessenMengen: true,
+        type: true,
+        status: true,
+        createdAt: true,
+      },
     });
+
+    const hasMore = storeOverviews.length > limit;
+    const data = hasMore ? storeOverviews.slice(0, limit) : storeOverviews;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
 
     res.status(200).json({
       success: true,
       message: "Store overviews fetched successfully",
-      data: storeOverviews,
-      pagination: {
-        totalItems,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-      },
+      data,
+      hasMore,
+      nextCursor,
     });
   } catch (error) {
     res.status(500).json({
@@ -1593,7 +1652,9 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
                 ? Number(sizeEntry.quantity || 0)
                 : 0;
             const mindestmenge =
-              sizeEntry && typeof sizeEntry === "object" && "mindestmenge" in sizeEntry
+              sizeEntry &&
+              typeof sizeEntry === "object" &&
+              "mindestmenge" in sizeEntry
                 ? Number(sizeEntry.mindestmenge ?? mindestbestand)
                 : mindestbestand;
             updatedGroessenMengen[sizeKey] = {
@@ -1666,6 +1727,7 @@ export const getStoreOverviewById = async (req: Request, res: Response) => {
         },
       },
     });
+
     res.status(200).json({
       success: true,
       message: "Store overview fetched successfully",

@@ -885,6 +885,12 @@ model customer_versorgungen {
  * other price is insurance paymnent if status is insurance
  */
 
+ enum u_orderType {
+  Rady_Insole
+  Milling_Block
+  Sonstiges
+ }
+
 model customerOrders {
   /**
    * ------------------------------------------------
@@ -892,6 +898,9 @@ model customerOrders {
    * ------------------------------------------------
    */
   id          String @id @default(uuid())
+   
+  u_orderType u_orderType?
+
   orderNumber Int
 
   diagnosis String?
@@ -1482,6 +1491,7 @@ enum StoreOrderOverviewStatus {
   Versendet
   Geliefert
   Storniert
+  cancelled
 }
 
 model StoresHistory {
@@ -2181,6 +2191,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2204,6 +2215,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
