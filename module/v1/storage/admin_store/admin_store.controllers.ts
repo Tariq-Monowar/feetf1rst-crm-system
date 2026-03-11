@@ -52,7 +52,7 @@ export const createAdminStore = async (req, res) => {
       "brand",
       "productName",
       "artikelnummer",
-      "eigenschaften",
+      // "eigenschaften",
       "groessenMengen",
     ].find((field) => !req.body[field]);
     if (missingField) {
