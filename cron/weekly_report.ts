@@ -8,18 +8,20 @@ const prisma = new PrismaClient({ adapter });
 export const dailyReport = () => {
   cron.schedule("* * * * *", async () => { //
     try {
-      const getAllowedBrandsByPartner = (brandSettings: any[]) => {
-        const allowedBrandsByPartner = new Map<string, Set<string>>();
+      const getInactiveBrandsByPartner = (brandSettings: any[]) => {
+        const inactiveBrandsByPartner = new Map<string, Set<string>>();
 
         for (const { partnerId, brand } of brandSettings) {
-          if (!allowedBrandsByPartner.has(partnerId)) {
-            allowedBrandsByPartner.set(partnerId, new Set());
+          if (!inactiveBrandsByPartner.has(partnerId)) {
+            inactiveBrandsByPartner.set(partnerId, new Set());
           }
 
-          allowedBrandsByPartner.get(partnerId)?.add(brand);
+          inactiveBrandsByPartner
+            .get(partnerId)
+            ?.add(String(brand ?? "").trim().toLowerCase());
         }
 
-        return allowedBrandsByPartner;
+        return inactiveBrandsByPartner;
       };
 
       const buildOverviewData = (groessenMengen: any) => {
@@ -54,40 +56,60 @@ export const dailyReport = () => {
         };
       };
 
-      const partnersSettingsModel = (prisma as any).partners_settings;
+      const buildDeliveredQuantityData = (groessenMengen: any) => {
+        if (
+          !groessenMengen ||
+          typeof groessenMengen !== "object" ||
+          Array.isArray(groessenMengen)
+        ) {
+          return {};
+        }
+
+        const deliveredQuantity: Record<string, any> = {};
+
+        for (const [size, sizeData] of Object.entries(groessenMengen)) {
+          const item = sizeData as any;
+
+          if (!item || typeof item !== "object" || Array.isArray(item)) {
+            continue;
+          }
+
+          deliveredQuantity[size] = {
+            ...item,
+            quantity: 0,
+          };
+        }
+
+        return deliveredQuantity;
+      };
+
       const brandSettingsModel = (prisma as any).store_brand_settings;
       const storeOrderOverviewModel = (prisma as any).storeOrderOverview;
 
-      if (
-        !partnersSettingsModel ||
-        !brandSettingsModel ||
-        !storeOrderOverviewModel
-      ) {
+      if (!brandSettingsModel || !storeOrderOverviewModel) {
         console.error(
           "Required Prisma models are not available. Please regenerate Prisma client."
         );
         return;
       }
 
-      const partnersWithOrthotech = await partnersSettingsModel.findMany({
+      const stores = await prisma.stores.findMany({
         where: {
-          orthotech: true,
-        },
-        select: {
-          partnerId: true,
+          create_status: "by_admin",
+          auto_order: true,
         },
       });
 
-      const partnerIds = partnersWithOrthotech.map((item: any) => item.partnerId);
-
-      if (partnerIds.length === 0) {
+      if (stores.length === 0) {
         return;
       }
+
+      const partnerIds = [...new Set(stores.map((store) => String(store.userId)))];
 
       const brandSettings = await brandSettingsModel.findMany({
         where: {
           partnerId: { in: partnerIds },
-          isActive: true,
+          isActive: false,
         },
         select: {
           partnerId: true,
@@ -95,18 +117,20 @@ export const dailyReport = () => {
         },
       });
 
-      const allowedBrandsByPartner = getAllowedBrandsByPartner(brandSettings);
-
-      const stores = await prisma.stores.findMany({
-        where: {
-          userId: { in: partnerIds },
-          create_status: "by_admin",
-        },
-      });
+      const inactiveBrandsByPartner = getInactiveBrandsByPartner(brandSettings);
 
       for (const store of stores) {
-        const allowedBrands = allowedBrandsByPartner.get(String(store.userId));
-        if (!allowedBrands || !allowedBrands.has(store.hersteller)) {
+        const inactiveBrands = inactiveBrandsByPartner.get(String(store.userId));
+        const brandCandidates = [
+          String(store.hersteller ?? "").trim().toLowerCase(),
+          String(store.artikelnummer ?? "").trim().toLowerCase(),
+        ].filter(Boolean);
+
+        const isAutoOrderDisabled = brandCandidates.some((candidate) =>
+          inactiveBrands?.has(candidate)
+        );
+
+        if (isAutoOrderDisabled) {
           continue;
         }
 
@@ -127,6 +151,9 @@ export const dailyReport = () => {
         }
 
         try {
+          const deliveredQuantity =
+            buildDeliveredQuantityData(overviewGroessenMengen);
+
           await storeOrderOverviewModel.create({
             data: {
               storeId: store.id,
@@ -135,6 +162,7 @@ export const dailyReport = () => {
               produktname: store.produktname,
               hersteller: store.hersteller,
               groessenMengen: overviewGroessenMengen,
+              delivered_quantity: deliveredQuantity,
               type: store.type ?? "rady_insole",
               status: "In_bearbeitung",
             },

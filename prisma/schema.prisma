@@ -1481,6 +1481,9 @@ model StoreOrderOverview {
   /// Per-size data: rady_insole e.g. "35".."48" => { length, quantity }; milling_block e.g. "1","2","3" => { length, quantity }
   groessenMengen Json
 
+  // groessenMengen -> delivered_quantity without quantity
+  delivered_quantity Json?
+
   status StoreOrderOverviewStatus?
   type   StoreType?
 

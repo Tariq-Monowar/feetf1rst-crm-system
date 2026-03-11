@@ -872,10 +872,42 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
     });
 
+    const inactiveBrandSettings = await prisma.store_brand_settings.findMany({
+      where: {
+        partnerId: userId,
+        isActive: false,
+      },
+      select: {
+        brand: true,
+      },
+    });
+
     const totalPages = Math.ceil(totalItems / limit);
 
     // Add calculated Status to all stores
-    const storageWithStatus = addStatusToStores(allStorage);
+    const inactiveBrandSet = new Set(
+      inactiveBrandSettings.map((item) => item.brand.trim().toLowerCase()),
+    );
+
+    const storageWithStatus = addStatusToStores(allStorage).map((store: any) => {
+      const brandCandidates = [
+        String(store.hersteller ?? "")
+          .trim()
+          .toLowerCase(),
+        String(store.artikelnummer ?? "")
+          .trim()
+          .toLowerCase(),
+      ].filter(Boolean);
+
+      const isAutoOrderDisabled = brandCandidates.some((candidate) =>
+        inactiveBrandSet.has(candidate),
+      );
+
+      return {
+        ...store,
+        able_auto_order: isAutoOrderDisabled ? "disable" : "enable",
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -1533,6 +1565,7 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
         hersteller: true,
         artikelnummer: true,
         groessenMengen: true,
+        delivered_quantity: true,
         type: true,
         status: true,
         createdAt: true,

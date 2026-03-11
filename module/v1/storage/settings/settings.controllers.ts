@@ -112,7 +112,9 @@ export const toggleBrandStore = async (req: Request, res: Response) => {
 export const toggleAutoOrderStatus = async (req: Request, res: Response) => {
   try {
     const partnerId = String(req.user.id);
+
     const { id } = req.params;
+    
     const store = await prisma.stores.findUnique({
       where: { id },
       select: {
