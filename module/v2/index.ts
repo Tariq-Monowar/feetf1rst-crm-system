@@ -24,6 +24,7 @@ import government_vat from "./government_vat/government_vat.routes";
 import leave_application from "./leave_application/leave_application.routes";
 
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
+import receipts from "./receipts/receipts.routes";
 import shoe_orders_statistic from "./shoe_orders/statistic/statistic.routes";
 
 import order_notes from "./order_notes/order_notes.routes";
@@ -63,6 +64,7 @@ const moduleRoutes = [
   { path: "/leave-application", route: leave_application },
 
   { path: "/shoe-orders", route: shoe_orders },
+  { path: "/receipts", route: receipts },
   { path: "/shoe-orders/statistic", route: shoe_orders_statistic },
 
   { path: "/order-notes", route: order_notes },
