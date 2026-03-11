@@ -113,16 +113,20 @@ export const getCustomerSignFiles = async (req: Request, res: Response) => {
       });
     }
 
-    const customerSignRows = await prisma.customers_sign.findMany({
-      where: { customerId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        createdAt: true,
-        sign: true,
-        pdf: true,
-      },
-    });
+    const customerSignRows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        createdAt: Date;
+        sign: string | null;
+        pdf: string | null;
+      }>
+    >(
+      `SELECT "id", "createdAt", "sign", "pdf"
+       FROM "customers_sign"
+       WHERE "customerId" = $1
+       ORDER BY "createdAt" DESC`,
+      customerId,
+    );
 
     const allEntries: Array<{
       fieldName: "sign" | "pdf";

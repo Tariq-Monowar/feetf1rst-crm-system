@@ -2,11 +2,18 @@ import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
 import {
+  getCustomerSignFiles,
   getCustomerSignByCustomerId,
   manageCustomerSign,
 } from "./customers_sign.controllers";
 
 const router = express.Router();
+
+router.get(
+  "/get",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getCustomerSignFiles,
+);
 
 router.get(
   "/get-details/:customerId",
