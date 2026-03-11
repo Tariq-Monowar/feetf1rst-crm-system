@@ -1454,10 +1454,18 @@ model StoreOrderOverview {
   id String @id @default(uuid())
 
   storeId String
-  store   Stores  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   partnerId String
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  //airticle number
+  artikelnummer String?
+  /// Product name
+  produktname   String? //productName
+
+  /// প্রোডাক্টের প্রস্তুতকারক Manufacturer 
+  hersteller String? //brand
 
   /// Per-size data: rady_insole e.g. "35".."48" => { length, quantity }; milling_block e.g. "1","2","3" => { length, quantity }
   groessenMengen Json
@@ -2172,6 +2180,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2195,6 +2204,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

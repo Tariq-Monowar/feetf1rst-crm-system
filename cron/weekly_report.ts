@@ -5,62 +5,86 @@ import { notificationSend } from "../utils/notification.utils";
 
 const prisma = new PrismaClient({ adapter });
 
-interface GroessenMengenEntry {
-  length: number;
-  quantity: number;
-  mindestmenge: number;
-  auto_order_limit: number;
-  auto_order_quantity: number;
-  warningStatus?: string;
-}
-
-interface GroessenMengen {
-  [size: string]: GroessenMengenEntry;
-}
-
 export const dailyReport = () => {
-  //every hour
-  cron.schedule("0 * * * *", async () => { 
+  cron.schedule("* * * * *", async () => { //
     try {
-      // Check if partners_settings model is available
+      const getAllowedBrandsByPartner = (brandSettings: any[]) => {
+        const allowedBrandsByPartner = new Map<string, Set<string>>();
+
+        for (const { partnerId, brand } of brandSettings) {
+          if (!allowedBrandsByPartner.has(partnerId)) {
+            allowedBrandsByPartner.set(partnerId, new Set());
+          }
+
+          allowedBrandsByPartner.get(partnerId)?.add(brand);
+        }
+
+        return allowedBrandsByPartner;
+      };
+
+      const buildOverviewData = (groessenMengen: any) => {
+        const updatedGroessenMengen = { ...groessenMengen };
+        const overviewGroessenMengen: any = {};
+
+        for (const [size, sizeData] of Object.entries(groessenMengen)) {
+          const item: any = sizeData;
+
+          if (
+            !item ||
+            typeof item !== "object" ||
+            item.auto_order_limit <= 0
+          ) {
+            continue;
+          }
+
+          overviewGroessenMengen[size] = {
+            length: Number(item.length ?? 0),
+            quantity: Number(item.auto_order_quantity ?? 0),
+          };
+
+          updatedGroessenMengen[size] = {
+            ...item,
+            auto_order_limit: item.auto_order_limit - 1,
+          };
+        }
+
+        return {
+          updatedGroessenMengen,
+          overviewGroessenMengen,
+        };
+      };
+
       const partnersSettingsModel = (prisma as any).partners_settings;
-      if (!partnersSettingsModel) {
+      const brandSettingsModel = (prisma as any).store_brand_settings;
+      const storeOrderOverviewModel = (prisma as any).storeOrderOverview;
+
+      if (
+        !partnersSettingsModel ||
+        !brandSettingsModel ||
+        !storeOrderOverviewModel
+      ) {
         console.error(
-          "partners_settings model not available in Prisma client. Please regenerate Prisma client."
+          "Required Prisma models are not available. Please regenerate Prisma client."
         );
         return;
       }
 
-      // Get all partners_settings where orthotech: true
       const partnersWithOrthotech = await partnersSettingsModel.findMany({
         where: {
           orthotech: true,
         },
-        include: {
-          partner: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
+        select: {
+          partnerId: true,
         },
       });
 
-      console.log(
-        `Found ${partnersWithOrthotech.length} partners with orthotech: true`
-      );
-
-      // Get all stores for these partners
-      const partnerIds = partnersWithOrthotech.map((ps: any) => ps.partnerId);
+      const partnerIds = partnersWithOrthotech.map((item: any) => item.partnerId);
 
       if (partnerIds.length === 0) {
-        console.log("No partners with orthotech: true found");
         return;
       }
 
-      // Load active brand settings per partner (store_brand_settings) so we only
-      // run the cron for allowed brands (hersteller)
-      const brandSettings = await (prisma as any).store_brand_settings.findMany({
+      const brandSettings = await brandSettingsModel.findMany({
         where: {
           partnerId: { in: partnerIds },
           isActive: true,
@@ -71,132 +95,63 @@ export const dailyReport = () => {
         },
       });
 
-      const allowedBrandsByPartner = new Map<string, Set<string>>();
-      for (const bs of brandSettings) {
-        if (!bs.brand) continue;
-        const key = String(bs.partnerId);
-        if (!allowedBrandsByPartner.has(key)) {
-          allowedBrandsByPartner.set(key, new Set<string>());
-        }
-        allowedBrandsByPartner.get(key)!.add(bs.brand);
-      }
+      const allowedBrandsByPartner = getAllowedBrandsByPartner(brandSettings);
 
-      const allStores = await prisma.stores.findMany({
+      const stores = await prisma.stores.findMany({
         where: {
-          userId: {
-            in: partnerIds,
-          },
-        },
-        include: {
-          user: {
-            select: {
-              name: true,
-              id: true,
-            },
-          },
+          userId: { in: partnerIds },
+          create_status: "by_admin",
         },
       });
 
-      console.log(
-        `Found ${allStores.length} stores for partners with orthotech: true`
-      );
-
-      // Process each store
-      for (const store of allStores) {
-        // Only consider stores created by admin
-        if (store.create_status !== "by_admin") {
-          continue;
-        }
-
-        // Only consider stores whose brand (hersteller) is allowed for this partner
-        const allowedBrands = allowedBrandsByPartner.get(store.userId);
+      for (const store of stores) {
+        const allowedBrands = allowedBrandsByPartner.get(String(store.userId));
         if (!allowedBrands || !allowedBrands.has(store.hersteller)) {
           continue;
         }
 
-        const groessenMengen =
-          store.groessenMengen as unknown as GroessenMengen;
-
+        const groessenMengen = store.groessenMengen;
         if (
           !groessenMengen ||
           typeof groessenMengen !== "object" ||
           Array.isArray(groessenMengen)
         ) {
-          console.log(`Store ${store.id} has invalid groessenMengen`);
           continue;
         }
 
-        const updatedGroessenMengen: GroessenMengen = { ...groessenMengen };
-        const overviewGroessenMengen: Record<
-          string,
-          { length: number; quantity: number }
-        > = {};
-        let hasChanges = false;
+        const { overviewGroessenMengen, updatedGroessenMengen } =
+          buildOverviewData(groessenMengen);
 
-        // Build overview groessenMengen and decrement store auto_order_limit for sizes that have it > 0
-        for (const [sizeStr, sizeData] of Object.entries(groessenMengen)) {
-          const size = parseInt(sizeStr);
-          if (isNaN(size)) {
-            console.log(`Invalid size key: ${sizeStr} for store ${store.id}`);
-            continue;
-          }
-          if (
-            sizeData &&
-            typeof sizeData === "object" &&
-            "auto_order_limit" in sizeData &&
-            sizeData.auto_order_limit > 0
-          ) {
-            const qty = sizeData.auto_order_quantity ?? 0;
-            overviewGroessenMengen[sizeStr] = {
-              length: Number(sizeData.length ?? 0),
-              quantity: qty,
-            };
-            updatedGroessenMengen[sizeStr] = {
-              ...sizeData,
-              auto_order_limit: sizeData.auto_order_limit - 1,
-            };
-            hasChanges = true;
-          }
+        if (Object.keys(overviewGroessenMengen).length === 0) {
+          continue;
         }
 
-        if (Object.keys(overviewGroessenMengen).length > 0) {
-          try {
-            await (prisma as any).storeOrderOverview.create({
-              data: {
-                storeId: store.id,
-                partnerId: store.userId,
-                groessenMengen: overviewGroessenMengen,
-                type: store.type ?? "rady_insole",
-                status: "In_bearbeitung",
-              },
-            });
-            console.log(
-              `StoreOrderOverview created for store ${store.id}, ${Object.keys(overviewGroessenMengen).length} sizes`
-            );
-          } catch (error) {
-            console.error(
-              `Error creating StoreOrderOverview for store ${store.id}:`,
-              error
-            );
-          }
-        }
+        try {
+          await storeOrderOverviewModel.create({
+            data: {
+              storeId: store.id,
+              partnerId: store.userId,
+              artikelnummer: store.artikelnummer,
+              produktname: store.produktname,
+              hersteller: store.hersteller,
+              groessenMengen: overviewGroessenMengen,
+              type: store.type ?? "rady_insole",
+              status: "In_bearbeitung",
+            },
+          });
+           
+          console.log(`Created overview for store ${store.id}`);
 
-        if (hasChanges) {
-          try {
-            await prisma.stores.update({
-              where: { id: store.id },
-              data: {
-                groessenMengen: updatedGroessenMengen as any,
-              },
-            });
-            console.log(`Updated groessenMengen for store ${store.id}`);
-          } catch (error) {
-            console.error(`Error updating store ${store.id}:`, error);
-          }
+          await prisma.stores.update({
+            where: { id: store.id },
+            data: {
+              groessenMengen: updatedGroessenMengen,
+            },
+          });
+        } catch (error) {
+          console.error(`Error processing store ${store.id}:`, error);
         }
       }
-
-      console.log("================================");
     } catch (error) {
       console.error("Error in dailyReport cron job:", error);
     }
