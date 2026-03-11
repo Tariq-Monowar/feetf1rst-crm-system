@@ -889,25 +889,27 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       inactiveBrandSettings.map((item) => item.brand.trim().toLowerCase()),
     );
 
-    const storageWithStatus = addStatusToStores(allStorage).map((store: any) => {
-      const brandCandidates = [
-        String(store.hersteller ?? "")
-          .trim()
-          .toLowerCase(),
-        String(store.artikelnummer ?? "")
-          .trim()
-          .toLowerCase(),
-      ].filter(Boolean);
+    const storageWithStatus = addStatusToStores(allStorage).map(
+      (store: any) => {
+        const brandCandidates = [
+          String(store.hersteller ?? "")
+            .trim()
+            .toLowerCase(),
+          String(store.artikelnummer ?? "")
+            .trim()
+            .toLowerCase(),
+        ].filter(Boolean);
 
-      const isAutoOrderDisabled = brandCandidates.some((candidate) =>
-        inactiveBrandSet.has(candidate),
-      );
+        const isAutoOrderDisabled = brandCandidates.some((candidate) =>
+          inactiveBrandSet.has(candidate),
+        );
 
-      return {
-        ...store,
-        able_auto_order: isAutoOrderDisabled ? "disable" : "enable",
-      };
-    });
+        return {
+          ...store,
+          able_auto_order: isAutoOrderDisabled ? "disable" : "enable",
+        };
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -1592,17 +1594,19 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
   }
 };
 
-export const updateOverviewStatus = async (req: Request, res: Response) => {
+export const updateOverview = async (req: Request, res: Response) => {
   try {
-    const { ids, status } = req.body;
+    const { id } = req.params;
+    const { status, delivered_quantity } = req.body;
 
-    const missingField = ["ids", "status"].find((field) => !req.body[field]);
-    if (missingField) {
-      return res.status(400).json({ message: `${missingField} is required` });
+    if (!id) {
+      return res.status(400).json({ message: "id is required" });
     }
 
-    if (!Array.isArray(ids)) {
-      return res.status(400).json({ message: "ids must be an array" });
+    if (status === undefined && delivered_quantity === undefined) {
+      return res.status(400).json({
+        message: "At least one field is required: status or delivered_quantity",
+      });
     }
 
     const validStatuses = [
@@ -1612,121 +1616,58 @@ export const updateOverviewStatus = async (req: Request, res: Response) => {
       "Storniert",
     ];
 
-    if (!validStatuses.includes(status)) {
+    if (status !== undefined && !validStatuses.includes(status)) {
       return res.status(400).json({ message: "Invalid status", validStatuses });
     }
 
-    const records = await prisma.storeOrderOverview.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, status: true },
+    if (
+      delivered_quantity !== undefined &&
+      (!delivered_quantity ||
+        typeof delivered_quantity !== "object" ||
+        Array.isArray(delivered_quantity))
+    ) {
+      return res.status(400).json({
+        message: "delivered_quantity must be a valid object",
+      });
+    }
+
+    const record = await prisma.storeOrderOverview.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        delivered_quantity: true,
+      },
     });
 
-    if (records.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No records found for given IDs" });
+    if (!record) {
+      return res.status(404).json({ message: "No record found for given id" });
     }
 
-    const deliveredIds = records
-      .filter((r) => r.status === "Geliefert")
-      .map((r) => r.id);
-
-    if (deliveredIds.length > 0) {
-      return res.status(403).json({
-        success: false,
-        message: "Some orders are already delivered and cannot be updated",
-        deliveredIds,
-      });
+    if (record.status === "Geliefert") {
+      return res.status(403).json({ message: "Already delivered" });
     }
 
-    // If status is "Geliefert", update store quantities from overview groessenMengen before updating status
-    if (status === "Geliefert") {
-      const orderOverviews = await prisma.storeOrderOverview.findMany({
-        where: { id: { in: ids } },
-        include: {
-          store: {
-            select: {
-              id: true,
-              groessenMengen: true,
-              mindestbestand: true,
-            },
-          },
-        },
-      });
-
-      for (const overview of orderOverviews) {
-        if (!overview.store) continue;
-
-        const storeId = overview.store.id;
-        const groessenMengen = overview.store.groessenMengen as Record<
-          string,
-          { length?: number; quantity?: number; mindestmenge?: number }
-        >;
-        const mindestbestand = overview.store.mindestbestand || 0;
-        const updatedGroessenMengen = { ...groessenMengen };
-        const overviewSizes = (overview.groessenMengen || {}) as Record<
-          string,
-          { length?: number; quantity?: number }
-        >;
-
-        for (const [sizeKey, ovEntry] of Object.entries(overviewSizes)) {
-          const addQty = Number(ovEntry?.quantity ?? 0);
-          const addLength = Number(ovEntry?.length ?? 0);
-          if (!updatedGroessenMengen[sizeKey]) {
-            updatedGroessenMengen[sizeKey] = {
-              length: addLength,
-              quantity: addQty,
-              mindestmenge: mindestbestand,
-            };
-          } else {
-            const sizeEntry = updatedGroessenMengen[sizeKey];
-            const currentQuantity =
-              typeof sizeEntry === "object" && "quantity" in sizeEntry
-                ? Number(sizeEntry.quantity || 0)
-                : 0;
-            const mindestmenge =
-              sizeEntry &&
-              typeof sizeEntry === "object" &&
-              "mindestmenge" in sizeEntry
-                ? Number(sizeEntry.mindestmenge ?? mindestbestand)
-                : mindestbestand;
-            updatedGroessenMengen[sizeKey] = {
-              ...(typeof sizeEntry === "object" ? sizeEntry : {}),
-              length: addLength,
-              quantity: currentQuantity + addQty,
-              mindestmenge,
-            };
-          }
-        }
-
-        const newStatus = calculateStatus(
-          updatedGroessenMengen,
-          mindestbestand,
-        );
-
-        await prisma.stores.update({
-          where: { id: storeId },
-          data: {
-            groessenMengen: updatedGroessenMengen as any,
-            Status: newStatus,
-          },
-        });
-      }
+    const updateData: Record<string, any> = {};
+    if (status !== undefined) {
+      updateData.status = status;
+    }
+    if (delivered_quantity !== undefined) {
+      updateData.delivered_quantity = delivered_quantity;
     }
 
-    // Update the StoreOrderOverview status
-    const updatedOverview = await prisma.storeOrderOverview.updateMany({
-      where: { id: { in: ids } },
-      data: { status },
+    const updatedOverview = await prisma.storeOrderOverview.update({
+      where: { id },
+      data: updateData,
     });
 
     return res.status(200).json({
       success: true,
-      message: "Overview statuses updated successfully",
+      message: "Overview updated successfully",
       data: updatedOverview,
     });
   } catch (error) {
-    console.error("updateOverviewStatus error:", error);
+    console.error("updateOverview error:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
