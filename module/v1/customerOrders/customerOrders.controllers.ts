@@ -235,7 +235,13 @@ export const createOrder = async (req: Request, res: Response) => {
     // screenerId is optional when customer has foot data (fusslange1, fusslange2)
     const required = privetSupply
       ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
-      : ["customerId", "versorgungId", "bezahlt", "geschaeftsstandort", "totalPrice"];
+      : [
+          "customerId",
+          "versorgungId",
+          "bezahlt",
+          "geschaeftsstandort",
+          "totalPrice",
+        ];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
     const okStatus = [
@@ -345,48 +351,53 @@ export const createOrder = async (req: Request, res: Response) => {
       bezahlt === "Krankenkasse_Genehmigt" ||
       bezahlt === "Krankenkasse_Ungenehmigt";
 
-    const [screenerFile, customer, rawShadowOrVersorgung, validPrescription, partnerForVat] =
-      await Promise.all([
-        screenerId
-          ? prisma.screener_file.findUnique({
-              where: { id: screenerId },
-              select: { id: true },
-            })
-          : null,
-        prisma.customers.findUnique({
-          where: { id: customerId },
-          select: {
-            fusslange1: true,
-            fusslange2: true,
-            fussbreite1: true,
-            fussbreite2: true,
-            kugelumfang1: true,
-            kugelumfang2: true,
-            rist1: true,
-            rist2: true,
-          },
-        }),
-        privetSupply
-          ? redis.get(privetSupply)
-          : prisma.versorgungen.findUnique({
-              where: { id: versorgungId },
-              select: vSelect,
-            }),
-        prisma.prescription.findFirst({
-          where: {
-            customerId,
-            prescription_date: { gte: fourWeeksAgo, not: null },
-          },
-          orderBy: { prescription_date: "desc" },
-          select: { id: true },
-        }),
-        needPartnerVat
-          ? prisma.user.findUnique({
-              where: { id: partnerId },
-              select: { accountInfos: { select: { vat_country: true } } },
-            })
-          : Promise.resolve(null),
-      ]);
+    const [
+      screenerFile,
+      customer,
+      rawShadowOrVersorgung,
+      validPrescription,
+      partnerForVat,
+    ] = await Promise.all([
+      screenerId
+        ? prisma.screener_file.findUnique({
+            where: { id: screenerId },
+            select: { id: true },
+          })
+        : null,
+      prisma.customers.findUnique({
+        where: { id: customerId },
+        select: {
+          fusslange1: true,
+          fusslange2: true,
+          fussbreite1: true,
+          fussbreite2: true,
+          kugelumfang1: true,
+          kugelumfang2: true,
+          rist1: true,
+          rist2: true,
+        },
+      }),
+      privetSupply
+        ? redis.get(privetSupply)
+        : prisma.versorgungen.findUnique({
+            where: { id: versorgungId },
+            select: vSelect,
+          }),
+      prisma.prescription.findFirst({
+        where: {
+          customerId,
+          prescription_date: { gte: fourWeeksAgo, not: null },
+        },
+        orderBy: { prescription_date: "desc" },
+        select: { id: true },
+      }),
+      needPartnerVat
+        ? prisma.user.findUnique({
+            where: { id: partnerId },
+            select: { accountInfos: { select: { vat_country: true } } },
+          })
+        : Promise.resolve(null),
+    ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
 
@@ -1256,14 +1267,12 @@ export const getAllOrders = async (req: Request, res: Response) => {
       ausführliche_diagnose: true,
       privatePrice: true,
       insuranceTotalPrice: true,
- 
+      insoleStandards: true,
       customer: {
         select: {
           id: true,
           vorname: true,
           nachname: true,
-          email: true,
-          wohnort: true,
           customerNumber: true,
         },
       },
@@ -1274,12 +1283,6 @@ export const getAllOrders = async (req: Request, res: Response) => {
           versorgung: true,
         },
       },
-      store: {
-        select: {
-          type: true,
-        },
-      },
-      versorgung: true,
       employee: {
         select: { accountName: true, employeeName: true, email: true },
       },
@@ -1490,10 +1493,14 @@ export const getAllOrders = async (req: Request, res: Response) => {
         u_orderType: row.u_orderType,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
-        diagnosis: row.diagnosis ?? null,
+
         ausführliche_diagnose: row.ausführliche_diagnose ?? null,
-        privatePrice: (row as any).privateprice ?? (row as any).privatePrice ?? null,
-        insuranceTotalPrice: (row as any).insurancetotalprice ?? (row as any).insuranceTotalPrice ?? null,
+        privatePrice:
+          (row as any).privateprice ?? (row as any).privatePrice ?? null,
+        insuranceTotalPrice:
+          (row as any).insurancetotalprice ??
+          (row as any).insuranceTotalPrice ??
+          null,
         customer: row.cust_id
           ? {
               id: row.cust_id,
@@ -2267,7 +2274,9 @@ export const updateOrder = async (req: Request, res: Response) => {
     console.error("Update Order Error:", error);
     //order not found
     if (error.code === "P2025") {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
     res.status(500).json({
       success: false,

@@ -1509,6 +1509,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
                 })),
               },
         customerName: `${order.customer.vorname} ${order.customer.nachname}`,
+        supplyName: order.product?.name ?? null,
         versorgungName: order.product?.name ?? null,
         diagnosisStatus: order.product?.diagnosis_status ?? null,
         material: order.product?.material ?? null,
@@ -1691,7 +1692,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         insurance_payed: true,
         private_payed: true,
         privatePrice: true,
-  
+
         paymnentType: true,
         vatRate: true,
         bezahlt: true,
@@ -1701,7 +1702,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
         quantity: true,
-        
+
         Versorgungen: {
           select: {
             supplyStatus: {
@@ -1736,7 +1737,6 @@ export const getPriceDetails = async (req: Request, res: Response) => {
             },
           },
         },
-       
       },
     });
 
