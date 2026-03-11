@@ -663,7 +663,7 @@ model customers {
 }
 
 model customers_sign {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   customerId String
   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
