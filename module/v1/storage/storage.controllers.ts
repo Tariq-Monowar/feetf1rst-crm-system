@@ -375,6 +375,7 @@ export const buyStorage = async (req, res) => {
       selling_price = 0,
       groessenMengen: bodyGroessenMengen,
       price,
+      prise,
       features: bodyFeatures,
     } = req.body;
 
@@ -434,7 +435,11 @@ export const buyStorage = async (req, res) => {
     const sellingPriceFinal =
       req.body.selling_price !== undefined ? selling_price : 0;
     const priceFinal =
-      req.body.price !== undefined ? (price ?? 0) : (adminStore.price ?? 0);
+      req.body.price !== undefined
+        ? (price ?? 0)
+        : req.body.prise !== undefined
+          ? (prise ?? 0)
+          : (adminStore.price ?? 0);
 
     // features: body override or fallback to admin_store
     const featuresFinal =
@@ -450,7 +455,7 @@ export const buyStorage = async (req, res) => {
         artikelnummer: adminStore.artikelnummer,
         lagerort: lagerortFinal,
         groessenMengen: transformedGroessenMengen,
-        purchase_price: adminStore.price ?? 0,
+        purchase_price: priceFinal,
         selling_price: sellingPriceFinal,
         image: adminStore.image,
         userId: userId,
@@ -870,6 +875,25 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       skip,
       take: limit,
       orderBy: { createdAt: "desc" },
+      include: {
+        storeOrderOverviews: {
+          where: {
+            OR: [
+              { status: null },
+              {
+                status: {
+                  notIn: ["Geliefert", "Storniert", "cancelled"],
+                },
+              },
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            groessenMengen: true,
+          },
+        },
+      },
     });
 
     const inactiveBrandSettings = await prisma.store_brand_settings.findMany({
@@ -891,6 +915,9 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
 
     const storageWithStatus = addStatusToStores(allStorage).map(
       (store: any) => {
+        const overviewGroessenMengen =
+          store.storeOrderOverviews?.[0]?.groessenMengen ?? {};
+
         const brandCandidates = [
           String(store.hersteller ?? "")
             .trim()
@@ -906,7 +933,9 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
 
         return {
           ...store,
+          storeOrderOverviews: undefined,
           able_auto_order: isAutoOrderDisabled ? "disable" : "enable",
+          overview_groessenMengen: overviewGroessenMengen,
         };
       },
     );
@@ -1631,22 +1660,31 @@ export const updateOverview = async (req: Request, res: Response) => {
       });
     }
 
-    const record = await prisma.storeOrderOverview.findFirst({
+    const existingOverview = await prisma.storeOrderOverview.findUnique({
       where: { id },
       select: {
         id: true,
         status: true,
-        delivered_quantity: true,
       },
     });
 
-    if (!record) {
+    if (!existingOverview) {
       return res.status(404).json({ message: "No record found for given id" });
     }
 
-    if (record.status === "Geliefert") {
-      return res.status(403).json({ message: "Already delivered" });
+    if (existingOverview.status === "Geliefert") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Already delivered" });
     }
+
+    const normalizeOverviewSizes = (value: any) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {} as Record<string, { length?: number; quantity?: number }>;
+      }
+
+      return value as Record<string, { length?: number; quantity?: number }>;
+    };
 
     const updateData: Record<string, any> = {};
     if (status !== undefined) {
@@ -1656,22 +1694,86 @@ export const updateOverview = async (req: Request, res: Response) => {
       updateData.delivered_quantity = delivered_quantity;
     }
 
-    const updatedOverview = await prisma.storeOrderOverview.update({
-      where: { id },
-      data: updateData,
+    const updatedOverview = await prisma.$transaction(async (tx) => {
+      const overview = await tx.storeOrderOverview.update({
+        where: { id },
+        data: updateData,
+        include: {
+          store: {
+            select: {
+              id: true,
+              groessenMengen: true,
+              mindestbestand: true,
+            },
+          },
+        },
+      });
+
+      if (overview.status === "Geliefert" && overview.store) {
+        const deliveredSizes = normalizeOverviewSizes(
+          overview.delivered_quantity,
+        );
+        const storeSizes = (overview.store.groessenMengen || {}) as Record<
+          string,
+          { length?: number; quantity?: number; mindestmenge?: number }
+        >;
+        const updatedStoreSizes = { ...storeSizes };
+        const mindestbestand = overview.store.mindestbestand || 0;
+
+        for (const [sizeKey, deliveredEntry] of Object.entries(
+          deliveredSizes,
+        )) {
+          const addQty = Number(deliveredEntry?.quantity ?? 0);
+          const existingEntry = updatedStoreSizes[sizeKey];
+
+          if (!existingEntry) {
+            updatedStoreSizes[sizeKey] = {
+              quantity: addQty,
+              mindestmenge: mindestbestand,
+            };
+            continue;
+          }
+
+          const currentQuantity =
+            typeof existingEntry === "object" && "quantity" in existingEntry
+              ? Number(existingEntry.quantity ?? 0)
+              : 0;
+          const currentMindestmenge =
+            typeof existingEntry === "object" && "mindestmenge" in existingEntry
+              ? Number(existingEntry.mindestmenge ?? mindestbestand)
+              : mindestbestand;
+
+          updatedStoreSizes[sizeKey] = {
+            ...(typeof existingEntry === "object" ? existingEntry : {}),
+            quantity: currentQuantity + addQty,
+            mindestmenge: currentMindestmenge,
+          };
+        }
+
+        await tx.stores.update({
+          where: { id: overview.store.id },
+          data: {
+            groessenMengen: updatedStoreSizes as any,
+            Status: calculateStatus(updatedStoreSizes, mindestbestand),
+          },
+        });
+      }
+
+      const { store, ...overviewWithoutStore } = overview;
+      return overviewWithoutStore;
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Overview updated successfully",
       data: updatedOverview,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("updateOverview error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Something went wrong",
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error.message,
     });
   }
 };
@@ -1706,6 +1808,94 @@ export const getStoreOverviewById = async (req: Request, res: Response) => {
       success: true,
       message: "Store overview fetched successfully",
       data: storeOverview,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getAllMyStoreOverview = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const status = (req.query.status as string | undefined)?.trim();
+
+    const validStatuses: StoreOrderOverviewStatus[] = [
+      "In_bearbeitung",
+      "Versendet",
+      "Geliefert",
+      "Storniert",
+      "cancelled",
+    ];
+
+    if (status && !validStatuses.includes(status as StoreOrderOverviewStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+        validStatuses,
+      });
+    }
+
+    const whereClause: any = {
+      partnerId: userId,
+    };
+
+    if (status) {
+      whereClause.status = status as StoreOrderOverviewStatus;
+    }
+
+    if (cursor) {
+      const cursorOverview = await prisma.storeOrderOverview.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+
+      if (!cursorOverview) {
+        return res.status(200).json({
+          success: true,
+          message: "Store overviews fetched successfully",
+          data: [],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+
+      whereClause.createdAt = {
+        lt: cursorOverview.createdAt,
+      };
+    }
+
+    const storeOverviews = await prisma.storeOrderOverview.findMany({
+      where: whereClause,
+      take: limit + 1,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        produktname: true,
+        hersteller: true,
+        artikelnummer: true,
+        groessenMengen: true,
+        status: true,
+        type: true,
+        createdAt: true,
+      },
+    });
+
+    const hasMore = storeOverviews.length > limit;
+    const data = hasMore ? storeOverviews.slice(0, limit) : storeOverviews;
+    // const nextCursor = hasMore ? data[data.length - 1]?.id : null;
+
+    res.status(200).json({
+      success: true,
+      message: "Store overviews fetched successfully",
+      data,
+      hasMore,
+      // nextCursor,
     });
   } catch (error) {
     res.status(500).json({
