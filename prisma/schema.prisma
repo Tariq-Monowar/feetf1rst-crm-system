@@ -645,6 +645,7 @@ model customers {
   adminOrderTransitions    admin_order_transitions[]
   shoeOrders               shoe_order[]
   prescriptions            prescription[]
+  customersSigns           customers_sign[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
@@ -659,6 +660,24 @@ model customers {
   @@index([id, email])
   @@index([createdAt])
   @@index([partnerId])
+}
+
+model customers_sign {
+  id String @id @default(uuid())
+
+  customerId String
+  customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  sign String?
+  pdf  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([id])
 }
 
 model customer_requirements {
@@ -887,11 +906,11 @@ model customer_versorgungen {
  * other price is insurance paymnent if status is insurance
  */
 
- enum u_orderType {
+enum u_orderType {
   Rady_Insole
   Milling_Block
   Sonstiges
- }
+}
 
 model customerOrders {
   /**
@@ -899,8 +918,8 @@ model customerOrders {
    * main data (order data)
    * ------------------------------------------------
    */
-  id          String @id @default(uuid())
-   
+  id String @id @default(uuid())
+
   u_orderType u_orderType?
 
   orderNumber Int
@@ -2199,6 +2218,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2222,6 +2243,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3055,30 +3078,30 @@ model pos_receipt {
   subtotal  Float
 
   // Fiskaly SIGN IT fields (per integration PDF)
-  fiskalyRecordId    String?    // record_id from fiskaly response (TRANSACTION)
-  fiskalyIntentionId String?    // intention_id from fiskaly (needed for cancellation reference)
-  fiskalySignature   String?    // fiscal signature from fiskaly
-  fiscalizedAt       DateTime?  // when the receipt was fiscalized
-  fiskalyMetadata    Json?      // full fiskaly response (receipt metadata, PDF endpoint, etc.)
+  fiskalyRecordId    String? // record_id from fiskaly response (TRANSACTION)
+  fiskalyIntentionId String? // intention_id from fiskaly (needed for cancellation reference)
+  fiskalySignature   String? // fiscal signature from fiskaly
+  fiscalizedAt       DateTime? // when the receipt was fiscalized
+  fiskalyMetadata    Json? // full fiskaly response (receipt metadata, PDF endpoint, etc.)
 
   // Stornierung (cancellation) — fiskaly SIGN IT INTENTION → TRANSACTION::CANCELLATION
   storniert            Boolean   @default(false)
   storniertAt          DateTime?
-  storniertRecordId    String?   // fiskaly record ID of the cancellation transaction
-  storniertIntentionId String?   // fiskaly intention ID used for the cancellation
+  storniertRecordId    String? // fiskaly record ID of the cancellation transaction
+  storniertIntentionId String? // fiskaly intention ID used for the cancellation
 
   // Legacy TSE fields (German KassenSichV — kept for historical receipts)
-  fiskalyTxId                String?
-  fiskalyTxNumber            Int?
-  fiskalyTssSerialNumber     String?
-  fiskalyClientSerialNumber  String?
-  fiskalyTimeStart           DateTime?
-  fiskalyTimeEnd             DateTime?
-  fiskalySignatureValue      String?
-  fiskalySignatureAlgorithm  String?
-  fiskalySignatureCounter    Int?
-  fiskalySignaturePublicKey  String?
-  fiskalyQrCodeData          String?
+  fiskalyTxId               String?
+  fiskalyTxNumber           Int?
+  fiskalyTssSerialNumber    String?
+  fiskalyClientSerialNumber String?
+  fiskalyTimeStart          DateTime?
+  fiskalyTimeEnd            DateTime?
+  fiskalySignatureValue     String?
+  fiskalySignatureAlgorithm String?
+  fiskalySignatureCounter   Int?
+  fiskalySignaturePublicKey String?
+  fiskalyQrCodeData         String?
 
   // Snapshot of receipt data (company, product, financial)
   receiptData Json?

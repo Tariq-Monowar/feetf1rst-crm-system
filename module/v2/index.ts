@@ -29,6 +29,7 @@ import shoe_orders_statistic from "./shoe_orders/statistic/statistic.routes";
 
 import order_notes from "./order_notes/order_notes.routes";
 import mentors from "./mentors/mentors.routes";
+import customers_sign from "./customers_sign/customers_sign.routes";
 
 import insurance from "./insurance/insurance.routes";
 import prescription from "./insurance/prescription/prescription.routes";
@@ -70,6 +71,7 @@ const moduleRoutes = [
   { path: "/order-notes", route: order_notes },
 
   { path: "/mentors", route: mentors },
+  { path: "/customers-sign", route: customers_sign },
 
   { path: "/insurance", route: insurance },
   { path: "/insurance/prescription", route: prescription },
