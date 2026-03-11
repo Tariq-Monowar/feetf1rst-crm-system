@@ -1434,6 +1434,8 @@ model Stores {
   adminStoreId String?
   adminStore   admin_store? @relation(fields: [adminStoreId], references: [id])
 
+  auto_order Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

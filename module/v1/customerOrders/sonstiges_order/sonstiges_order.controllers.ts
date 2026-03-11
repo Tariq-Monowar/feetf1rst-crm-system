@@ -51,6 +51,7 @@ export const createSonstigesOrder = async (req: Request, res: Response) => {
           orderNumber,
           totalPrice: Number(total_price),
           statusUpdate: new Date(),
+          u_orderType: "Sonstiges",
           orderCategory: "sonstiges",
           service_name: service_name ?? null,
           sonstiges_category: sonstiges_category ?? null,

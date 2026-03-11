@@ -1,7 +1,7 @@
 import express from "express";
 
 import { verifyUser } from "../../../../middleware/verifyUsers";
-import { getAllBrandStore, toggleBrandStore } from "./settings.controllers";
+import { getAllBrandStore, toggleAutoOrderStatus, toggleBrandStore } from "./settings.controllers";
 
 const router = express.Router();
 
@@ -11,6 +11,12 @@ router.post(
   "/toggle-brand",
   verifyUser("PARTNER", "ADMIN"),
   toggleBrandStore,
+);
+
+router.post(
+  "/toggle-auto-order-status/:id",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  toggleAutoOrderStatus,
 );
 
 export default router;

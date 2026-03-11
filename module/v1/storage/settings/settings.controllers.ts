@@ -108,3 +108,45 @@ export const toggleBrandStore = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const toggleAutoOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const partnerId = String(req.user.id);
+    const { id } = req.params;
+    const store = await prisma.stores.findUnique({
+      where: { id },
+      select: {
+        auto_order: true,
+      },
+    });
+
+    if (!store) {
+      return res.status(400).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
+
+    const nextAutoOrder = store.auto_order ? false : true;
+
+    const result = await prisma.stores.update({
+      where: { id },
+      data: { auto_order: nextAutoOrder },
+      select: {
+        id: true,
+        auto_order: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};

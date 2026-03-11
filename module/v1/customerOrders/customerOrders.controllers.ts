@@ -1295,6 +1295,14 @@ export const getAllOrders = async (req: Request, res: Response) => {
       }
       if (type === "all") {
         // no type/orderCategory filter — return all types
+      } else if (type === "sonstiges") {
+        // Some older Sonstiges orders were stored with orderCategory only.
+        conditions.push(
+          Prisma.sql`(
+            co."orderCategory" = 'sonstiges'::"OrderCategory" OR
+            co."u_orderType" = ${typeMap[type]}::"u_orderType"
+          )`,
+        );
       } else {
         conditions.push(
           Prisma.sql`co."u_orderType" = ${typeMap[type]}::"u_orderType"`,
@@ -1555,7 +1563,12 @@ export const getAllOrders = async (req: Request, res: Response) => {
 
     const where: any = {};
 
-    if (type !== "all") {
+    if (type === "sonstiges") {
+      where.OR = [
+        { orderCategory: "sonstiges" },
+        { u_orderType: typeMap[type] },
+      ];
+    } else if (type !== "all") {
       where.u_orderType = typeMap[type];
     }
 
