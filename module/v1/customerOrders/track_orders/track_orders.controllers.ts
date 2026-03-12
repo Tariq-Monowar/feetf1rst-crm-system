@@ -1403,6 +1403,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         sonstiges_category: true,
         diagnosis: true,
         quantity: true,
+        schuhmodell_wählen: true,
 
         insoleStandards: {
           select: {
@@ -1521,6 +1522,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         createdAt: order.createdAt,
         ausführliche_diagnose: order.ausführliche_diagnose,
         quantity: order.quantity,
+        schuhmodell_wählen: order.schuhmodell_wählen ?? null,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
