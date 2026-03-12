@@ -8,6 +8,39 @@ const KEY_MAP = Object.fromEntries(KEYS.map((k) => [k.toLowerCase(), k]));
 const DEFAULTS = Object.fromEntries(KEYS.map((k) => [k, true]));
 const CACHE_PREFIX = "feature_access:";
 
+const buildFeatureAccessResponse = (access: Record<string, boolean>) =>
+  FEATURES.map((f) => ({
+    title: f.title,
+    action: access[f.key] ?? true,
+    path: f.path,
+    nested: (f.nested ?? []).map((n) => ({ ...n, action: access[f.key] ?? true })),
+  }));
+
+const isFeatureAccessCacheFresh = (value: unknown): boolean => {
+  if (!Array.isArray(value) || value.length !== FEATURES.length) return false;
+
+  return FEATURES.every((feature, index) => {
+    const item = value[index] as {
+      title?: unknown;
+      path?: unknown;
+      nested?: Array<{ title?: unknown; path?: unknown }>;
+    };
+
+    if (item?.title !== feature.title || item?.path !== feature.path) return false;
+
+    const nested = Array.isArray(item?.nested) ? item.nested : [];
+    const expectedNested = feature.nested ?? [];
+
+    if (nested.length !== expectedNested.length) return false;
+
+    return expectedNested.every(
+      (nestedItem, nestedIndex) =>
+        nested[nestedIndex]?.title === nestedItem.title &&
+        nested[nestedIndex]?.path === nestedItem.path,
+    );
+  });
+};
+
 export async function getFeatureAccess(req: Request, res: Response) {
   try {
     const { partnerId } = req.params;
@@ -15,7 +48,10 @@ export async function getFeatureAccess(req: Request, res: Response) {
     const cached = await redis.get(cacheKey).catch(() => null);
     if (cached) {
       const data = JSON.parse(cached);
-      return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+      if (isFeatureAccessCacheFresh(data)) {
+        return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+      }
+      await redis.del(cacheKey).catch(() => {});
     }
 
     const partner = await prisma.user.findUnique({
@@ -47,12 +83,7 @@ export async function getFeatureAccess(req: Request, res: Response) {
     }
 
     const access = Object.fromEntries(KEYS.map((k) => [k, !!(row[k] ?? true)]));
-    const data = FEATURES.map((f) => ({
-      title: f.title,
-      action: access[f.key] ?? true,
-      path: f.path,
-      nested: (f.nested ?? []).map((n) => ({ ...n, action: access[f.key] ?? true })),
-    }));
+    const data = buildFeatureAccessResponse(access);
 
     await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
 
@@ -130,7 +161,10 @@ export async function partnerFeatureAccess(req: Request, res: Response) {
       const cached = await redis.get(empCacheKey).catch(() => null);
       if (cached) {
         const data = JSON.parse(cached);
-        return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+        if (isFeatureAccessCacheFresh(data)) {
+          return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+        }
+        await redis.del(empCacheKey).catch(() => {});
       }
 
       let partnerRow = await prisma.featureAccess.findUnique({ where: { partnerId } });
@@ -166,12 +200,7 @@ export async function partnerFeatureAccess(req: Request, res: Response) {
       const effective = Object.fromEntries(
         KEYS.map((k) => [k, !!(partnerAccess[k] && empRow[k])])
       );
-      const data = FEATURES.map((f) => ({
-        title: f.title,
-        action: effective[f.key] ?? true,
-        path: f.path,
-        nested: (f.nested ?? []).map((n) => ({ ...n, action: effective[f.key] ?? true })),
-      }));
+      const data = buildFeatureAccessResponse(effective);
 
       await redis.set(empCacheKey, JSON.stringify(data)).catch(() => {});
 
@@ -182,7 +211,10 @@ export async function partnerFeatureAccess(req: Request, res: Response) {
     const cached = await redis.get(cacheKey).catch(() => null);
     if (cached) {
       const data = JSON.parse(cached);
-      return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+      if (isFeatureAccessCacheFresh(data)) {
+        return res.status(200).json({ success: true, message: "Feature access retrieved successfully", data });
+      }
+      await redis.del(cacheKey).catch(() => {});
     }
 
     const partner = await prisma.user.findUnique({
@@ -214,12 +246,7 @@ export async function partnerFeatureAccess(req: Request, res: Response) {
     }
 
     const access = Object.fromEntries(KEYS.map((k) => [k, !!(row[k] ?? true)]));
-    const data = FEATURES.map((f) => ({
-      title: f.title,
-      action: access[f.key] ?? true,
-      path: f.path,
-      nested: (f.nested ?? []).map((n) => ({ ...n, action: access[f.key] ?? true })),
-    }));
+    const data = buildFeatureAccessResponse(access);
 
     await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
 

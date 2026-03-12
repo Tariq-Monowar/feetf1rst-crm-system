@@ -2221,6 +2221,10 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2244,6 +2248,10 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2634,6 +2642,8 @@ model FeatureAccess {
   warenwirtschaft            Boolean @default(true)
   leistenerstellung          Boolean @default(true)
 
+  crmConnection Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2685,6 +2695,8 @@ model employee_feature_access {
   statistiken                Boolean @default(false)
   warenwirtschaft            Boolean @default(false)
   leistenerstellung          Boolean @default(false)
+
+  crmConnection Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
