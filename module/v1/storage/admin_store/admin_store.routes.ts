@@ -16,6 +16,7 @@ import {
   createBrandStore,
   getAllBrandStoreByAdmin,
   getSingleBrandStoreByAdmin,
+  getAllModelName,
 } from "./admin_store.controllers";
 import upload from "../../../../config/multer.config";
 
@@ -84,6 +85,14 @@ router.get(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   searchBrandStore,
 );
+
+// get all stock name using brand name in admin store
+router.get(
+  "/get-all-model-name/:brandName",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getAllModelName,
+);
+
 router.get(
   "/get-brand-store/:id",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
@@ -105,6 +114,8 @@ router.get(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getSingleBrandStoreByAdmin,
 );
+
+
 
 
 export default router;

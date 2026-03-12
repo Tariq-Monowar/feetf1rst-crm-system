@@ -52,7 +52,7 @@ export const createAdminStore = async (req, res) => {
       "brand",
       "productName",
       "artikelnummer",
-      "eigenschaften",
+      // "eigenschaften",
       "groessenMengen",
     ].find((field) => !req.body[field]);
     if (missingField) {
@@ -674,6 +674,88 @@ export const searchBrandStore = async (req: any, res: any) => {
   }
 };
 
+export const getAllModelName = async (req: any, res: any) => {
+  try {
+    const { brandName } = req.params;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const type = (req.query.type as string)?.trim() || "rady_insole";
+
+    if (!VALID_STORE_TYPES.includes(type as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid type.",
+        validTypes: VALID_STORE_TYPES,
+      });
+    }
+
+    if (!brandName?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "brandName is required",
+      });
+    }
+
+    const whereCondition: any = {
+      brand: brandName.trim(),
+      type: type as StoreType,
+    };
+
+    if (cursor) {
+      const cursorAdminStore = await prisma.admin_store.findUnique({
+        where: { id: cursor },
+        select: { createdAt: true },
+      });
+
+      if (!cursorAdminStore) {
+        return res.status(200).json({
+          success: true,
+          message: "Model names fetched successfully",
+          data: [],
+          hasMore: false,
+          nextCursor: null,
+        });
+      }
+
+      whereCondition.createdAt = {
+        lt: cursorAdminStore.createdAt,
+      };
+    }
+
+    const modelName = await prisma.admin_store.findMany({
+      where: whereCondition,
+      take: limit + 1,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        brand: true,
+        productName: true,
+        artikelnummer: true,
+        type: true,
+      },
+    });
+
+    const hasMore = modelName.length > limit;
+    const data = hasMore ? modelName.slice(0, limit) : modelName;
+    const nextCursor = hasMore ? data[data.length - 1]?.id : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Model names fetched successfully",
+      data,
+      hasMore,
+      nextCursor,
+    });
+  } catch (error: any) {
+    console.error("Error in getAllModelName:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const createBrandStore = async (req: any, res: any) => {
   try {
     const { brand, groessenMengen, type: rawType } = req.body;
@@ -952,16 +1034,27 @@ export const deleteBrandStore = async (req: any, res: any) => {
       });
     }
 
-    // Check if any of the brand stores exist
+    // Check if any of the brand stores exist and get their brand names
     const existingBrandStores = await prisma.brand_store.findMany({
       where: { id: { in: ids } },
-      select: { id: true },
+      select: { id: true, brand: true },
     });
 
     if (existingBrandStores.length === 0) {
       return res.status(404).json({
         success: false,
         message: "No brand stores found with the provided ids",
+      });
+    }
+
+    const brandNames = existingBrandStores
+      .map((bs) => bs.brand)
+      .filter((b): b is string => b != null && b.trim() !== "");
+
+    // Delete partner settings that reference these brands
+    if (brandNames.length > 0) {
+      await prisma.store_brand_settings.deleteMany({
+        where: { brand: { in: brandNames } },
       });
     }
 

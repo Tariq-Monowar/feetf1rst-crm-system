@@ -32,7 +32,10 @@ import previousOrders from "./customerOrders/previous_orders/previous_orders.rou
 
 import customerPrice from "./customerPrice/customerPrice.routes";
 import workeshopNote from "./workshopNote/workshopNote.routes";
+
 import storage from "./storage/storage.routes";
+import store_settings from "./storage/settings/settings.routes";
+
 import bestellubersicht from "./bestellubersicht/Bestellubersicht.routes";
 
 import custom_shafts from "./admin_order/custom_shafts.routes";
@@ -86,6 +89,7 @@ const moduleRoutes = [
 
   { path: "/store", route: storage },
   { path: "/store/admin-store", route: admin_store },
+  { path: "/store/settings", route: store_settings },
 
   { path: "/bestellubersicht", route: bestellubersicht },
 

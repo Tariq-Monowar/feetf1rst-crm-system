@@ -1,26 +1,34 @@
 import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
-import { createCustomerSign, getCustomerSignDetails } from "./customers_sign.controllers";
-import uploadLocal from "../../../config/multer-local.config";
+import upload from "../../../config/multer.config";
+import {
+  getCustomerSignFiles,
+  getCustomerSignByCustomerId,
+  manageCustomerSign,
+} from "./customers_sign.controllers";
 
 const router = express.Router();
 
-// POST: Upload sign + pdf for a customer
-router.post(
-  "/create/:customerId",
+router.get(
+  "/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  uploadLocal.fields([
-    { name: "sign", maxCount: 1 },
-    { name: "pdf", maxCount: 1 },
-  ]),
-  createCustomerSign
+  getCustomerSignFiles,
 );
 
-// GET: Get customer sign details
 router.get(
   "/get-details/:customerId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  getCustomerSignDetails
+  getCustomerSignByCustomerId,
+);
+
+router.patch(
+  "/manage/:customerId",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  upload.fields([
+    { name: "sign", maxCount: 1 },
+    { name: "pdf", maxCount: 1 },
+  ]),
+  manageCustomerSign,
 );
 
 export default router;

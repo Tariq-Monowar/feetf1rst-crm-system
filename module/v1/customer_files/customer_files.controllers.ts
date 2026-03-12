@@ -321,7 +321,7 @@ export const createCustomerFile = async (req: Request, res: Response) => {
 export const getCustomerFiles = async (req, res) => {
   try {
     const customerId = req.query.id as string;
-    const table = (req.query.table as string) || "all"; // all, screener_file, custom_shafts, customer_files, barcode, insoelInvoice
+    const table = (req.query.table as string) || "all"; // all, screener_file, custom_shafts, customer_files, customers_sign, sign, pdf, barcode, insoelInvoice
 
     if (!customerId) {
       return res.status(400).json({
@@ -349,6 +349,12 @@ export const getCustomerFiles = async (req, res) => {
     let screenerRows = [];
     let customShaftRows = [];
     let customerFilesRows = [];
+    let customerSignRows: Array<{
+      id: string;
+      createdAt: Date;
+      sign: string | null;
+      pdf: string | null;
+    }> = [];
     let barcodeRows = [];
     let invoiceRows = [];
 
@@ -396,6 +402,28 @@ export const getCustomerFiles = async (req, res) => {
           url: true,
         },
       });
+    }
+
+    if (
+      table === "all" ||
+      table === "customers_sign" ||
+      table === "sign" ||
+      table === "pdf"
+    ) {
+      customerSignRows = await prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          createdAt: Date;
+          sign: string | null;
+          pdf: string | null;
+        }>
+      >(
+        `SELECT "id", "createdAt", "sign", "pdf"
+         FROM "customers_sign"
+         WHERE "customerId" = $1
+         ORDER BY "createdAt" DESC`,
+        customerId,
+      );
     }
 
     if (table === "all" || table === "barcode") {
@@ -496,6 +524,31 @@ export const getCustomerFiles = async (req, res) => {
           url: row.url,
           id: row.id,
           fileType: getFileType(row.url),
+          createdAt: row.createdAt,
+        });
+      }
+    }
+
+    // Customer Sign
+    for (const row of customerSignRows) {
+      if (row.sign) {
+        allEntries.push({
+          fieldName: "sign",
+          table: "customers_sign",
+          url: row.sign,
+          id: row.id,
+          fileType: getFileType(row.sign),
+          createdAt: row.createdAt,
+        });
+      }
+
+      if (row.pdf) {
+        allEntries.push({
+          fieldName: "pdf",
+          table: "customers_sign",
+          url: row.pdf,
+          id: row.id,
+          fileType: getFileType(row.pdf),
           createdAt: row.createdAt,
         });
       }

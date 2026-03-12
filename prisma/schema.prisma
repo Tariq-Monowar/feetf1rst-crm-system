@@ -91,6 +91,8 @@ model User {
   partnerTotalAmounts         partner_total_amount?
   partnerPayoutHistories      partner_payout_history[]
   requestPayouts              request_payout[]
+  //store_brand_settings
+  storeBrandSettings          store_brand_settings[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -643,6 +645,7 @@ model customers {
   adminOrderTransitions    admin_order_transitions[]
   shoeOrders               shoe_order[]
   prescriptions            prescription[]
+  customersSigns           customers_sign[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
@@ -657,6 +660,24 @@ model customers {
   @@index([id, email])
   @@index([createdAt])
   @@index([partnerId])
+}
+
+model customers_sign {
+  id String @id @default(cuid())
+
+  customerId String
+  customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  sign String?
+  pdf  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([id])
 }
 
 model customer_requirements {
@@ -885,13 +906,22 @@ model customer_versorgungen {
  * other price is insurance paymnent if status is insurance
  */
 
+enum u_orderType {
+  Rady_Insole
+  Milling_Block
+  Sonstiges
+}
+
 model customerOrders {
   /**
    * ------------------------------------------------
    * main data (order data)
    * ------------------------------------------------
    */
-  id          String @id @default(uuid())
+  id String @id @default(uuid())
+
+  u_orderType u_orderType?
+
   orderNumber Int
 
   diagnosis String?
@@ -1425,6 +1455,8 @@ model Stores {
   adminStoreId String?
   adminStore   admin_store? @relation(fields: [adminStoreId], references: [id])
 
+  auto_order Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1448,6 +1480,7 @@ enum StoreType {
 enum CreateStatus {
   by_self
   by_admin
+  by_models
 }
 
 model StoreOrderOverview {
@@ -1459,13 +1492,22 @@ model StoreOrderOverview {
   partnerId String
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  size                Int
-  length              Float
-  quantity            Int
-  auto_order_limit    Int
-  auto_order_quantity Int
+  //airticle number
+  artikelnummer String?
+  /// Product name
+  produktname   String? //productName
+
+  /// প্রোডাক্টের প্রস্তুতকারক Manufacturer 
+  hersteller String? //brand
+
+  /// Per-size data: rady_insole e.g. "35".."48" => { length, quantity }; milling_block e.g. "1","2","3" => { length, quantity }
+  groessenMengen Json
+
+  // groessenMengen -> delivered_quantity without quantity
+  delivered_quantity Json?
 
   status StoreOrderOverviewStatus?
+  type   StoreType?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1476,6 +1518,7 @@ enum StoreOrderOverviewStatus {
   Versendet
   Geliefert
   Storniert
+  cancelled
 }
 
 model StoresHistory {
@@ -1543,12 +1586,26 @@ model stock_material {
   updatedAt DateTime @updatedAt
 }
 
+model store_brand_settings {
+  id String @id @default(cuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  brand String
+  type  StoreType @default(rady_insole)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+}
+
 /**
  * ----------------------------------------------------------------------
  * ============================Store end=================================
  */
 model Bestellubersicht {
-  id     String @id @default(uuid())
+  id     String @id @default(cuid())
   number Int
 
   userId String @unique
@@ -1568,7 +1625,7 @@ model Bestellubersicht {
 
 //  ================= V1========================
 model massschuhe_order {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderNumber Int?
 
@@ -1651,7 +1708,7 @@ enum massschuhe_order_status {
 }
 
 model massschuhe_order_insurance {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String
   order   massschuhe_order @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1673,7 +1730,7 @@ model massschuhe_order_insurance {
 }
 
 model massschuhe_order_history {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   statusFrom massschuhe_order_status?
   statusTo   massschuhe_order_status
@@ -2153,6 +2210,21 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2176,6 +2248,21 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2555,6 +2642,8 @@ model FeatureAccess {
   warenwirtschaft            Boolean @default(true)
   leistenerstellung          Boolean @default(true)
 
+  crmConnection Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2606,6 +2695,8 @@ model employee_feature_access {
   statistiken                Boolean @default(false)
   warenwirtschaft            Boolean @default(false)
   leistenerstellung          Boolean @default(false)
+
+  crmConnection Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2728,6 +2819,8 @@ model partners_settings {
   @@index([updatedAt])
   @@map("partners_settings")
 }
+
+//store settings
 
 model order_settings {
   id        Int      @id @default(autoincrement())
@@ -2998,30 +3091,30 @@ model pos_receipt {
   subtotal  Float
 
   // Fiskaly SIGN IT fields (per integration PDF)
-  fiskalyRecordId    String?    // record_id from fiskaly response (TRANSACTION)
-  fiskalyIntentionId String?    // intention_id from fiskaly (needed for cancellation reference)
-  fiskalySignature   String?    // fiscal signature from fiskaly
-  fiscalizedAt       DateTime?  // when the receipt was fiscalized
-  fiskalyMetadata    Json?      // full fiskaly response (receipt metadata, PDF endpoint, etc.)
+  fiskalyRecordId    String? // record_id from fiskaly response (TRANSACTION)
+  fiskalyIntentionId String? // intention_id from fiskaly (needed for cancellation reference)
+  fiskalySignature   String? // fiscal signature from fiskaly
+  fiscalizedAt       DateTime? // when the receipt was fiscalized
+  fiskalyMetadata    Json? // full fiskaly response (receipt metadata, PDF endpoint, etc.)
 
   // Stornierung (cancellation) — fiskaly SIGN IT INTENTION → TRANSACTION::CANCELLATION
   storniert            Boolean   @default(false)
   storniertAt          DateTime?
-  storniertRecordId    String?   // fiskaly record ID of the cancellation transaction
-  storniertIntentionId String?   // fiskaly intention ID used for the cancellation
+  storniertRecordId    String? // fiskaly record ID of the cancellation transaction
+  storniertIntentionId String? // fiskaly intention ID used for the cancellation
 
   // Legacy TSE fields (German KassenSichV — kept for historical receipts)
-  fiskalyTxId                String?
-  fiskalyTxNumber            Int?
-  fiskalyTssSerialNumber     String?
-  fiskalyClientSerialNumber  String?
-  fiskalyTimeStart           DateTime?
-  fiskalyTimeEnd             DateTime?
-  fiskalySignatureValue      String?
-  fiskalySignatureAlgorithm  String?
-  fiskalySignatureCounter    Int?
-  fiskalySignaturePublicKey  String?
-  fiskalyQrCodeData          String?
+  fiskalyTxId               String?
+  fiskalyTxNumber           Int?
+  fiskalyTssSerialNumber    String?
+  fiskalyClientSerialNumber String?
+  fiskalyTimeStart          DateTime?
+  fiskalyTimeEnd            DateTime?
+  fiskalySignatureValue     String?
+  fiskalySignatureAlgorithm String?
+  fiskalySignatureCounter   Int?
+  fiskalySignaturePublicKey String?
+  fiskalyQrCodeData         String?
 
   // Snapshot of receipt data (company, product, financial)
   receiptData Json?

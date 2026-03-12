@@ -1392,6 +1392,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     const order = await prisma.customerOrders.findUnique({
       where: { id: orderId },
       select: {
+        orderNumber: true,
         versorgung_note: true,
         überzug: true,
         fertigstellungBis: true,
@@ -1402,6 +1403,21 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         service_name: true,
         sonstiges_category: true,
         diagnosis: true,
+        quantity: true,
+        schuhmodell_wählen: true,
+        addonPrices: true,
+        discount: true,
+        insuranceTotalPrice: true,
+        insurance_payed: true,
+        private_payed: true,
+        privatePrice: true,
+        paymnentType: true,
+        vatRate: true,
+        bezahlt: true,
+        orderStatus: true,
+        totalPrice: true,
+        fussanalysePreis: true,
+        einlagenversorgungPreis: true,
 
         insoleStandards: {
           select: {
@@ -1429,6 +1445,45 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             versorgung: true,
           },
         },
+        Versorgungen: {
+          select: {
+            id: true,
+            name: true,
+            versorgung: true,
+            material: true,
+            supplyStatus: {
+              select: {
+                name: true,
+                price: true,
+                vatRate: true,
+              },
+            },
+          },
+        },
+        customerOrderInsurances: {
+          select: {
+            id: true,
+            price: true,
+            description: true,
+            vat_country: true,
+          },
+        },
+        partner: {
+          select: {
+            accountInfos: {
+              select: {
+                vat_country: true,
+              },
+            },
+          },
+        },
+        screenerFile: {
+          select: {
+            picture_23: true,
+            picture_24: true,
+            createdAt: true,
+          },
+        },
         store: {
           select: {
             produktname: true,
@@ -1446,15 +1501,18 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch screener file
-    const customerScreenerFile = await prisma.screener_file.findFirst({
-      where: { customerId: order.customer.id },
-      orderBy: { createdAt: "desc" },
-      select: {
-        picture_23: true,
-        picture_24: true,
-      },
-    });
+    // Prefer the screener file linked to this order; fall back to the latest customer screener.
+    const customerScreenerFile =
+      order.screenerFile ??
+      (await prisma.screener_file.findFirst({
+        where: { customerId: order.customer.id },
+        orderBy: { createdAt: "desc" },
+        select: {
+          picture_23: true,
+          picture_24: true,
+          createdAt: true,
+        },
+      }));
 
     // Calculate matched size if customer foot size and store exist
     let storeInfo = null;
@@ -1481,6 +1539,40 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         };
       }
     }
+
+    const quantity = Number(order.quantity) || 1;
+    const totalPrice = Number(order.totalPrice) || 0;
+    const privatePrice = Number(order.privatePrice) || 0;
+    const insuranceTotalPrice = Number(order.insuranceTotalPrice) || 0;
+    const addonPrices = Number(order.addonPrices) || 0;
+    const footAnalysisPrice = Number(order.fussanalysePreis) || 0;
+    const supplyExtraPrice = Number(order.einlagenversorgungPreis) || 0;
+    const discount = Number(order.discount) || 0;
+    const vatRate =
+      typeof order.vatRate === "number"
+        ? order.vatRate
+        : typeof order.Versorgungen?.supplyStatus?.vatRate === "number"
+          ? order.Versorgungen.supplyStatus.vatRate
+          : 0;
+    const vatRateDecimal = vatRate / 100;
+    const insuranceNetPrice =
+      vatRateDecimal > 0
+        ? insuranceTotalPrice / (1 + vatRateDecimal)
+        : insuranceTotalPrice;
+    const insuranceVatAmount = insuranceTotalPrice - insuranceNetPrice;
+    const subtotalWithoutPrivateShare = Math.max(totalPrice - privatePrice, 0);
+    const material =
+      order.product?.material ??
+      (Array.isArray(order.Versorgungen?.material)
+        ? order.Versorgungen.material.join(", ")
+        : null);
+    const supplyName =
+      order.Versorgungen?.name ??
+      order.Versorgungen?.supplyStatus?.name ??
+      order.product?.name ??
+      null;
+    const versorgungName =
+      order.Versorgungen?.versorgung ?? order.product?.versorgung ?? null;
 
     // if (!customerScreenerFile) {
     //   return res.status(404).json({
@@ -1509,15 +1601,18 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
                 })),
               },
         customerName: `${order.customer.vorname} ${order.customer.nachname}`,
-        versorgungName: order.product?.name ?? null,
+        supplyName,
+        versorgungName,
         diagnosisStatus: order.product?.diagnosis_status ?? null,
-        material: order.product?.material ?? null,
-        versorgung: order.product?.versorgung ?? null,
+        material,
+        versorgung: versorgungName,
         versorgung_note: order.versorgung_note ?? null,
         uberzug: order.überzug,
         fertigstellungBis: order.fertigstellungBis,
         createdAt: order.createdAt,
         ausführliche_diagnose: order.ausführliche_diagnose,
+        quantity: order.quantity,
+        schuhmodell_wählen: order.schuhmodell_wählen ?? null,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
@@ -1528,6 +1623,30 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         // Images are already S3 URLs, use directly (screener file may not exist)
         picture_23: customerScreenerFile?.picture_23 ?? null,
         picture_24: customerScreenerFile?.picture_24 ?? null,
+        priceDetails: {
+          orderNumber: order.orderNumber,
+          orderStatus: order.orderStatus,
+          bezahlt: order.bezahlt,
+          paymnentType: order.paymnentType,
+          quantity,
+          totalPrice,
+          privatePrice,
+          insuranceTotalPrice,
+          addonPrices,
+          footAnalysisPrice,
+          supplyExtraPrice,
+          discount,
+          vatRate,
+          insuranceNetPrice,
+          insuranceVatAmount,
+          subtotalWithoutPrivateShare,
+          insurance_payed: order.insurance_payed ?? false,
+          private_payed: order.private_payed ?? false,
+          partnerVatCountry:
+            order.partner?.accountInfos?.find((item) => item.vat_country)
+              ?.vat_country ?? null,
+          customerOrderInsurances: order.customerOrderInsurances,
+        },
       },
     });
   } catch (error: any) {
@@ -1540,6 +1659,12 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
   }
 };
 
+
+// router.get(
+//   "/barcode-label/:orderId",
+//   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+//   getBarcodeLabel,
+// );
 export const getBarcodeLabel = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
@@ -1691,7 +1816,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         insurance_payed: true,
         private_payed: true,
         privatePrice: true,
-  
+
         paymnentType: true,
         vatRate: true,
         bezahlt: true,
@@ -1701,7 +1826,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
         quantity: true,
-        
+
         Versorgungen: {
           select: {
             supplyStatus: {
@@ -1736,7 +1861,6 @@ export const getPriceDetails = async (req: Request, res: Response) => {
             },
           },
         },
-       
       },
     });
 

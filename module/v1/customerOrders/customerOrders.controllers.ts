@@ -235,7 +235,13 @@ export const createOrder = async (req: Request, res: Response) => {
     // screenerId is optional when customer has foot data (fusslange1, fusslange2)
     const required = privetSupply
       ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
-      : ["customerId", "versorgungId", "bezahlt", "geschaeftsstandort", "totalPrice"];
+      : [
+          "customerId",
+          "versorgungId",
+          "bezahlt",
+          "geschaeftsstandort",
+          "totalPrice",
+        ];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
 
     const okStatus = [
@@ -345,48 +351,53 @@ export const createOrder = async (req: Request, res: Response) => {
       bezahlt === "Krankenkasse_Genehmigt" ||
       bezahlt === "Krankenkasse_Ungenehmigt";
 
-    const [screenerFile, customer, rawShadowOrVersorgung, validPrescription, partnerForVat] =
-      await Promise.all([
-        screenerId
-          ? prisma.screener_file.findUnique({
-              where: { id: screenerId },
-              select: { id: true },
-            })
-          : null,
-        prisma.customers.findUnique({
-          where: { id: customerId },
-          select: {
-            fusslange1: true,
-            fusslange2: true,
-            fussbreite1: true,
-            fussbreite2: true,
-            kugelumfang1: true,
-            kugelumfang2: true,
-            rist1: true,
-            rist2: true,
-          },
-        }),
-        privetSupply
-          ? redis.get(privetSupply)
-          : prisma.versorgungen.findUnique({
-              where: { id: versorgungId },
-              select: vSelect,
-            }),
-        prisma.prescription.findFirst({
-          where: {
-            customerId,
-            prescription_date: { gte: fourWeeksAgo, not: null },
-          },
-          orderBy: { prescription_date: "desc" },
-          select: { id: true },
-        }),
-        needPartnerVat
-          ? prisma.user.findUnique({
-              where: { id: partnerId },
-              select: { accountInfos: { select: { vat_country: true } } },
-            })
-          : Promise.resolve(null),
-      ]);
+    const [
+      screenerFile,
+      customer,
+      rawShadowOrVersorgung,
+      validPrescription,
+      partnerForVat,
+    ] = await Promise.all([
+      screenerId
+        ? prisma.screener_file.findUnique({
+            where: { id: screenerId },
+            select: { id: true },
+          })
+        : null,
+      prisma.customers.findUnique({
+        where: { id: customerId },
+        select: {
+          fusslange1: true,
+          fusslange2: true,
+          fussbreite1: true,
+          fussbreite2: true,
+          kugelumfang1: true,
+          kugelumfang2: true,
+          rist1: true,
+          rist2: true,
+        },
+      }),
+      privetSupply
+        ? redis.get(privetSupply)
+        : prisma.versorgungen.findUnique({
+            where: { id: versorgungId },
+            select: vSelect,
+          }),
+      prisma.prescription.findFirst({
+        where: {
+          customerId,
+          prescription_date: { gte: fourWeeksAgo, not: null },
+        },
+        orderBy: { prescription_date: "desc" },
+        select: { id: true },
+      }),
+      needPartnerVat
+        ? prisma.user.findUnique({
+            where: { id: partnerId },
+            select: { accountInfos: { select: { vat_country: true } } },
+          })
+        : Promise.resolve(null),
+    ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
 
@@ -650,6 +661,12 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
       orderData.type = store?.type ?? "rady_insole";
+      orderData.u_orderType =
+        body.orderCategory === "sonstiges"
+          ? "Sonstiges"
+          : orderData.type === "milling_block"
+            ? "Milling_Block"
+            : "Rady_Insole";
       if (normalizedInsoleStandards.length > 0) {
         orderData.insoleStandards = { create: normalizedInsoleStandards };
       }
@@ -1196,16 +1213,18 @@ export const getAllOrders = async (req: Request, res: Response) => {
     const cursor = req.query.cursor as string | undefined;
 
     const type = String(req.query.type || "rady_insole").trim();
-    if (
-      type !== "rady_insole" &&
-      type !== "milling_block" &&
-      type !== "sonstiges" &&
-      type !== "all"
-    ) {
+    const validTypes = ["rady_insole", "milling_block", "sonstiges", "all"];
+    const typeMap: Record<string, string> = {
+      rady_insole: "Rady_Insole",
+      milling_block: "Milling_Block",
+      sonstiges: "Sonstiges",
+    };
+
+    if (!validTypes.includes(type)) {
       return res.status(400).json({
         success: false,
         message: "Invalid type",
-        validTypes: ["rady_insole", "milling_block", "sonstiges", "all"],
+        validTypes,
       });
     }
 
@@ -1241,20 +1260,19 @@ export const getAllOrders = async (req: Request, res: Response) => {
       auftragsDatum: true,
       versorgung_note: true,
       orderCategory: true,
+      u_orderType: true,
       service_name: true,
       sonstiges_category: true,
       diagnosis: true,
       ausführliche_diagnose: true,
       privatePrice: true,
       insuranceTotalPrice: true,
- 
+      insoleStandards: true,
       customer: {
         select: {
           id: true,
           vorname: true,
           nachname: true,
-          email: true,
-          wohnort: true,
           customerNumber: true,
         },
       },
@@ -1265,7 +1283,6 @@ export const getAllOrders = async (req: Request, res: Response) => {
           versorgung: true,
         },
       },
-      versorgung: true,
       employee: {
         select: { accountName: true, employeeName: true, email: true },
       },
@@ -1282,11 +1299,16 @@ export const getAllOrders = async (req: Request, res: Response) => {
       if (type === "all") {
         // no type/orderCategory filter — return all types
       } else if (type === "sonstiges") {
-        conditions.push(Prisma.sql`co."orderCategory" = 'sonstiges'`);
-      } else {
-        conditions.push(Prisma.sql`co.type = ${type}::"StoreType"`);
+        // Some older Sonstiges orders were stored with orderCategory only.
         conditions.push(
-          Prisma.sql`(co."orderCategory" IS NULL OR co."orderCategory" != 'sonstiges')`,
+          Prisma.sql`(
+            co."orderCategory" = 'sonstiges'::"OrderCategory" OR
+            co."u_orderType" = ${typeMap[type]}::"u_orderType"
+          )`,
+        );
+      } else {
+        conditions.push(
+          Prisma.sql`co."u_orderType" = ${typeMap[type]}::"u_orderType"`,
         );
       }
       if (req.query.customerId) {
@@ -1399,6 +1421,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           auftragsDatum: Date | null;
           versorgung_note: string | null;
           orderCategory: string | null;
+          u_orderType: string | null;
           service_name: string | null;
           sonstiges_category: string | null;
           diagnosis: string | null;
@@ -1415,6 +1438,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           employeeName: string | null;
           emp_email: string | null;
           product: unknown;
+          store: unknown;
           versorgung: unknown;
         }>
       >(Prisma.sql`
@@ -1424,12 +1448,13 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co."paymnentType", co."insurance_payed", co."private_payed",
           co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
-          co."orderCategory", co."service_name", co."sonstiges_category",
+          co."orderCategory", co."u_orderType", co."service_name", co."sonstiges_category",
           co.diagnosis, co."ausführliche_diagnose",
           co."privatePrice", co."insuranceTotalPrice",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
           e."accountName", e."employeeName", e.email AS emp_email,
           (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
+          (SELECT json_build_object('type', s.type) FROM stores s WHERE s.id = co."storeId" LIMIT 1) AS store,
           (SELECT row_to_json(v) FROM "Versorgungen" v WHERE v.id = co."versorgungId" LIMIT 1) AS versorgung
         FROM "customerOrders" co
         LEFT JOIN customers c ON c.id = co."customerId"
@@ -1465,12 +1490,17 @@ export const getAllOrders = async (req: Request, res: Response) => {
         auftragsDatum: row.auftragsDatum,
         versorgung_note: row.versorgung_note,
         orderCategory: row.orderCategory,
+        u_orderType: row.u_orderType,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
-        diagnosis: row.diagnosis ?? null,
+
         ausführliche_diagnose: row.ausführliche_diagnose ?? null,
-        privatePrice: (row as any).privateprice ?? (row as any).privatePrice ?? null,
-        insuranceTotalPrice: (row as any).insurancetotalprice ?? (row as any).insuranceTotalPrice ?? null,
+        privatePrice:
+          (row as any).privateprice ?? (row as any).privatePrice ?? null,
+        insuranceTotalPrice:
+          (row as any).insurancetotalprice ??
+          (row as any).insuranceTotalPrice ??
+          null,
         customer: row.cust_id
           ? {
               id: row.cust_id,
@@ -1492,6 +1522,18 @@ export const getAllOrders = async (req: Request, res: Response) => {
                   }
                 })()
               : row.product
+            : null,
+        store:
+          row.store != null
+            ? typeof row.store === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(row.store as string);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : row.store
             : null,
         versorgung:
           row.versorgung != null
@@ -1526,12 +1568,16 @@ export const getAllOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const where: any =
-      type === "all"
-        ? {}
-        : type === "sonstiges"
-          ? { orderCategory: "sonstiges" }
-          : { type, orderCategory: { not: "sonstiges" } };
+    const where: any = {};
+
+    if (type === "sonstiges") {
+      where.OR = [
+        { orderCategory: "sonstiges" },
+        { u_orderType: typeMap[type] },
+      ];
+    } else if (type !== "all") {
+      where.u_orderType = typeMap[type];
+    }
 
     if (req.query.customerId) {
       where.customerId = req.query.customerId;
@@ -2228,7 +2274,9 @@ export const updateOrder = async (req: Request, res: Response) => {
     console.error("Update Order Error:", error);
     //order not found
     if (error.code === "P2025") {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
     res.status(500).json({
       success: false,

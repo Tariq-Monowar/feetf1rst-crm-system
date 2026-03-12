@@ -1,34 +1,109 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
+import { randomUUID } from "crypto";
 import path from "path";
-import fs from "fs";
-import crypto from "crypto";
 
-const uploadsDir = path.join(__dirname, "../../../uploads");
-
-/** Build a full URL for a locally uploaded file */
-const getLocalFileUrl = (req: Request, filename: string): string => {
-  const protocol = req.protocol;
-  const host = req.get("host");
-  return `${protocol}://${host}/uploads/${filename}`;
+const getFileType = (filename: string): string => {
+  const ext = path.extname(filename).toLowerCase();
+  return ext.startsWith(".") ? ext.slice(1) : ext;
 };
 
-// POST: Create customer sign record (sign image + pdf upload)
-// Also saves the signed document in the customer's files folder
-export const createCustomerSign = async (req: Request, res: Response) => {
+const getCustomerSignUploads = (req: Request) => {
+  const files = (req.files as Record<string, any[]>) || {};
+
+  return {
+    signFile: files.sign?.[0],
+    pdfFile: files.pdf?.[0],
+  };
+};
+
+const cleanupUploadedFiles = async (signFile?: any, pdfFile?: any) => {
+  if (signFile?.location) {
+    await deleteFileFromS3(signFile.location);
+  }
+
+  if (pdfFile?.location) {
+    await deleteFileFromS3(pdfFile.location);
+  }
+};
+
+const ensureCustomersSignTable = async () => {
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "customers_sign" (
+      "id" TEXT PRIMARY KEY,
+      "customerId" TEXT NOT NULL,
+      "sign" TEXT,
+      "pdf" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "customers_sign_customerId_fkey"
+        FOREIGN KEY ("customerId")
+        REFERENCES "customers"("id")
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+    )
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "customers_sign_customerId_idx"
+    ON "customers_sign"("customerId")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "customers_sign_createdAt_idx"
+    ON "customers_sign"("createdAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "customers_sign_updatedAt_idx"
+    ON "customers_sign"("updatedAt")
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "customers_sign_id_idx"
+    ON "customers_sign"("id")
+  `);
+};
+
+const getLatestCustomerSign = async (customerId: string) => {
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT *
+     FROM "customers_sign"
+     WHERE "customerId" = $1
+     ORDER BY "updatedAt" DESC
+     LIMIT 1`,
+    customerId,
+  );
+
+  return rows[0] || null;
+};
+
+export const getCustomerSignFiles = async (req: Request, res: Response) => {
   try {
-    const { customerId } = req.params;
+    const customerId = req.query.id as string;
+    const table = (req.query.table as string) || "all";
 
     if (!customerId) {
       return res.status(400).json({
         success: false,
-        message: "Customer ID is required",
+        message: "customerId is required in query params",
       });
     }
 
-    // Check if customer exists
+    const page = parseInt(req.query.page as string, 10) || 1;
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const skip = (page - 1) * limit;
+
+    await ensureCustomersSignTable();
+
     const customer = await prisma.customers.findUnique({
       where: { id: customerId },
+      select: {
+        id: true,
+        vorname: true,
+        nachname: true,
+      },
     });
 
     if (!customer) {
@@ -38,104 +113,203 @@ export const createCustomerSign = async (req: Request, res: Response) => {
       });
     }
 
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const customerSignRows = await prisma.$queryRawUnsafe<
+      Array<{
+        id: string;
+        createdAt: Date;
+        sign: string | null;
+        pdf: string | null;
+      }>
+    >(
+      `SELECT "id", "createdAt", "sign", "pdf"
+       FROM "customers_sign"
+       WHERE "customerId" = $1
+       ORDER BY "createdAt" DESC`,
+      customerId,
+    );
 
-    let signUrl: string | null = null;
-    let pdfUrl: string | null = null;
+    const allEntries: Array<{
+      fieldName: "sign" | "pdf";
+      table: "customers_sign";
+      url: string;
+      id: string;
+      fileType: string;
+      createdAt: Date;
+      fullUrl?: string;
+    }> = [];
 
-    // Handle sign file uploaded via local multer
-    if (files?.sign?.[0]) {
-      signUrl = getLocalFileUrl(req, files.sign[0].filename);
-    }
-
-    // Handle pdf file uploaded via local multer
-    if (files?.pdf?.[0]) {
-      pdfUrl = getLocalFileUrl(req, files.pdf[0].filename);
-    }
-
-    // Handle base64 signature from digital signing — save to disk
-    if (!signUrl && req.body.signBase64) {
-      const base64Data = req.body.signBase64.replace(/^data:image\/\w+;base64,/, "");
-      const buffer = Buffer.from(base64Data, "base64");
-      const filename = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-signature-${customerId}.png`;
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(uploadsDir, filename), buffer);
-      signUrl = getLocalFileUrl(req, filename);
-    }
-
-    if (!signUrl && !pdfUrl) {
-      return res.status(400).json({
-        success: false,
-        message: "At least a signature or signed PDF is required",
-      });
-    }
-
-    // Use transaction to create sign record + save to customer files
-    const result = await prisma.$transaction(async (tx) => {
-      // Create the customers_sign record
-      const customerSign = await tx.customers_sign.create({
-        data: {
-          customerId,
-          sign: signUrl,
-          pdf: pdfUrl,
-        },
-      });
-
-      // Save signature image to customer files if present
-      if (signUrl) {
-        await tx.customer_files.create({
-          data: {
-            customerId,
-            url: signUrl,
-          },
+    for (const row of customerSignRows) {
+      if (
+        (table === "all" || table === "customers_sign" || table === "sign") &&
+        row.sign
+      ) {
+        allEntries.push({
+          fieldName: "sign",
+          table: "customers_sign",
+          url: row.sign,
+          id: row.id,
+          fileType: getFileType(row.sign),
+          createdAt: row.createdAt,
         });
       }
 
-      // Save signed PDF to customer files if present
-      if (pdfUrl) {
-        await tx.customer_files.create({
-          data: {
-            customerId,
-            url: pdfUrl,
-          },
+      if (
+        (table === "all" || table === "customers_sign" || table === "pdf") &&
+        row.pdf
+      ) {
+        allEntries.push({
+          fieldName: "pdf",
+          table: "customers_sign",
+          url: row.pdf,
+          id: row.id,
+          fileType: getFileType(row.pdf),
+          createdAt: row.createdAt,
         });
       }
+    }
 
-      return customerSign;
+    allEntries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const total = allEntries.length;
+    const totalPages = Math.ceil(total / limit);
+    const paginatedEntries = allEntries.slice(skip, skip + limit);
+
+    paginatedEntries.forEach((entry) => {
+      entry.fullUrl = entry.url;
     });
 
-    return res.status(201).json({
+    const customerName = [customer.vorname, customer.nachname]
+      .filter(Boolean)
+      .join(" ");
+
+    res.status(200).json({
       success: true,
-      message: "Customer sign created successfully",
-      data: result,
+      message: "Customer sign files fetched successfully",
+      data: paginatedEntries,
+      exclInfo: {
+        name: customerName || null,
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
     });
   } catch (error: any) {
-    console.error("Error creating customer sign:", error);
-    return res.status(500).json({
+    console.error("Get Customer Sign Files Error:", error);
+    res.status(500).json({
       success: false,
-      message: error.message || "Internal server error",
+      message: "Internal server error",
+      error: error.message,
     });
   }
 };
 
-// GET: Get customer sign details
-export const getCustomerSignDetails = async (req: Request, res: Response) => {
+export const manageCustomerSign = async (req: Request, res: Response) => {
+  const { customerId } = req.params;
+  const { signFile, pdfFile } = getCustomerSignUploads(req);
+
+  try {
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    if (!signFile?.location && !pdfFile?.location) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one file is required: sign or pdf",
+      });
+    }
+
+    await ensureCustomersSignTable();
+
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const existingCustomerSign = await getLatestCustomerSign(customerId);
+    const nextSign = signFile?.location ?? existingCustomerSign?.sign ?? null;
+    const nextPdf = pdfFile?.location ?? existingCustomerSign?.pdf ?? null;
+
+    const rows = existingCustomerSign
+      ? await prisma.$queryRawUnsafe<any[]>(
+          `UPDATE "customers_sign"
+           SET "sign" = $1, "pdf" = $2, "updatedAt" = NOW()
+           WHERE "id" = $3
+           RETURNING *`,
+          nextSign,
+          nextPdf,
+          existingCustomerSign.id,
+        )
+      : await prisma.$queryRawUnsafe<any[]>(
+          `INSERT INTO "customers_sign" ("id", "customerId", "sign", "pdf", "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, $4, NOW(), NOW())
+           RETURNING *`,
+          randomUUID(),
+          customerId,
+          nextSign,
+          nextPdf,
+        );
+
+    const customerSign = rows[0];
+
+    if (existingCustomerSign?.sign && signFile?.location) {
+      await deleteFileFromS3(existingCustomerSign.sign);
+    }
+
+    if (existingCustomerSign?.pdf && pdfFile?.location) {
+      await deleteFileFromS3(existingCustomerSign.pdf);
+    }
+
+    res.status(existingCustomerSign ? 200 : 201).json({
+      success: true,
+      message: existingCustomerSign
+        ? "Customer sign updated successfully"
+        : "Customer sign created successfully",
+      data: customerSign,
+    });
+  } catch (error: any) {
+    await cleanupUploadedFiles(signFile, pdfFile);
+    console.error("Manage Customer Sign Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getCustomerSignByCustomerId = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { customerId } = req.params;
 
     if (!customerId) {
       return res.status(400).json({
         success: false,
-        message: "Customer ID is required",
+        message: "customerId is required",
       });
     }
 
-    const customerSign = await prisma.customers_sign.findFirst({
-      where: { customerId },
-      orderBy: { createdAt: "desc" },
-    });
+    await ensureCustomersSignTable();
+
+    const customerSign = await getLatestCustomerSign(customerId);
 
     if (!customerSign) {
       return res.status(404).json({
@@ -144,16 +318,17 @@ export const getCustomerSignDetails = async (req: Request, res: Response) => {
       });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Customer sign fetched successfully",
       data: customerSign,
     });
   } catch (error: any) {
-    console.error("Error fetching customer sign:", error);
-    return res.status(500).json({
+    console.error("Get Customer Sign Error:", error);
+    res.status(500).json({
       success: false,
-      message: error.message || "Internal server error",
+      message: "Something went wrong",
+      error: error.message,
     });
   }
 };
