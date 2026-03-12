@@ -1409,66 +1409,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    const limitNumber = Math.min(
-      Math.max(parseInt(limit as string, 10) || 10, 1),
-      50,
-    );
-
-    const normalizeQuery = (value: string) => value.trim().replace(/\s+/g, " ");
-    const splitTokens = (value: string) =>
-      normalizeQuery(value).split(" ").filter(Boolean);
-
-    const buildNameCondition = (rawValue: string) => {
-      const tokens = splitTokens(rawValue);
-      if (tokens.length === 0) {
-        return null;
-      }
-
-      return Prisma.sql`(
-        ${Prisma.join(
-          tokens.map((token) => {
-            const pattern = `%${token}%`;
-            return Prisma.sql`(
-              vorname ILIKE ${pattern}
-              OR nachname ILIKE ${pattern}
-              OR CONCAT_WS(' ', vorname, nachname) ILIKE ${pattern}
-              OR CONCAT_WS(' ', nachname, vorname) ILIKE ${pattern}
-            )`;
-          }),
-          " AND ",
-        )}
-      )`;
-    };
-
-    const buildSearchCondition = (rawValue: string) => {
-      const tokens = splitTokens(rawValue);
-      if (tokens.length === 0) {
-        return null;
-      }
-
-      return Prisma.sql`(
-        ${Prisma.join(
-          tokens.map((token) => {
-            const pattern = `%${token}%`;
-            const digitPattern = `%${token.replace(/\D/g, "")}%`;
-
-            return Prisma.sql`(
-              vorname ILIKE ${pattern}
-              OR nachname ILIKE ${pattern}
-              OR CONCAT_WS(' ', vorname, nachname) ILIKE ${pattern}
-              OR CONCAT_WS(' ', nachname, vorname) ILIKE ${pattern}
-              OR email ILIKE ${pattern}
-              OR wohnort ILIKE ${pattern}
-              OR CAST("customerNumber" AS TEXT) ILIKE ${pattern}
-              OR CAST(id AS TEXT) ILIKE ${pattern}
-              OR telefon ILIKE ${pattern}
-              OR regexp_replace(COALESCE(telefon, ''), '[^0-9]+', '', 'g') ILIKE ${digitPattern}
-            )`;
-          }),
-          " AND ",
-        )}
-      )`;
-    };
+    const limitNumber = 10; // fixed limit only
 
     // Build raw SQL WHERE fragments
     const whereParts: ReturnType<typeof Prisma.sql>[] = [];
@@ -1480,18 +1421,24 @@ export const searchCustomers = async (req: Request, res: Response) => {
     if (search && typeof search === "string") {
       const searchQuery = search.trim();
       if (searchQuery) {
-        const searchCondition = buildSearchCondition(searchQuery);
-        if (searchCondition) {
-          whereParts.push(searchCondition);
-        }
+        const p = `%${searchQuery}%`;
+        whereParts.push(
+          Prisma.sql`(vorname ILIKE ${p} OR nachname ILIKE ${p} OR email ILIKE ${p} OR telefon ILIKE ${p} OR wohnort ILIKE ${p})`
+        );
       }
     } else {
       if (name && typeof name === "string") {
         const nameQuery = name.trim();
         if (nameQuery) {
-          const nameCondition = buildNameCondition(nameQuery);
-          if (nameCondition) {
-            whereParts.push(nameCondition);
+          const nameParts = nameQuery.split(/\s+/).filter(Boolean);
+          if (nameParts.length > 1) {
+            whereParts.push(
+              Prisma.sql`(vorname ILIKE ${`%${nameParts[0]}%`} AND nachname ILIKE ${`%${nameParts.slice(1).join(" ")}%`})`
+            );
+          } else {
+            whereParts.push(
+              Prisma.sql`(vorname ILIKE ${`%${nameQuery}%`} OR nachname ILIKE ${`%${nameQuery}%`})`
+            );
           }
         }
       }
@@ -1501,14 +1448,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
       }
 
       if (phone && typeof phone === "string" && phone.trim()) {
-        const phoneQuery = phone.trim();
-        const phoneDigits = phoneQuery.replace(/\D/g, "");
-        whereParts.push(
-          Prisma.sql`(
-            telefon ILIKE ${`%${phoneQuery}%`}
-            OR regexp_replace(COALESCE(telefon, ''), '[^0-9]+', '', 'g') ILIKE ${`%${phoneDigits}%`}
-          )`,
-        );
+        whereParts.push(Prisma.sql`telefon ILIKE ${`%${phone.trim()}%`}`);
       }
 
       if (location && typeof location === "string" && location.trim()) {
