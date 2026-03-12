@@ -301,8 +301,8 @@ export const createStorage = async (req: Request, res: Response) => {
       userId,
       type: type as StoreType,
       features: parsedFeatures ?? null,
-      storeId: model_id,
       create_status: model_id ? "by_models" : "by_self",
+      adminStoreId: model_id ?? null,
       // Note: adminStoreId is NOT included when create_status is "by_self"
     };
 
