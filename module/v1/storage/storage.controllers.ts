@@ -836,6 +836,50 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
 export const getAllMyStorage = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
+    const finalStoreOverviewStatuses: StoreOrderOverviewStatus[] = [
+      "Geliefert",
+      "Storniert",
+      "cancelled",
+    ];
+
+    const sumOverviewGroessenMengen = (storeOrderOverviews: any[]) => {
+      const summedGroessenMengen: Record<
+        string,
+        { length: number; quantity: number }
+      > = {};
+
+      for (const overview of storeOrderOverviews ?? []) {
+        const groessenMengen = overview?.groessenMengen;
+
+        if (
+          !groessenMengen ||
+          typeof groessenMengen !== "object" ||
+          Array.isArray(groessenMengen)
+        ) {
+          continue;
+        }
+
+        for (const [size, sizeData] of Object.entries(groessenMengen)) {
+          const item = sizeData as any;
+
+          if (!item || typeof item !== "object" || Array.isArray(item)) {
+            continue;
+          }
+
+          const existing = summedGroessenMengen[size] ?? {
+            length: Number(item.length ?? 0),
+            quantity: 0,
+          };
+
+          summedGroessenMengen[size] = {
+            length: existing.length || Number(item.length ?? 0),
+            quantity: existing.quantity + Number(item.quantity ?? 0),
+          };
+        }
+      }
+
+      return summedGroessenMengen;
+    };
 
     console.log(userId);
 
@@ -882,13 +926,11 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
               { status: null },
               {
                 status: {
-                  notIn: ["Geliefert", "Storniert", "cancelled"],
+                  notIn: finalStoreOverviewStatuses,
                 },
               },
             ],
           },
-          orderBy: { createdAt: "desc" },
-          take: 1,
           select: {
             groessenMengen: true,
           },
@@ -915,8 +957,9 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
 
     const storageWithStatus = addStatusToStores(allStorage).map(
       (store: any) => {
-        const overviewGroessenMengen =
-          store.storeOrderOverviews?.[0]?.groessenMengen ?? {};
+        const overviewGroessenMengen = sumOverviewGroessenMengen(
+          store.storeOrderOverviews,
+        );
 
         const brandCandidates = [
           String(store.hersteller ?? "")
@@ -1697,6 +1740,14 @@ export const updateOverview = async (req: Request, res: Response) => {
       return value as Record<string, { length?: number; quantity?: number }>;
     };
 
+    const hasPositiveQuantity = (
+      value: Record<string, { quantity?: number; length?: number }>,
+    ) => {
+      return Object.values(value).some(
+        (entry) => Number(entry?.quantity ?? 0) > 0,
+      );
+    };
+
     const updateData: Record<string, any> = {};
     if (status !== undefined) {
       updateData.status = status;
@@ -1721,9 +1772,13 @@ export const updateOverview = async (req: Request, res: Response) => {
       });
 
       if (overview.status === "Geliefert" && overview.store) {
-        const deliveredSizes = normalizeOverviewSizes(
+        const deliveredSizesInput = normalizeOverviewSizes(
           overview.delivered_quantity,
         );
+        const overviewSizes = normalizeOverviewSizes(overview.groessenMengen);
+        const deliveredSizes = hasPositiveQuantity(deliveredSizesInput)
+          ? deliveredSizesInput
+          : overviewSizes;
         const storeSizes = (overview.store.groessenMengen || {}) as Record<
           string,
           { length?: number; quantity?: number; mindestmenge?: number }
@@ -1739,6 +1794,7 @@ export const updateOverview = async (req: Request, res: Response) => {
 
           if (!existingEntry) {
             updatedStoreSizes[sizeKey] = {
+              ...(typeof deliveredEntry === "object" ? deliveredEntry : {}),
               quantity: addQty,
               mindestmenge: mindestbestand,
             };
@@ -1768,6 +1824,15 @@ export const updateOverview = async (req: Request, res: Response) => {
             Status: calculateStatus(updatedStoreSizes, mindestbestand),
           },
         });
+
+        await tx.storeOrderOverview.update({
+          where: { id: overview.id },
+          data: {
+            delivered_quantity: updatedStoreSizes as any,
+          },
+        });
+
+        overview.delivered_quantity = updatedStoreSizes as any;
       }
 
       const { store, ...overviewWithoutStore } = overview;

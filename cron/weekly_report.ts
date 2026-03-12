@@ -7,7 +7,7 @@ const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
   // every5m i need to run this cron job
-  cron.schedule("*/5 * * * *", async () => { //
+  cron.schedule("* * * * *", async () => { //
     console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {

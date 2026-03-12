@@ -96,6 +96,7 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStoreOverviews,
 );
+
 router.patch(
   "/update-overview/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
