@@ -16,7 +16,8 @@ export const createNews = async (req: Request, res: Response) => {
             title,
             subtitle,
             shortDescription,
-            fullSubscription
+            fullSubscription,
+            benefits
         } = req.body;
 
         //check if title, subtitle, shortDescription, fullSubscription are required
@@ -44,6 +45,16 @@ export const createNews = async (req: Request, res: Response) => {
             });
         }
 
+        // Parse benefits - can be JSON string array or already an array
+        let parsedBenefits: string[] = [];
+        if (benefits) {
+            try {
+                parsedBenefits = typeof benefits === "string" ? JSON.parse(benefits) : benefits;
+            } catch {
+                parsedBenefits = Array.isArray(benefits) ? benefits : [];
+            }
+        }
+
         //create news
         const news = await prisma.news.create({
             data: {
@@ -51,6 +62,7 @@ export const createNews = async (req: Request, res: Response) => {
                 subtitle,
                 shortDescription,
                 fullSubscription,
+                benefits: parsedBenefits,
                 image: file.location,
             },
         });
@@ -83,7 +95,7 @@ export const updateNews = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
 
-        const { title, subtitle, shortDescription, fullSubscription } = req.body;
+        const { title, subtitle, shortDescription, fullSubscription, benefits } = req.body;
 
         const existingNews = await prisma.news.findUnique({
             where: { id },
@@ -107,6 +119,13 @@ export const updateNews = async (req: Request, res: Response) => {
         if (subtitle) updateData.subtitle = subtitle;
         if (shortDescription) updateData.shortDescription = shortDescription;
         if (fullSubscription) updateData.fullSubscription = fullSubscription;
+        if (benefits !== undefined) {
+            try {
+                updateData.benefits = typeof benefits === "string" ? JSON.parse(benefits) : benefits;
+            } catch {
+                updateData.benefits = Array.isArray(benefits) ? benefits : [];
+            }
+        }
         if (file?.location) {
             updateData.image = file.location;
         }
@@ -223,6 +242,54 @@ export const getNewsDetailsById = async (req: Request, res: Response) => {
     }
 }
 
+
+export const markNewsAsRead = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).user?.id || (req as any).user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "User not authenticated" });
+        }
+
+        // Check news exists
+        const news = await prisma.news.findUnique({ where: { id } });
+        if (!news) {
+            return res.status(404).json({ success: false, message: "News not found" });
+        }
+
+        // Upsert — ignore if already read
+        await prisma.news_read.upsert({
+            where: { userId_newsId: { userId, newsId: id } },
+            update: {},
+            create: { userId, newsId: id },
+        });
+
+        res.status(200).json({ success: true, message: "News marked as read" });
+    } catch (error: any) {
+        console.error("Mark News As Read Error:", error);
+        res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    }
+};
+
+export const getUnreadNewsCount = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user?.id || (req as any).user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "User not authenticated" });
+        }
+
+        const totalNews = await prisma.news.count();
+        const readCount = await prisma.news_read.count({ where: { userId } });
+        const unreadCount = Math.max(0, totalNews - readCount);
+
+        res.status(200).json({ success: true, unreadCount });
+    } catch (error: any) {
+        console.error("Get Unread News Count Error:", error);
+        res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    }
+};
 
 export const getAllNews = async (req: Request, res: Response) => {
     try {
