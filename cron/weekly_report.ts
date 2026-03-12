@@ -6,7 +6,9 @@ import { notificationSend } from "../utils/notification.utils";
 const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
-  cron.schedule("* * * * *", async () => { //
+  // every5m i need to run this cron job
+  cron.schedule("*/5 * * * *", async () => { //
+    console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {
         const inactiveBrandsByPartner = new Map<string, Set<string>>();

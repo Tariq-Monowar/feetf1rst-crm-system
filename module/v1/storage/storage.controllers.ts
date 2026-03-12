@@ -1592,6 +1592,7 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
+        storeId: true,
         produktname: true,
         hersteller: true,
         artikelnummer: true,
@@ -1600,6 +1601,16 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
         type: true,
         status: true,
         createdAt: true,
+
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            busnessName: true,
+            email: true,
+            image: true,
+          },
+        },
       },
     });
 
