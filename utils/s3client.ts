@@ -8,8 +8,10 @@ const httpsAgent = new https.Agent({
   maxSockets: 50,
   // Close idle sockets after 4.5s to avoid ECONNRESET from S3 closing them first
   timeout: 5000,
-  freeSocketTimeout: 4500,
 });
+
+(httpsAgent as https.Agent & { freeSocketTimeout?: number }).freeSocketTimeout =
+  4500;
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
