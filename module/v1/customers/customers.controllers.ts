@@ -1424,13 +1424,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
         return null;
       }
 
-      const normalized = normalizeQuery(rawValue);
-      const fullPattern = `%${normalized}%`;
-
       return Prisma.sql`(
-        CONCAT_WS(' ', vorname, nachname) ILIKE ${fullPattern}
-        OR CONCAT_WS(' ', nachname, vorname) ILIKE ${fullPattern}
-        OR (
         ${Prisma.join(
           tokens.map((token) => {
             const pattern = `%${token}%`;
@@ -1443,7 +1437,6 @@ export const searchCustomers = async (req: Request, res: Response) => {
           }),
           " AND ",
         )}
-        )
       )`;
     };
 
@@ -1453,13 +1446,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
         return null;
       }
 
-      const normalized = normalizeQuery(rawValue);
-      const fullPattern = `%${normalized}%`;
-
       return Prisma.sql`(
-        CONCAT_WS(' ', vorname, nachname) ILIKE ${fullPattern}
-        OR CONCAT_WS(' ', nachname, vorname) ILIKE ${fullPattern}
-        OR (
         ${Prisma.join(
           tokens.map((token) => {
             const pattern = `%${token}%`;
@@ -1480,7 +1467,6 @@ export const searchCustomers = async (req: Request, res: Response) => {
           }),
           " AND ",
         )}
-        )
       )`;
     };
 
