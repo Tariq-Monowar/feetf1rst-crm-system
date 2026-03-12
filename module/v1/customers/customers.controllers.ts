@@ -1423,17 +1423,33 @@ export const searchCustomers = async (req: Request, res: Response) => {
       if (searchQuery) {
         const p = `%${searchQuery}%`;
         whereParts.push(
-          Prisma.sql`(vorname ILIKE ${p} OR nachname ILIKE ${p} OR email ILIKE ${p} OR telefon ILIKE ${p} OR wohnort ILIKE ${p})`
+          Prisma.sql`(
+            vorname ILIKE ${p}
+            OR nachname ILIKE ${p}
+            OR TRIM(COALESCE(vorname, '') || ' ' || COALESCE(nachname, '')) ILIKE ${p}
+            OR TRIM(COALESCE(nachname, '') || ' ' || COALESCE(vorname, '')) ILIKE ${p}
+            OR email ILIKE ${p}
+            OR telefon ILIKE ${p}
+            OR wohnort ILIKE ${p}
+          )`
         );
       }
     } else {
       if (name && typeof name === "string") {
         const nameQuery = name.trim();
         if (nameQuery) {
+          const namePattern = `%${nameQuery}%`;
           const nameParts = nameQuery.split(/\s+/).filter(Boolean);
           if (nameParts.length > 1) {
+            const firstNamePart = `%${nameParts[0]}%`;
+            const remainingNamePart = `%${nameParts.slice(1).join(" ")}%`;
             whereParts.push(
-              Prisma.sql`(vorname ILIKE ${`%${nameParts[0]}%`} AND nachname ILIKE ${`%${nameParts.slice(1).join(" ")}%`})`
+              Prisma.sql`(
+                (vorname ILIKE ${firstNamePart} AND nachname ILIKE ${remainingNamePart})
+                OR (vorname ILIKE ${remainingNamePart} AND nachname ILIKE ${firstNamePart})
+                OR TRIM(COALESCE(vorname, '') || ' ' || COALESCE(nachname, '')) ILIKE ${namePattern}
+                OR TRIM(COALESCE(nachname, '') || ' ' || COALESCE(vorname, '')) ILIKE ${namePattern}
+              )`
             );
           } else {
             whereParts.push(
