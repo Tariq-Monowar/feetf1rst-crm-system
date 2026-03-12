@@ -97,7 +97,9 @@ export const dailyReport = () => {
 
       const stores = await prisma.stores.findMany({
         where: {
-          create_status: "by_admin",
+          create_status: {
+            in: ["by_admin", "by_models"],
+          },
           auto_order: true,
         },
       });
