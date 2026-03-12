@@ -21,6 +21,16 @@ router.get(
   getCustomerSignByCustomerId,
 );
 
+router.post(
+  "/create/:customerId",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  upload.fields([
+    { name: "sign", maxCount: 1 },
+    { name: "pdf", maxCount: 1 },
+  ]),
+  manageCustomerSign,
+);
+
 router.patch(
   "/manage/:customerId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

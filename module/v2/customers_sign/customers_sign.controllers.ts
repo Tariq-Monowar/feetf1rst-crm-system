@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
-import { deleteFileFromS3 } from "../../../utils/s3utils";
+import { deleteFileFromS3, uploadFileToS3 } from "../../../utils/s3utils";
 import { randomUUID } from "crypto";
 import path from "path";
 
@@ -220,7 +220,15 @@ export const manageCustomerSign = async (req: Request, res: Response) => {
       });
     }
 
-    if (!signFile?.location && !pdfFile?.location) {
+    // Handle base64 digital signature — convert to buffer and upload to S3
+    let signBase64Url: string | null = null;
+    if (!signFile?.location && req.body.signBase64) {
+      const base64Data = req.body.signBase64.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      signBase64Url = await uploadFileToS3(buffer, `signature-${customerId}.png`, "image/png");
+    }
+
+    if (!signFile?.location && !pdfFile?.location && !signBase64Url) {
       return res.status(400).json({
         success: false,
         message: "At least one file is required: sign or pdf",
@@ -242,7 +250,7 @@ export const manageCustomerSign = async (req: Request, res: Response) => {
     }
 
     const existingCustomerSign = await getLatestCustomerSign(customerId);
-    const nextSign = signFile?.location ?? existingCustomerSign?.sign ?? null;
+    const nextSign = signFile?.location ?? signBase64Url ?? existingCustomerSign?.sign ?? null;
     const nextPdf = pdfFile?.location ?? existingCustomerSign?.pdf ?? null;
 
     const rows = existingCustomerSign
@@ -267,7 +275,7 @@ export const manageCustomerSign = async (req: Request, res: Response) => {
 
     const customerSign = rows[0];
 
-    if (existingCustomerSign?.sign && signFile?.location) {
+    if (existingCustomerSign?.sign && (signFile?.location || signBase64Url)) {
       await deleteFileFromS3(existingCustomerSign.sign);
     }
 

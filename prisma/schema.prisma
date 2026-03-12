@@ -2974,15 +2974,31 @@ model news {
   subtitle         String
   shortDescription String
   fullSubscription String
+  benefits         String[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  news_read news_read[]
 
   @@index([image])
   @@index([title])
   @@index([subtitle])
   @@index([createdAt])
   @@index([updatedAt])
+}
+
+model news_read {
+  id     String @id @default(uuid())
+  userId String
+  newsId String
+  news   news   @relation(fields: [newsId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, newsId])
+  @@index([userId])
+  @@index([newsId])
 }
 
 model feetf1rst_shop {
