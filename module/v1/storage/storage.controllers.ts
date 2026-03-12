@@ -181,6 +181,7 @@ export const createStorage = async (req: Request, res: Response) => {
       selling_price,
       adminStoreId,
       features,
+      model_id,
     } = req.body;
 
     const userId = req.user.id;
@@ -296,11 +297,12 @@ export const createStorage = async (req: Request, res: Response) => {
       groessenMengen: cleanedGroessenMengen,
       purchase_price: parseInt(purchase_price),
       selling_price: parseInt(selling_price),
-      create_status: "by_self", // TODO: Uncomment after running migration to add create_status column
       image,
       userId,
       type: type as StoreType,
       features: parsedFeatures ?? null,
+      storeId: model_id,
+      create_status: model_id ? "by_models" : "by_self",
       // Note: adminStoreId is NOT included when create_status is "by_self"
     };
 

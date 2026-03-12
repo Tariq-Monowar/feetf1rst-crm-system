@@ -1480,6 +1480,7 @@ enum StoreType {
 enum CreateStatus {
   by_self
   by_admin
+  by_models
 }
 
 model StoreOrderOverview {
