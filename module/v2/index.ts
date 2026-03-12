@@ -26,6 +26,7 @@ import leave_application from "./leave_application/leave_application.routes";
 import shoe_orders from "./shoe_orders/shoe_orders.routes";
 import receipts from "./receipts/receipts.routes";
 import shoe_orders_statistic from "./shoe_orders/statistic/statistic.routes";
+import shoe_orders_track from "./shoe_orders/treack_order/treack_order.routes";
 
 import order_notes from "./order_notes/order_notes.routes";
 import mentors from "./mentors/mentors.routes";
@@ -67,6 +68,7 @@ const moduleRoutes = [
   { path: "/shoe-orders", route: shoe_orders },
   { path: "/receipts", route: receipts },
   { path: "/shoe-orders/statistic", route: shoe_orders_statistic },
+  { path: "/shoe-orders/track", route: shoe_orders_track },
 
   { path: "/order-notes", route: order_notes },
 

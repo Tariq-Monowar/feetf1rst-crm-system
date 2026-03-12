@@ -1402,6 +1402,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         service_name: true,
         sonstiges_category: true,
         diagnosis: true,
+        quantity: true,
 
         insoleStandards: {
           select: {
@@ -1519,6 +1520,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         fertigstellungBis: order.fertigstellungBis,
         createdAt: order.createdAt,
         ausführliche_diagnose: order.ausführliche_diagnose,
+        quantity: order.quantity,
         insoleStock: storeInfo
           ? {
               produktname: storeInfo.produktname,
@@ -1541,6 +1543,12 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
   }
 };
 
+
+// router.get(
+//   "/barcode-label/:orderId",
+//   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+//   getBarcodeLabel,
+// );
 export const getBarcodeLabel = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
