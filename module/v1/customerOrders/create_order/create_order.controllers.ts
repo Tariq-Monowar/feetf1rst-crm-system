@@ -982,3 +982,240 @@ export const suggestSupplyAndStock = async (req: Request, res: Response) => {
     });
   }
 };
+
+/*--------------------------
+  CREATE ORDER WITHOUT SUPPLY OR STORE
+  Use when partner wants to proceed with an order that has no Versorgung
+  and no store (e.g. Sonstiges, custom, or manual fulfillment). No size/stock
+  check; creates a placeholder product and order with type Sonstiges.
+----------------------------*/
+const PAYMENT_STATUSES_WITHOUT_SUPPLY = [
+  "Privat_Bezahlt",
+  "Privat_offen",
+  "Krankenkasse_Ungenehmigt",
+  "Krankenkasse_Genehmigt",
+];
+
+export const createOrderWithoutSupplyOrStore = async (req: Request, res: Response) => {
+  const bad = (code: number, message: string, extra?: object) =>
+    res.status(code).json({ success: false, message, ...extra });
+
+  try {
+    const partnerId = req.user.id;
+    const body = req.body;
+    const {
+      customerId,
+      bezahlt,
+      geschaeftsstandort,
+      totalPrice: totalPriceFromClient,
+      kundenName,
+      auftragsDatum,
+      wohnort,
+      telefon,
+      email: werkstattEmail,
+      mitarbeiter,
+      fertigstellungBis,
+      versorgung: werkstattVersorgung,
+      orderNotes,
+      pickUpLocation,
+      addonPrices = 0,
+      insuranceTotalPrice = 0,
+      privatePrice: privatePriceFromBody,
+      quantity = 1,
+      insurances,
+      werkstattEmployeeId,
+      discount,
+      vat_rate,
+      productName = "Sonstiges",
+    } = body;
+
+    const required = ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"];
+    for (const f of required) if (body[f] == null || body[f] === "") return bad(400, `${f} is required`);
+    if (!PAYMENT_STATUSES_WITHOUT_SUPPLY.includes(bezahlt))
+      return bad(400, "Invalid payment status", { validStatuses: PAYMENT_STATUSES_WITHOUT_SUPPLY });
+
+    const totalPrice = Number(totalPriceFromClient);
+    if (Number.isNaN(totalPrice)) return bad(400, "totalPrice must be a valid number");
+
+    const isNum = (v: unknown) => v != null && v !== "" && !Number.isNaN(Number(v));
+    const hasInsuranceAmount = isNum(insuranceTotalPrice);
+    const hasPrivateAmount = isNum(privatePriceFromBody);
+    const hasAddonAmount = isNum(addonPrices);
+    let payment_type: "insurance" | "private" | "broth" = "private";
+    if (hasInsuranceAmount && (hasPrivateAmount || hasAddonAmount)) payment_type = "broth";
+    else if (hasInsuranceAmount) payment_type = "insurance";
+    else if (hasPrivateAmount || hasAddonAmount) payment_type = "private";
+
+    const needPartnerVat =
+      bezahlt === "Krankenkasse_Genehmigt" || bezahlt === "Krankenkasse_Ungenehmigt";
+    if (needPartnerVat) {
+      if (!insurances) return bad(400, "insurances is required when payment by insurance");
+      if (typeof insurances !== "object") return bad(400, "insurances must be an array or object");
+      const list = Array.isArray(insurances) ? insurances : [insurances];
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return bad(400, `insurances[${i}] must be an object`);
+        if (!("price" in item || "description" in item))
+          return bad(400, `insurances[${i}] must contain price or description`);
+      }
+    }
+
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+
+    const [customer, validPrescription, partnerForVat] = await Promise.all([
+      prisma.customers.findUnique({
+        where: { id: customerId },
+        select: { id: true },
+      }),
+      prisma.prescription.findFirst({
+        where: { customerId, prescription_date: { gte: fourWeeksAgo, not: null } },
+        orderBy: { prescription_date: "desc" },
+        select: { id: true },
+      }),
+      needPartnerVat
+        ? prisma.user.findUnique({
+            where: { id: partnerId },
+            select: { accountInfos: { select: { vat_country: true } } },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (!customer) return bad(404, "Customer not found");
+    let vat_country: string | undefined;
+    if (needPartnerVat) {
+      if (!partnerForVat) return bad(400, "Partner not found");
+      const acc = partnerForVat.accountInfos?.find((a: any) => a.vat_country);
+      if (!acc?.vat_country) return bad(400, "Set vat country in your account info");
+      vat_country = acc.vat_country;
+    }
+
+    const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
+    const discountPercent = discount != null ? parseFloat(String(discount)) : 0;
+    const orderVatRate =
+      vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
+        ? Number(vat_rate)
+        : undefined;
+
+    const order = await prisma.$transaction(async (tx) => {
+      const [customerProduct, orderNumber, defaultEmployee] = await Promise.all([
+        tx.customerProduct.create({
+          data: {
+            name: String(productName || "Sonstiges").trim() || "Sonstiges",
+            rohlingHersteller: "-",
+            artikelHersteller: "-",
+            versorgung: "-",
+            material: "",
+            langenempfehlung: {},
+            status: "Alltagseinlagen",
+            diagnosis_status: [],
+          },
+        }),
+        getNextOrderNumberForPartner(tx, partnerId),
+        werkstattEmployeeId
+          ? null
+          : tx.employees.findFirst({ where: { partnerId }, select: { id: true } }),
+      ]);
+
+      const finalEmployeeId = werkstattEmployeeId ?? defaultEmployee?.id ?? null;
+      const pickUp =
+        pickUpLocation != null && typeof pickUpLocation === "object" && !Array.isArray(pickUpLocation)
+          ? pickUpLocation
+          : geschaeftsstandort != null && typeof geschaeftsstandort === "object" && !Array.isArray(geschaeftsstandort)
+            ? geschaeftsstandort
+            : null;
+
+      const orderData: any = {
+        orderNumber,
+        fußanalyse: null,
+        einlagenversorgung: null,
+        totalPrice,
+        product: { connect: { id: customerProduct.id } },
+        customer: { connect: { id: customerId } },
+        partner: { connect: { id: partnerId } },
+        statusUpdate: new Date(),
+        bezahlt,
+        kundenName: kundenName ?? null,
+        auftragsDatum: auftragsDatum ? new Date(auftragsDatum) : null,
+        wohnort: wohnort ?? null,
+        telefon: telefon ?? null,
+        email: werkstattEmail ?? null,
+        geschaeftsstandort: geschaeftsstandort ?? null,
+        mitarbeiter: mitarbeiter ?? null,
+        fertigstellungBis: fertigstellungBis ? new Date(fertigstellungBis) : null,
+        versorgung: werkstattVersorgung ?? null,
+        quantity: orderQuantity,
+        orderNotes: orderNotes != null && String(orderNotes).trim() !== "" ? String(orderNotes).trim() : null,
+        pickUpLocation: pickUp,
+        addonPrices: addonPrices != null && addonPrices !== "" ? Number(addonPrices) || 0 : 0,
+        insuranceTotalPrice: insuranceTotalPrice != null && insuranceTotalPrice !== "" ? Number(insuranceTotalPrice) || 0 : 0,
+        paymnentType: payment_type,
+        type: "rady_insole",
+        u_orderType: "Sonstiges",
+        ...(finalEmployeeId && { employee: { connect: { id: finalEmployeeId } } }),
+        ...(orderVatRate != null && { vatRate: orderVatRate }),
+        ...(validPrescription?.id && { prescription: { connect: { id: validPrescription.id } } }),
+        ...(privatePriceFromBody != null && privatePriceFromBody !== "" && !Number.isNaN(Number(privatePriceFromBody)) && { privatePrice: Number(privatePriceFromBody) }),
+        ...(discount != null && { discount: discountPercent }),
+      };
+
+      const newOrder = await tx.customerOrders.create({
+        data: orderData,
+        select: { id: true, employeeId: true },
+      });
+
+      const insuranceList = Array.isArray(insurances) ? insurances : insurances && typeof insurances === "object" ? [insurances] : [];
+      const fallbackVat = needPartnerVat ? vat_country : null;
+
+      await Promise.all([
+        tx.customerHistorie.create({
+          data: {
+            customerId,
+            category: "Bestellungen",
+            eventId: newOrder.id,
+            note: "",
+            system_note: "Bestellung ohne Versorgung/Store erstellt",
+            paymentIs: totalPrice.toString(),
+          } as any,
+        }),
+        tx.customerOrdersHistory.create({
+          data: {
+            orderId: newOrder.id,
+            statusFrom: "Warten_auf_Versorgungsstart",
+            statusTo: "Warten_auf_Versorgungsstart",
+            partnerId,
+            employeeId: newOrder.employeeId ?? null,
+            note: null,
+          } as any,
+        }),
+        ...insuranceList.map((item: any) =>
+          tx.customerOrderInsurance.create({
+            data: {
+              orderId: newOrder.id,
+              price: item.price != null && item.price !== "" ? Number(item.price) : null,
+              description: item.description != null && item.description !== "" ? item.description : null,
+              vat_country: fallbackVat,
+            },
+          }),
+        ),
+      ]);
+
+      return newOrder;
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Order created without supply or store",
+      orderId: order.id,
+      supplyType: "none",
+    });
+  } catch (err: any) {
+    console.error("Create order without supply/store error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: err?.message,
+    });
+  }
+};
