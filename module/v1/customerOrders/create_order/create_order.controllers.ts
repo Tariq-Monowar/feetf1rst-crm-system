@@ -567,7 +567,13 @@ export const createOrder = async (req: Request, res: Response) => {
         let sizeKey: string | null = isMillingBlock
           ? findBlockSizeKey(sizes, footLengthMm)
           : findClosestSizeKey(sizes, targetLengthRady);
-        if (!sizeKey) throw new Error("NO_MATCHED_SIZE_IN_STORE");
+        if (!sizeKey) {
+          const err: any = new Error("NO_MATCHED_SIZE_IN_STORE");
+          err.requiredLength = targetLengthRady;
+          err.footLengthMm = footLengthMm;
+          err.storeType = isMillingBlock ? "milling_block" : "rady_insole";
+          throw err;
+        }
         if (!isMillingBlock) {
           const lengthMm = extractLengthValue(sizes[sizeKey]);
           const tolerance = 10;
@@ -577,6 +583,8 @@ export const createOrder = async (req: Request, res: Response) => {
           ) {
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
             err.requiredLength = targetLengthRady;
+            err.footLengthMm = footLengthMm;
+            err.storeType = "rady_insole";
             let lowerLen: number | null = null;
             let upperLen: number | null = null;
             for (const [, data] of Object.entries(sizes)) {
@@ -599,6 +607,9 @@ export const createOrder = async (req: Request, res: Response) => {
           const err: any = new Error("INSUFFICIENT_STOCK");
           err.sizeKey = sizeKey;
           err.isMillingBlock = isMillingBlock;
+          err.requiredLength = targetLengthRady;
+          err.footLengthMm = footLengthMm;
+          err.storeType = isMillingBlock ? "milling_block" : "rady_insole";
           throw err;
         }
         matchedSizeKey = sizeKey;
@@ -742,17 +753,25 @@ export const createOrder = async (req: Request, res: Response) => {
              Map known throw codes to 400 messages; everything else → 500.
     ----------------------------*/
     if (err?.message === "NO_MATCHED_SIZE_IN_STORE")
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Unable to determine nearest size from groessenMengen for this store",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Unable to determine nearest size from groessenMengen for this store",
+        suggestSupplyAndStock: true,
+        suggestParams: {
+          ...(err.requiredLength != null && { requiredLength: err.requiredLength }),
+          ...(err.footLengthMm != null && { footLengthMm: err.footLengthMm }),
+        },
+      });
     if (err?.message === "SIZE_OUT_OF_TOLERANCE")
       return res.status(400).json({
         success: false,
         message: `Keine passende Größe im Lager. Erforderliche Länge: ${err.requiredLength}mm. Nächstkleinere: ${err.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere: ${err.nearestUpperSize?.length ?? "–"}mm.`,
+        suggestSupplyAndStock: true,
+        suggestParams: {
+          ...(err.requiredLength != null && { requiredLength: err.requiredLength }),
+          ...(err.footLengthMm != null && { footLengthMm: err.footLengthMm }),
+        },
       });
     if (err?.message === "INSUFFICIENT_STOCK")
       return res.status(400).json({
@@ -760,6 +779,11 @@ export const createOrder = async (req: Request, res: Response) => {
         message: `${err.isMillingBlock ? "Block" : "Größe"} ${err.sizeKey} ist nicht auf Lager (Menge: 0). Bestellung nicht möglich.`,
         warning: "Insufficient stock",
         sizeKey: err.sizeKey,
+        suggestSupplyAndStock: true,
+        suggestParams: {
+          ...(err.requiredLength != null && { requiredLength: err.requiredLength }),
+          ...(err.footLengthMm != null && { footLengthMm: err.footLengthMm }),
+        },
       });
     console.error("Create Order Error:", err);
     return res
