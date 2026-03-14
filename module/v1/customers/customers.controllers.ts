@@ -171,15 +171,15 @@ export const createCustomers = async (req: Request, res: Response) => {
       straße,
     } = req.body;
 
-    const existingCustomer = await prisma.customers.findUnique({
-      where: { email },
-    });
-    if (existingCustomer) {
-      return res.status(400).json({
-        success: false,
-        message: "Email already exists",
-      });
-    }
+    // const existingCustomer = await prisma.customers.findUnique({
+    //   where: { email },
+    // });
+    // if (existingCustomer) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Email already exists",
+    //   });
+    // }
 
     const newCustomer = await prisma.$transaction(async (tx) => {
       const customerNumber = await getNextCustomerNumberForPartner(

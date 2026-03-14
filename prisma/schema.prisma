@@ -578,7 +578,7 @@ model customers {
   customerNumber Int // Unique per partnerId, not globally
   vorname        String?
   nachname       String?
-  email          String? @unique
+  email          String?
   // telefonnummer  String?
   wohnort        String?
 
