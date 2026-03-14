@@ -39,6 +39,8 @@ import work_hours from "./work _hours/work _hours.routes";
 import work_type from "./work _hours/work_type/work_type.routes";
 import order_step from "./shoe_orders/order_step/order_step.routes";
 
+import inventory_management from "./inventory_management/inventory_management.routes";
+
 const router = express.Router();
 
 const moduleRoutes = [
@@ -81,6 +83,8 @@ const moduleRoutes = [
   { path: "/work-hours", route: work_hours },
   { path: "/work-hours/work-type", route: work_type },
   { path: "/shoe-orders/order-step", route: order_step },
+
+  { path: "/inventory-management", route: inventory_management },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {

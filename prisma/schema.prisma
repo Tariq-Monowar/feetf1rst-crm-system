@@ -93,6 +93,7 @@ model User {
   requestPayouts              request_payout[]
   //store_brand_settings
   storeBrandSettings          store_brand_settings[]
+  inventoryManagements        inventory_management[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -920,7 +921,7 @@ model customerOrders {
    */
   id String @id @default(uuid())
 
-  u_orderType u_orderType?
+  u_orderType u_orderType? // store type
 
   orderNumber Int
 
@@ -1069,12 +1070,18 @@ enum OrderCategory {
   sonstiges
 }
 
+// paymentStatus
+// : 
+// "Krankenkasse_Ungenehmigt"
+// paymentType
+// : 
+// "Krankenkasse"
 enum paymnentStatus {
   Privat_Bezahlt //cash paymnant success
   Privat_offen //cash paymnant pending
 
-  Krankenkasse_Ungenehmigt
-  Krankenkasse_Genehmigt
+  Krankenkasse_Ungenehmigt // insurance not approved
+  Krankenkasse_Genehmigt // insurance approved
 }
 
 // enum KrankenkasseStatus {
@@ -2225,6 +2232,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2248,6 +2257,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3245,6 +3256,59 @@ model timeline_analytics {
   // partner join/leave (employeeId optional for partner-only sessions)
   joinAt  DateTime?
   leaveAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// https://feetf1rst.tech/dashboard/warenwirtschaft
+enum inventory_type {
+  Orders
+  Invoices
+}
+
+enum inventory_payment_status {
+  Open
+  Paid
+}
+
+enum inventory_status {
+  Ordered
+  Delivered
+  Partially
+}
+
+model inventory_management {
+  id             String          @id @default(cuid())
+  number         String?
+  inventory_type inventory_type?
+  // status: **Orders | Invoices**
+  // **Order no**
+  // **Invoice No**
+
+  // **Supplier**
+  supplier String?
+
+  // **Date**
+  date DateTime?
+
+  // **Amount**
+  amount Float?
+
+  // **Status (Ordered | Delivered | Partially)**
+  status inventory_status?
+
+  // **Payment (Open | Paid)**
+  payment_status inventory_payment_status?
+
+  // **Payment Date**
+  payment_date DateTime?
+
+  // **WE linked**
+  we_linked Boolean?
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
