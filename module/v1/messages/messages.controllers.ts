@@ -142,7 +142,7 @@ export const createMessage = async (req: Request, res: Response) => {
 
     //set customer history if it's customer
     if (!recipientUser) {
-      const customers = await prisma.customers.findUnique({
+      const customers = await prisma.customers.findFirst({
         where: { email: recipientEmail },
         select: { id: true, email: true },
       });
