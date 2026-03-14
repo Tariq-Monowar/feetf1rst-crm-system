@@ -29,6 +29,7 @@ import trackOrders from "./customerOrders/track_orders/track_orders.routes";
 import manageOrders from "./customerOrders/manage_orders/manage_orders.routes";
 import sonstiges_order from "./customerOrders/sonstiges_order/sonstiges_order.routes";
 import previousOrders from "./customerOrders/previous_orders/previous_orders.routes";
+import createOrder from "./customerOrders/create_order/create_order.routes";
 
 import customerPrice from "./customerPrice/customerPrice.routes";
 import workeshopNote from "./workshopNote/workshopNote.routes";
@@ -83,6 +84,8 @@ const moduleRoutes = [
   { path: "/customer-orders/manage", route: manageOrders },
   { path: "/customer-orders/sonstiges", route: sonstiges_order },
   { path: "/customer-orders/previous-orders", route: previousOrders },
+  { path: "/customer-orders/create-order", route: createOrder },
+
 
   { path: "/customer-price", route: customerPrice },
   { path: "/workshop-note", route: workeshopNote },
