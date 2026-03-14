@@ -5,22 +5,38 @@ const VALID_INVENTORY_TYPES = ["Orders", "Invoices"];
 const VALID_STATUSES = ["Ordered", "Delivered", "Partially"];
 const VALID_PAYMENT_STATUSES = ["Open", "Paid"];
 
-/** GET all inventories for the logged-in partner. Cursor pagination (same as news): query cursor (id), limit. */
+/** GET all inventories. Query: inventory_type (required), optional: status, payment_status, cursor, limit. */
 export const getAllInventories = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
+    const inventory_type = (req.query.inventory_type as string)?.trim();
+    const status = (req.query.status as string)?.trim();
+    const payment_status = (req.query.payment_status as string)?.trim();
     const cursor = req.query.cursor as string | undefined;
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
-    const inventory_type = req.query.inventory_type as string | undefined;
 
-    const whereCondition: any = { partnerId };
-    if (inventory_type && VALID_INVENTORY_TYPES.includes(inventory_type)) {
-      whereCondition.inventory_type = inventory_type as "Orders" | "Invoices";
+    if (!inventory_type || !VALID_INVENTORY_TYPES.includes(inventory_type)) {
+      return res.status(400).json({
+        success: false,
+        message: "inventory_type is required and must be one of: Orders, Invoices",
+        validInventoryTypes: VALID_INVENTORY_TYPES,
+      });
+    }
+
+    const whereCondition: any = {
+      partnerId,
+      inventory_type: inventory_type as "Orders" | "Invoices",
+    };
+    if (status && VALID_STATUSES.includes(status)) {
+      whereCondition.status = status as "Ordered" | "Delivered" | "Partially";
+    }
+    if (payment_status && VALID_PAYMENT_STATUSES.includes(payment_status)) {
+      whereCondition.payment_status = payment_status as "Open" | "Paid";
     }
 
     if (cursor) {
       const cursorRow = await prisma.inventory_management.findFirst({
-        where: { id: cursor, partnerId },
+        where: { id: cursor, partnerId, inventory_type: inventory_type as "Orders" | "Invoices" },
         select: { createdAt: true },
       });
       if (!cursorRow) {
@@ -31,16 +47,7 @@ export const getAllInventories = async (req: Request, res: Response) => {
           hasMore: false,
         });
       }
-      const cursorCondition = { createdAt: { lt: cursorRow.createdAt } };
-      if (whereCondition.inventory_type != null) {
-        whereCondition.AND = [
-          { inventory_type: whereCondition.inventory_type },
-          cursorCondition,
-        ];
-        delete whereCondition.inventory_type;
-      } else {
-        whereCondition.createdAt = cursorCondition.createdAt;
-      }
+      whereCondition.createdAt = { lt: cursorRow.createdAt };
     }
 
     const items = await prisma.inventory_management.findMany({
