@@ -181,6 +181,7 @@ export const createCustomers = async (req: Request, res: Response) => {
     //   });
     // }
 
+    
     const newCustomer = await prisma.$transaction(async (tx) => {
       const customerNumber = await getNextCustomerNumberForPartner(
         tx,
