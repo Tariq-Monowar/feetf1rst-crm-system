@@ -97,6 +97,7 @@ model User {
   employeeAvailabilities      employee_availability[]
   appomnentRooms              appomnent_room[]
   appomnentBookingRules       appomnent_booking_rules[]
+  documentsAndClaims          documents_and_claims[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -315,7 +316,7 @@ model appomnent_booking_rules {
   id String @id @default(cuid())
 
   partnerId String @unique
-  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   minNoticeHours     Int @default(24) // Minimum Notice Time (hours)
   cancellationHours  Int @default(48) // Cancellation Deadline (hours before start)
@@ -2347,6 +2348,16 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2370,6 +2381,16 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3444,4 +3465,36 @@ model inventory_management {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model documents_and_claims {
+  id String @id @default(cuid())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  type         document_type?
+  number       String? // (	KV-2024-0078)
+  reference    String? // AUF-2024-0898
+  customerName String?
+  recipient    String?
+  in_total     Float?
+  paid         Float?
+  open         Float?
+
+  payment_date inventory_payment_status?
+
+  date       DateTime?
+  created_by String?
+
+  file String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum document_type {
+  cost_estimate // KV-2024-0078
+  invoices //	RE-2024-1201
+  delivery_notes //LS-2024-0898	
 }

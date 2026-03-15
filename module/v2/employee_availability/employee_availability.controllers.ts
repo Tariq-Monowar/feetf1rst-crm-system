@@ -254,6 +254,7 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
 export const updateAvailabilityTime = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
+    
     if (!partnerId) {
       return res.status(401).json({
         success: false,
