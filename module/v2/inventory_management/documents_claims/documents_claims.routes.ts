@@ -7,11 +7,12 @@ import {
   getDocumentClaimById,
   updateDocumentClaim,
   deleteDocumentClaim,
+  getRecipientName
 } from "./documents_claims.controllers";
 
 const router = express.Router();
 
-const handleFileUpload = (req: Request, res: Response, next: NextFunction) => {
+const handleUpload = (req: Request, res: Response, next: NextFunction) => {
   upload.single("file")(req, res, (err: any) => {
     if (err) {
       console.error("Document file upload error:", err);
@@ -25,10 +26,21 @@ const handleFileUpload = (req: Request, res: Response, next: NextFunction) => {
   });
 };
 
-router.post("/create-document-claim", verifyUser("EMPLOYEE", "PARTNER"), handleFileUpload, createDocumentClaim);
-router.get("/get-all-documents-claims", verifyUser("EMPLOYEE", "PARTNER"), getAllDocumentsClaims);
-router.get("/get-single-document-claim/:id", verifyUser("EMPLOYEE", "PARTNER"), getDocumentClaimById);
-router.patch("/update-document-claim/:id", verifyUser("EMPLOYEE", "PARTNER"), handleFileUpload, updateDocumentClaim);
-router.delete("/delete-document-claim/:id", verifyUser("EMPLOYEE", "PARTNER"), deleteDocumentClaim);
+/*
+ * create document claim
+ * get all documents claims
+ * get single document claim
+ * update document claim
+ * delete document claim
+ */
+
+router.post("/create", verifyUser("EMPLOYEE", "PARTNER"), handleUpload, createDocumentClaim);
+router.get("/get-all", verifyUser("EMLOYEE", "PARTNER"), getAllDocumentsClaims);
+router.get("/get-details/:id", verifyUser("EMPLOYEE", "PARTNER"), getDocumentClaimById);
+router.patch("/update/:id", verifyUser("EMPLOYEE", "PARTNER"), handleUpload, updateDocumentClaim);
+router.delete("/delete/:id", verifyUser("EMPLOYEE", "PARTNER"), deleteDocumentClaim);
+
+// get recipients list (from Redis when cached)
+router.get("/get-recipient-name", verifyUser("EMPLOYEE", "PARTNER"), getRecipientName);
 
 export default router;

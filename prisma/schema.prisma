@@ -3482,7 +3482,7 @@ model documents_and_claims {
   paid         Float?
   open         Float?
 
-  payment_date inventory_payment_status?
+  payment_type inventory_payment_status? @map("payment_type")
 
   date       DateTime?
   created_by String?

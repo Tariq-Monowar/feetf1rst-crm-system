@@ -1,74 +1,62 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../../db";
+import redis from "../../../../config/redis.config";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 import { DOCUMENTS_CLAIMS_RESPONSE_MESSAGES } from "./documents_claims.format";
 
+const REDIS_RECIPIENTS_KEY = (partnerId: string) => `documents_claims:recipients:${partnerId}`;
+
 const VALID_DOCUMENT_TYPES = ["cost_estimate", "invoices", "delivery_notes"];
 const VALID_PAYMENT_STATUSES = ["Open", "Paid"];
-
-/** Prefix for number by document_type (schema comments: KV-2024-0078, RE-2024-1201, LS-2024-0898) */
-const NUMBER_PREFIX_BY_TYPE: Record<string, string> = {
+const NUMBER_PREFIX: Record<string, string> = {
   cost_estimate: "KV",
   invoices: "RE",
   delivery_notes: "LS",
 };
 
-/** Generate next number for type: PREFIX-YYYY-NNNN */
-async function generateNumberForType(type: string): Promise<string | null> {
-  const prefix = NUMBER_PREFIX_BY_TYPE[type];
-  if (!prefix) return null;
-  const year = new Date().getFullYear();
-  const last = await prisma.documents_and_claims.findFirst({
-    where: { type: type as "cost_estimate" | "invoices" | "delivery_notes" },
-    orderBy: { createdAt: "desc" },
-    select: { number: true },
-  });
-  let next = 1;
-  if (last?.number) {
-    const match = last.number.match(new RegExp(`^${prefix}-\\d{4}-(\\d+)$`));
-    if (match) next = parseInt(match[1], 10) + 1;
-  }
-  return `${prefix}-${year}-${String(next).padStart(4, "0")}`;
+function toNum(v: any): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
 }
 
-/** Generate next reference: AUF-YYYY-NNNN */
-async function generateReference(): Promise<string> {
-  const year = new Date().getFullYear();
-  const last = await prisma.documents_and_claims.findFirst({
-    orderBy: { createdAt: "desc" },
-    select: { reference: true },
-  });
-  let next = 1;
-  if (last?.reference) {
-    const match = last.reference.match(/^AUF-\d{4}-(\d+)$/);
-    if (match) next = parseInt(match[1], 10) + 1;
-  }
-  return `AUF-${year}-${String(next).padStart(4, "0")}`;
+function genSuffix(): string {
+  return String(Math.floor(1000 + Math.random() * 9000));
 }
 
-/** GET all documents and claims. Query: optional type, payment_date, cursor, limit. */
 export const getAllDocumentsClaims = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const type = (req.query.type as string)?.trim();
-    const payment_date = (req.query.payment_date as string)?.trim();
+    const payment_type = (req.query.payment_type as string)?.trim();
+    const recipient = (req.query.recipient as string)?.trim();
+    const search = (req.query.search as string)?.trim();
     const cursor = req.query.cursor as string | undefined;
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit as string, 10) || 10),
+    );
 
-    const whereCondition: any = { partnerId };
-    if (type && VALID_DOCUMENT_TYPES.includes(type)) {
-      whereCondition.type = type as "cost_estimate" | "invoices" | "delivery_notes";
+    const where: any = { partnerId };
+    if (type && VALID_DOCUMENT_TYPES.includes(type)) where.type = type;
+    if (payment_type && VALID_PAYMENT_STATUSES.includes(payment_type))
+      where.payment_type = payment_type;
+    if (recipient) where.recipient = { contains: recipient, mode: "insensitive" };
+    if (search) {
+      where.OR = [
+        { number: { contains: search, mode: "insensitive" } },
+        { reference: { contains: search, mode: "insensitive" } },
+        { customerName: { contains: search, mode: "insensitive" } },
+        { recipient: { contains: search, mode: "insensitive" } },
+        { created_by: { contains: search, mode: "insensitive" } },
+      ];
     }
-    if (payment_date && VALID_PAYMENT_STATUSES.includes(payment_date)) {
-      whereCondition.payment_date = payment_date as "Open" | "Paid";
-    }
-
     if (cursor) {
-      const cursorRow = await prisma.documents_and_claims.findFirst({
+      const row = await prisma.documents_and_claims.findFirst({
         where: { id: cursor, partnerId },
         select: { createdAt: true },
       });
-      if (!cursorRow) {
+      if (!row) {
         return res.status(200).json({
           success: true,
           message: DOCUMENTS_CLAIMS_RESPONSE_MESSAGES.list,
@@ -76,15 +64,14 @@ export const getAllDocumentsClaims = async (req: Request, res: Response) => {
           hasMore: false,
         });
       }
-      whereCondition.createdAt = { lt: cursorRow.createdAt };
+      where.createdAt = { lt: row.createdAt };
     }
 
     const items = await prisma.documents_and_claims.findMany({
-      where: whereCondition,
+      where,
       take: limit + 1,
       orderBy: { createdAt: "desc" },
     });
-
     const hasMore = items.length > limit;
     const data = hasMore ? items.slice(0, limit) : items;
 
@@ -95,51 +82,45 @@ export const getAllDocumentsClaims = async (req: Request, res: Response) => {
       hasMore,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Get All Documents Claims Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Something went wrong",
       error: error?.message,
     });
   }
 };
 
-/** GET one document by id (must belong to partner) */
 export const getDocumentClaimById = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const { id } = req.params;
-
     const doc = await prisma.documents_and_claims.findFirst({
       where: { id, partnerId },
     });
-
     if (!doc) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Document not found" });
     }
-
     return res.status(200).json({
       success: true,
       message: DOCUMENTS_CLAIMS_RESPONSE_MESSAGES.single,
       data: doc,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Get Document Claim By Id Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Something went wrong",
       error: error?.message,
     });
   }
 };
 
-/** POST create document (multipart/form-data; file field = "file") */
 export const createDocumentClaim = async (req: Request, res: Response) => {
-  const file = req.file as { location?: string } | undefined;
-  const cleanupFiles = () => {
+  const file = req.file as any;
+  const cleanup = () => {
     if (file?.location) deleteFileFromS3(file.location);
   };
   try {
@@ -150,23 +131,26 @@ export const createDocumentClaim = async (req: Request, res: Response) => {
       in_total,
       paid,
       open,
-      payment_date,
+      payment_type,
       date,
       created_by,
     } = req.body;
-
     const partnerId = req.user.id;
 
     if (type != null && type !== "" && !VALID_DOCUMENT_TYPES.includes(type)) {
-      cleanupFiles();
+      cleanup();
       return res.status(400).json({
         success: false,
         message: "Invalid document type",
         validTypes: VALID_DOCUMENT_TYPES,
       });
     }
-    if (payment_date != null && payment_date !== "" && !VALID_PAYMENT_STATUSES.includes(payment_date)) {
-      cleanupFiles();
+    if (
+      payment_type != null &&
+      payment_type !== "" &&
+      !VALID_PAYMENT_STATUSES.includes(payment_type)
+    ) {
+      cleanup();
       return res.status(400).json({
         success: false,
         message: "Invalid payment status",
@@ -174,15 +158,17 @@ export const createDocumentClaim = async (req: Request, res: Response) => {
       });
     }
 
-    const parseFloatOrNull = (v: any): number | null => {
-      if (v == null || v === "") return null;
-      const n = Number(v);
-      return Number.isNaN(n) ? null : n;
-    };
-
-    const docType = type && VALID_DOCUMENT_TYPES.includes(type) ? (type as "cost_estimate" | "invoices" | "delivery_notes") : null;
-    const number = docType ? await generateNumberForType(docType) : null;
-    const reference = await generateReference();
+    const docType = type && VALID_DOCUMENT_TYPES.includes(type) ? type : null;
+    const paymentVal =
+      payment_type && VALID_PAYMENT_STATUSES.includes(payment_type)
+        ? payment_type
+        : null;
+    const dateVal = date != null && date !== "" ? new Date(date) : null;
+    const year = new Date().getFullYear();
+    const number = docType
+      ? `${NUMBER_PREFIX[docType]}-${year}-${genSuffix()}`
+      : null;
+    const reference = `AUF-${year}-${genSuffix()}`;
 
     const doc = await prisma.documents_and_claims.create({
       data: {
@@ -192,15 +178,17 @@ export const createDocumentClaim = async (req: Request, res: Response) => {
         reference,
         customerName: customerName ?? null,
         recipient: recipient ?? null,
-        in_total: parseFloatOrNull(in_total),
-        paid: parseFloatOrNull(paid),
-        open: parseFloatOrNull(open),
-        payment_date: payment_date && VALID_PAYMENT_STATUSES.includes(payment_date) ? (payment_date as "Open" | "Paid") : null,
-        date: date != null && date !== "" ? new Date(date) : null,
+        in_total: toNum(in_total),
+        paid: toNum(paid),
+        open: toNum(open),
+        payment_type: paymentVal,
+        date: dateVal,
         created_by: created_by ?? null,
         file: file?.location ?? null,
       },
     });
+
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
 
     return res.status(201).json({
       success: true,
@@ -208,39 +196,24 @@ export const createDocumentClaim = async (req: Request, res: Response) => {
       data: doc,
     });
   } catch (error: any) {
-    cleanupFiles();
-    console.error(error);
+    cleanup();
+    console.error("Create Document Claim Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Something went wrong",
       error: error?.message,
     });
   }
 };
 
-/** PATCH document by id (must belong to partner). multipart/form-data; optional file. */
 export const updateDocumentClaim = async (req: Request, res: Response) => {
-  const file = req.file as { location?: string } | undefined;
-  const cleanupFiles = () => {
+  const file = req.file as any;
+  const cleanup = () => {
     if (file?.location) deleteFileFromS3(file.location);
   };
   try {
     const partnerId = req.user.id;
     const { id } = req.params;
-    const body = req.body;
-
-    const existing = await prisma.documents_and_claims.findFirst({
-      where: { id, partnerId },
-      select: { id: true, file: true },
-    });
-    if (!existing) {
-      cleanupFiles();
-      return res.status(404).json({
-        success: false,
-        message: "Document not found",
-      });
-    }
-
     const {
       type,
       customerName,
@@ -248,21 +221,36 @@ export const updateDocumentClaim = async (req: Request, res: Response) => {
       in_total,
       paid,
       open,
-      payment_date,
+      payment_type,
       date,
       created_by,
-    } = body;
+    } = req.body;
+
+    const existing = await prisma.documents_and_claims.findFirst({
+      where: { id, partnerId },
+      select: { id: true, file: true },
+    });
+    if (!existing) {
+      cleanup();
+      return res
+        .status(404)
+        .json({ success: false, message: "Document not found" });
+    }
 
     if (type != null && type !== "" && !VALID_DOCUMENT_TYPES.includes(type)) {
-      cleanupFiles();
+      cleanup();
       return res.status(400).json({
         success: false,
         message: "Invalid document type",
         validTypes: VALID_DOCUMENT_TYPES,
       });
     }
-    if (payment_date != null && payment_date !== "" && !VALID_PAYMENT_STATUSES.includes(payment_date)) {
-      cleanupFiles();
+    if (
+      payment_type != null &&
+      payment_type !== "" &&
+      !VALID_PAYMENT_STATUSES.includes(payment_type)
+    ) {
+      cleanup();
       return res.status(400).json({
         success: false,
         message: "Invalid payment status",
@@ -270,22 +258,21 @@ export const updateDocumentClaim = async (req: Request, res: Response) => {
       });
     }
 
-    const parseFloatOrNull = (v: any): number | null => {
-      if (v == null || v === "") return null;
-      const n = Number(v);
-      return Number.isNaN(n) ? null : n;
-    };
-
     const data: any = {};
-    if (type !== undefined) data.type = type && VALID_DOCUMENT_TYPES.includes(type) ? type : null;
-    // number and reference are auto-generated on create only; not updated via PATCH
+    if (type !== undefined)
+      data.type = type && VALID_DOCUMENT_TYPES.includes(type) ? type : null;
     if (customerName !== undefined) data.customerName = customerName ?? null;
     if (recipient !== undefined) data.recipient = recipient ?? null;
-    if (in_total !== undefined) data.in_total = parseFloatOrNull(in_total);
-    if (paid !== undefined) data.paid = parseFloatOrNull(paid);
-    if (open !== undefined) data.open = parseFloatOrNull(open);
-    if (payment_date !== undefined) data.payment_date = payment_date && VALID_PAYMENT_STATUSES.includes(payment_date) ? payment_date : null;
-    if (date !== undefined) data.date = date != null && date !== "" ? new Date(date) : null;
+    if (in_total !== undefined) data.in_total = toNum(in_total);
+    if (paid !== undefined) data.paid = toNum(paid);
+    if (open !== undefined) data.open = toNum(open);
+    if (payment_type !== undefined)
+      data.payment_type =
+        payment_type && VALID_PAYMENT_STATUSES.includes(payment_type)
+          ? payment_type
+          : null;
+    if (date !== undefined)
+      data.date = date != null && date !== "" ? new Date(date) : null;
     if (created_by !== undefined) data.created_by = created_by ?? null;
     if (file?.location) {
       if (existing.file) await deleteFileFromS3(existing.file);
@@ -297,54 +284,85 @@ export const updateDocumentClaim = async (req: Request, res: Response) => {
       data,
     });
 
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
+
     return res.status(200).json({
       success: true,
       message: DOCUMENTS_CLAIMS_RESPONSE_MESSAGES.update,
       data: doc,
     });
   } catch (error: any) {
-    cleanupFiles();
-    console.error(error);
+    cleanup();
+    console.error("Update Document Claim Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Something went wrong",
       error: error?.message,
     });
   }
 };
 
-/** DELETE document by id (must belong to partner) */
 export const deleteDocumentClaim = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const { id } = req.params;
-
     const existing = await prisma.documents_and_claims.findFirst({
       where: { id, partnerId },
     });
     if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Document not found" });
     }
-
     if (existing.file) await deleteFileFromS3(existing.file);
-
-    await prisma.documents_and_claims.delete({
-      where: { id },
-    });
-
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
+    await prisma.documents_and_claims.delete({ where: { id } });
     return res.status(200).json({
       success: true,
       message: DOCUMENTS_CLAIMS_RESPONSE_MESSAGES.delete,
-      data: { id: existing.id },
+      id: existing.id,
     });
   } catch (error: any) {
-    console.error(error);
+    console.error("Delete Document Claim Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
+
+export const getRecipientName = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+    const cacheKey = REDIS_RECIPIENTS_KEY(partnerId);
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      const data = JSON.parse(cached);
+      return res.status(200).json({
+        success: true,
+        message: "Recipients fetched successfully",
+        data,
+      });
+    }
+
+    const rows = await prisma.documents_and_claims.findMany({
+      where: { partnerId },
+      select: { recipient: true },
+    });
+    const data = [...new Set(rows.map((r) => r.recipient).filter(Boolean))] as string[];
+    await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: "Recipients fetched successfully",
+      data,
+    });
+  } catch (error: any) {
+    console.error("Get Recipient Name Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
       error: error?.message,
     });
   }
