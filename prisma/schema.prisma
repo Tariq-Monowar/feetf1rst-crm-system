@@ -3310,6 +3310,8 @@ model inventory_management {
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
+  deleveary_note String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

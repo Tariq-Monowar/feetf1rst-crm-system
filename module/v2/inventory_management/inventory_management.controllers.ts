@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
+import { INVENTORY_RESPONSE_MESSAGES } from "./inventory_management.format";
 
 const VALID_INVENTORY_TYPES = ["Orders", "Invoices"];
 const VALID_STATUSES = ["Ordered", "Delivered", "Partially"];
@@ -42,7 +44,7 @@ export const getAllInventories = async (req: Request, res: Response) => {
       if (!cursorRow) {
         return res.status(200).json({
           success: true,
-          message: "Inventories fetched successfully",
+          message: INVENTORY_RESPONSE_MESSAGES.list,
           data: [],
           hasMore: false,
         });
@@ -61,7 +63,7 @@ export const getAllInventories = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "Inventories fetched successfully",
+      message: INVENTORY_RESPONSE_MESSAGES.list,
       data,
       hasMore,
     });
@@ -94,6 +96,7 @@ export const getInventoryById = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
+      message: INVENTORY_RESPONSE_MESSAGES.single,
       data: inventory,
     });
   } catch (error: any) {
@@ -107,7 +110,12 @@ export const getInventoryById = async (req: Request, res: Response) => {
 };
 
 export const createInventory = async (req: Request, res: Response) => {
+  const file = req.file as { location?: string } | undefined;
+  const cleanupFiles = () => {
+    if (file?.location) deleteFileFromS3(file.location);
+  };
   try {
+    /* multipart/form-data: all fields come as strings from req.body; file from req.file */
     const {
       inventory_type,
       supplier,
@@ -123,6 +131,7 @@ export const createInventory = async (req: Request, res: Response) => {
 
     // ✅ Validation
     if (!VALID_INVENTORY_TYPES.includes(inventory_type)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid inventory type",
@@ -130,6 +139,7 @@ export const createInventory = async (req: Request, res: Response) => {
       });
     }
     if (!VALID_STATUSES.includes(status)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid status",
@@ -137,6 +147,7 @@ export const createInventory = async (req: Request, res: Response) => {
       });
     }
     if (!VALID_PAYMENT_STATUSES.includes(payment_status)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid payment status",
@@ -184,6 +195,13 @@ export const createInventory = async (req: Request, res: Response) => {
       number = `RE-${next}`;
     }
 
+    // ✅ Parse amount (multipart sends string; Prisma expects Float?)
+    const amountNum =
+      amount != null && amount !== "" ? (() => {
+        const n = Number(amount);
+        return Number.isNaN(n) ? null : n;
+      })() : null;
+
     // ✅ Create Inventory (date + payment_date must be Date for Prisma DateTime)
     const inventory = await prisma.inventory_management.create({
       data: {
@@ -191,21 +209,23 @@ export const createInventory = async (req: Request, res: Response) => {
         inventory_type,
         supplier,
         date: date != null && date !== "" ? new Date(date) : null,
-        amount,
+        amount: amountNum,
         status,
         payment_status,
         payment_date: payment_date != null && payment_date !== "" ? new Date(payment_date) : null,
         we_linked: we_linked_boolean,
+        deleveary_note: file?.location ?? null,
         partnerId,
       },
     });
 
     return res.status(201).json({
       success: true,
-      message: "Inventory created successfully",
+      message: INVENTORY_RESPONSE_MESSAGES.create,
       data: inventory,
     });
   } catch (error: any) {
+    cleanupFiles();
     console.error(error);
     return res.status(500).json({
       success: false,
@@ -215,8 +235,12 @@ export const createInventory = async (req: Request, res: Response) => {
   }
 };
 
-/** PATCH inventory by id (must belong to partner). Body: same fields as create, all optional. */
+/** PATCH inventory by id (must belong to partner). multipart/form-data: same fields as create + optional file deleveary_note. */
 export const updateInventory = async (req: Request, res: Response) => {
+  const file = req.file as { location?: string } | undefined;
+  const cleanupFiles = () => {
+    if (file?.location) deleteFileFromS3(file.location);
+  };
   try {
     const partnerId = req.user.id;
     const { id } = req.params;
@@ -224,8 +248,10 @@ export const updateInventory = async (req: Request, res: Response) => {
 
     const existing = await prisma.inventory_management.findFirst({
       where: { id, partnerId },
+      select: { id: true, deleveary_note: true },
     });
     if (!existing) {
+      cleanupFiles();
       return res.status(404).json({
         success: false,
         message: "Inventory not found",
@@ -244,6 +270,7 @@ export const updateInventory = async (req: Request, res: Response) => {
     } = body;
 
     if (inventory_type != null && !VALID_INVENTORY_TYPES.includes(inventory_type)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid inventory type",
@@ -251,6 +278,7 @@ export const updateInventory = async (req: Request, res: Response) => {
       });
     }
     if (status != null && !VALID_STATUSES.includes(status)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid status",
@@ -258,6 +286,7 @@ export const updateInventory = async (req: Request, res: Response) => {
       });
     }
     if (payment_status != null && !VALID_PAYMENT_STATUSES.includes(payment_status)) {
+      cleanupFiles();
       return res.status(400).json({
         success: false,
         message: "Invalid payment status",
@@ -274,6 +303,10 @@ export const updateInventory = async (req: Request, res: Response) => {
     if (payment_status != null) data.payment_status = payment_status;
     if (payment_date !== undefined) data.payment_date = payment_date != null && payment_date !== "" ? new Date(payment_date) : null;
     if (we_linked !== undefined) data.we_linked = Boolean(we_linked);
+    if (file?.location) {
+      if (existing.deleveary_note) await deleteFileFromS3(existing.deleveary_note);
+      data.deleveary_note = file.location;
+    }
 
     const inventory = await prisma.inventory_management.update({
       where: { id },
@@ -282,10 +315,11 @@ export const updateInventory = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "Inventory updated successfully",
+      message: INVENTORY_RESPONSE_MESSAGES.update,
       data: inventory,
     });
   } catch (error: any) {
+    cleanupFiles();
     console.error(error);
     return res.status(500).json({
       success: false,
@@ -317,8 +351,8 @@ export const deleteInventory = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "Inventory deleted successfully",
-      id: existing.id,
+      message: INVENTORY_RESPONSE_MESSAGES.delete,
+      data: { id: existing.id },
     });
   } catch (error: any) {
     console.error(error);
