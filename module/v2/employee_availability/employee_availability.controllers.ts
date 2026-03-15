@@ -254,7 +254,14 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
 export const updateAvailabilityTime = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
-    const { availability_time_id, title, startTime, endTime } = req.body;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+    const availability_time_id = req.params.availability_time_id;
+    const { title, startTime, endTime } = req.body;
 
     if (!availability_time_id) {
       return res.status(400).json({
