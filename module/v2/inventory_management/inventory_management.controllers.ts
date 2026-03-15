@@ -3,16 +3,6 @@ import { prisma } from "../../../db";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
 import { INVENTORY_RESPONSE_MESSAGES } from "./inventory_management.format";
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
 function startOfWeek(d: Date, weekStartsOnMonday = true) {
   const x = new Date(d);
   const day = x.getDay();
@@ -33,58 +23,23 @@ function startOfMonth(d: Date) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
-function endOfMonth(d: Date) {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() + 1, 0);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-function subMonths(d: Date, n: number) {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() - n);
-  return x;
-}
 
 const VALID_INVENTORY_TYPES = ["Orders", "Invoices"];
 const VALID_STATUSES = ["Ordered", "Delivered", "Partially"];
 const VALID_PAYMENT_STATUSES = ["Open", "Paid"];
 
-/** GET dashboard KPIs. Only includes fields that can be derived from the schema (no nulls, no current_inventory_value). */
+/** GET dashboard KPIs: open_orders, we_this_week, total_expenditures (Orders total amount), average_monthly_expenses (Invoices avg monthly total). All 0 when no data. */
 export const getDashboardKpis = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
     const weekStart = startOfWeek(now, true);
     const weekEnd = endOfWeek(now, true);
-    const currentMonthStart = startOfMonth(now);
-    const currentMonthEnd = endOfMonth(now);
-    const previousMonthStart = startOfMonth(subMonths(now, 1));
-    const previousMonthEnd = endOfMonth(subMonths(now, 1));
-
     const baseWhere = { partnerId };
 
-    const [
-      openOrdersCount,
-      openInvoicesCount,
-      weTodayCount,
-      weThisWeekCount,
-      paidInvoicesAllForMonthly,
-      paidInvoicesForCurrentPeriod,
-      paidInvoicesForPreviousPeriod,
-    ] = await Promise.all([
+    const [openOrdersCount, weThisWeekCount, ordersForTotal, invoicesForMonthly] = await Promise.all([
       prisma.inventory_management.count({
         where: { ...baseWhere, inventory_type: "Orders", payment_status: "Open" },
-      }),
-      prisma.inventory_management.count({
-        where: { ...baseWhere, inventory_type: "Invoices", payment_status: "Open" },
-      }),
-      prisma.inventory_management.count({
-        where: {
-          ...baseWhere,
-          date: { gte: todayStart, lte: todayEnd },
-        },
       }),
       prisma.inventory_management.count({
         where: {
@@ -93,71 +48,35 @@ export const getDashboardKpis = async (req: Request, res: Response) => {
         },
       }),
       prisma.inventory_management.findMany({
-        where: { ...baseWhere, inventory_type: "Invoices", payment_status: "Paid" },
+        where: { ...baseWhere, inventory_type: "Orders" },
+        select: { amount: true },
+      }),
+      prisma.inventory_management.findMany({
+        where: { ...baseWhere, inventory_type: "Invoices" },
         select: { amount: true, date: true },
-      }),
-      prisma.inventory_management.findMany({
-        where: {
-          ...baseWhere,
-          inventory_type: "Invoices",
-          payment_status: "Paid",
-          date: { gte: currentMonthStart, lte: currentMonthEnd },
-        },
-        select: { amount: true },
-      }),
-      prisma.inventory_management.findMany({
-        where: {
-          ...baseWhere,
-          inventory_type: "Invoices",
-          payment_status: "Paid",
-          date: { gte: previousMonthStart, lte: previousMonthEnd },
-        },
-        select: { amount: true },
       }),
     ]);
 
-    const totalExpenditures = paidInvoicesForCurrentPeriod.reduce((s, r) => s + (r.amount ?? 0), 0);
-    const previousPeriodExpenditures = paidInvoicesForPreviousPeriod.reduce((s, r) => s + (r.amount ?? 0), 0);
+    const totalExpenditures = ordersForTotal.reduce((s, r) => s + (r.amount ?? 0), 0);
 
     const byMonth = new Map<string, number>();
-    for (const row of paidInvoicesAllForMonthly.filter((r) => r.date)) {
+    for (const row of invoicesForMonthly.filter((r) => r.date)) {
       const key = startOfMonth(new Date(row.date!)).toISOString().slice(0, 7);
       byMonth.set(key, (byMonth.get(key) ?? 0) + (row.amount ?? 0));
     }
     const monthlyTotals = [...byMonth.values()];
-    const averageMonthlyExpenses = monthlyTotals.length ? monthlyTotals.reduce((a, b) => a + b, 0) / monthlyTotals.length : 0;
-    const topSpendingMonthValue = monthlyTotals.length ? Math.max(...monthlyTotals) : 0;
-    let topSpendingMonthKey: string | null = null;
-    byMonth.forEach((v, k) => {
-      if (v === topSpendingMonthValue) topSpendingMonthKey = k;
-    });
-
-    const percentChange =
-      previousPeriodExpenditures > 0
-        ? ((totalExpenditures - previousPeriodExpenditures) / previousPeriodExpenditures) * 100
-        : totalExpenditures > 0
-          ? 100
-          : 0;
-
-    const data: Record<string, number | string> = {};
-    if (openOrdersCount > 0) data.open_orders = openOrdersCount;
-    if (openInvoicesCount > 0) data.open_invoices = openInvoicesCount;
-    if (weTodayCount > 0) data.we_today = weTodayCount;
-    if (weThisWeekCount > 0) data.we_this_week = weThisWeekCount;
-    if (totalExpenditures > 0) {
-      data.total_expenditures = totalExpenditures;
-      data.total_expenditures_vs_previous_period_percent = Number(percentChange.toFixed(1));
-    }
-    if (averageMonthlyExpenses > 0) data.average_monthly_expenses = Number(averageMonthlyExpenses.toFixed(2));
-    if (topSpendingMonthValue > 0) {
-      data.top_spending_month = topSpendingMonthValue;
-      if (topSpendingMonthKey != null) data.top_spending_month_label = topSpendingMonthKey;
-    }
+    const averageMonthlyExpenses =
+      monthlyTotals.length > 0 ? monthlyTotals.reduce((a, b) => a + b, 0) / monthlyTotals.length : 0;
 
     return res.status(200).json({
       success: true,
       message: "Dashboard KPIs fetched successfully",
-      data,
+      data: {
+        open_orders: openOrdersCount,
+        we_this_week: weThisWeekCount,
+        total_expenditures: totalExpenditures,
+        average_monthly_expenses: Number(averageMonthlyExpenses.toFixed(2)),
+      },
     });
   } catch (error: any) {
     console.error(error);
