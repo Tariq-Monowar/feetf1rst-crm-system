@@ -4,6 +4,7 @@ import exercises from "./exercises/exercises.routes";
 
 import appointment from "./appointment/appointment.routes";
 import appomnent_room from "./appointment/appomnent_room/appomnent_room.routes";
+import booking_rules from "./appointment/booking_rules/booking_rules.routes";
 
 import featureAccess from "./feature_access/feature_access.routes";
 import notifications from "./notifications/notifications.routes";
@@ -52,6 +53,7 @@ const moduleRoutes = [
 
   { path: "/appointment", route: appointment },
   { path: "/appointment/appomnent-room", route: appomnent_room },
+  { path: "/appointment/booking-rules", route: booking_rules },
 
   { path: "/feature-access", route: featureAccess },
   { path: "/notifications", route: notifications },

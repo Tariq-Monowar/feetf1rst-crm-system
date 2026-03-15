@@ -96,6 +96,7 @@ model User {
   inventoryManagements        inventory_management[]
   employeeAvailabilities      employee_availability[]
   appomnentRooms              appomnent_room[]
+  appomnentBookingRules       appomnent_booking_rules[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -291,7 +292,7 @@ model appomnent_room {
   id String @id @default(cuid())
 
   partnerId String?
-  partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   appointmentId String?
   appointment   appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
@@ -308,6 +309,20 @@ model appomnent_room {
   @@index([partnerId])
   @@index([appointmentId])
   @@map("appomnent_room")
+}
+
+model appomnent_booking_rules {
+  id String @id @default(cuid())
+
+  partnerId String @unique
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  minNoticeHours     Int @default(24) // Minimum Notice Time (hours)
+  cancellationHours  Int @default(48) // Cancellation Deadline (hours before start)
+  defaultSlotMinutes Int @default(30) // Slot Length in minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SuggestionFeetf1rst {
@@ -2329,6 +2344,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2352,6 +2370,9 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
