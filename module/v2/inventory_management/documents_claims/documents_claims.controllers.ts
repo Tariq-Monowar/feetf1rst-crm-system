@@ -5,6 +5,7 @@ import { deleteFileFromS3 } from "../../../../utils/s3utils";
 import { DOCUMENTS_CLAIMS_RESPONSE_MESSAGES } from "./documents_claims.format";
 
 const REDIS_RECIPIENTS_KEY = (partnerId: string) => `documents_claims:recipients:${partnerId}`;
+const REDIS_CALCULATIONS_KEY = (partnerId: string) => `documents_claims:calculations:${partnerId}`;
 
 const VALID_DOCUMENT_TYPES = ["cost_estimate", "invoices", "delivery_notes"];
 const VALID_PAYMENT_STATUSES = ["Open", "Paid"];
@@ -37,10 +38,24 @@ export const getAllDocumentsClaims = async (req: Request, res: Response) => {
       Math.max(1, parseInt(req.query.limit as string, 10) || 10),
     );
 
+    if (type && !VALID_DOCUMENT_TYPES.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document type",
+        validTypes: VALID_DOCUMENT_TYPES,
+      });
+    }
+    if (payment_type && !VALID_PAYMENT_STATUSES.includes(payment_type)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment status",
+        validPaymentStatuses: VALID_PAYMENT_STATUSES,
+      });
+    }
+
     const where: any = { partnerId };
-    if (type && VALID_DOCUMENT_TYPES.includes(type)) where.type = type;
-    if (payment_type && VALID_PAYMENT_STATUSES.includes(payment_type))
-      where.payment_type = payment_type;
+    if (type) where.type = type;
+    if (payment_type) where.payment_type = payment_type;
     if (recipient) where.recipient = { contains: recipient, mode: "insensitive" };
     if (search) {
       where.OR = [
@@ -188,7 +203,7 @@ export const createDocumentClaim = async (req: Request, res: Response) => {
       },
     });
 
-    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId), REDIS_CALCULATIONS_KEY(partnerId)).catch(() => {});
 
     return res.status(201).json({
       success: true,
@@ -284,7 +299,7 @@ export const updateDocumentClaim = async (req: Request, res: Response) => {
       data,
     });
 
-    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId), REDIS_CALCULATIONS_KEY(partnerId)).catch(() => {});
 
     return res.status(200).json({
       success: true,
@@ -315,7 +330,7 @@ export const deleteDocumentClaim = async (req: Request, res: Response) => {
         .json({ success: false, message: "Document not found" });
     }
     if (existing.file) await deleteFileFromS3(existing.file);
-    await redis.del(REDIS_RECIPIENTS_KEY(partnerId)).catch(() => {});
+    await redis.del(REDIS_RECIPIENTS_KEY(partnerId), REDIS_CALCULATIONS_KEY(partnerId)).catch(() => {});
     await prisma.documents_and_claims.delete({ where: { id } });
     return res.status(200).json({
       success: true,
@@ -360,6 +375,91 @@ export const getRecipientName = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Get Recipient Name Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
+    });
+  }
+};
+
+export const calculations = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+    const cacheKey = REDIS_CALCULATIONS_KEY(partnerId);
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      const data = JSON.parse(cached);
+      return res.status(200).json({
+        success: true,
+        message: "Calculations fetched successfully",
+        data,
+      });
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(startOfToday.getFullYear(), startOfToday.getMonth(), 1);
+    const endOfMonth = new Date(startOfToday.getFullYear(), startOfToday.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const [outstanding, overdue, partiallyPaidCount, paidMonth, totalCount, openDeliveryCount] = await Promise.all([
+      prisma.documents_and_claims.aggregate({
+        where: { partnerId, open: { not: null } },
+        _sum: { open: true },
+      }),
+      prisma.documents_and_claims.aggregate({
+        where: {
+          partnerId,
+          payment_type: "Open",
+          date: { lt: startOfToday },
+          open: { not: null },
+        },
+        _sum: { open: true },
+      }),
+      prisma.documents_and_claims.count({
+        where: {
+          partnerId,
+          paid: { gt: 0 },
+          open: { gt: 0 },
+        },
+      }),
+      prisma.documents_and_claims.aggregate({
+        where: {
+          partnerId,
+          payment_type: "Paid",
+          date: { gte: startOfMonth, lte: endOfMonth },
+          paid: { not: null },
+        },
+        _sum: { paid: true },
+      }),
+      prisma.documents_and_claims.count({ where: { partnerId } }),
+      prisma.documents_and_claims.count({
+        where: {
+          partnerId,
+          type: "delivery_notes",
+          payment_type: "Open",
+        },
+      }),
+    ]);
+
+    const data = {
+      outstandingClaim: Number(outstanding._sum.open ?? 0),
+      overdue: Number(overdue._sum.open ?? 0),
+      partiallyPaid: partiallyPaidCount,
+      paidMonth: Number(paidMonth._sum.paid ?? 0),
+      totalDocuments: totalCount,
+      openDeliveryNotes: openDeliveryCount,
+    };
+
+    await redis.set(cacheKey, JSON.stringify(data)).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: "Calculations fetched successfully",
+      data,
+    });
+  } catch (error: any) {
+    console.error("Calculations Error:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",

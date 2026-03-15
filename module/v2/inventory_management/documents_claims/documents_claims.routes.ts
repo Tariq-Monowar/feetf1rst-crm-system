@@ -7,7 +7,8 @@ import {
   getDocumentClaimById,
   updateDocumentClaim,
   deleteDocumentClaim,
-  getRecipientName
+  getRecipientName,
+  calculations
 } from "./documents_claims.controllers";
 
 const router = express.Router();
@@ -42,5 +43,8 @@ router.delete("/delete/:id", verifyUser("EMPLOYEE", "PARTNER"), deleteDocumentCl
 
 // get recipients list (from Redis when cached)
 router.get("/get-recipient-name", verifyUser("EMPLOYEE", "PARTNER"), getRecipientName);
+
+//count
+router.get("/calculations", verifyUser("EMPLOYEE", "PARTNER"), calculations);
 
 export default router;
