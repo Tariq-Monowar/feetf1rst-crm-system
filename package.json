@@ -13,6 +13,7 @@
     "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
     "migrate:diagnosis-status-to-string": "ts-node scripts/migrate-diagnosis-status-to-string.ts",
     "fix:cache-lookup": "ts-node scripts/fix-cache-lookup.ts",
+    "backfill:appomnent-room-partnerId": "ts-node scripts/backfill-appomnent-room-partnerId.ts",
     "clean:diagnosis-status-data": "ts-node scripts/clean-diagnosis-status-data.ts",
     "backup:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts backup",
     "restore:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts restore",

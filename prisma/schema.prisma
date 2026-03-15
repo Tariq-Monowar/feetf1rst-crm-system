@@ -95,6 +95,7 @@ model User {
   storeBrandSettings          store_brand_settings[]
   inventoryManagements        inventory_management[]
   employeeAvailabilities      employee_availability[]
+  appomnentRooms              appomnent_room[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -220,7 +221,8 @@ model appointment {
 
   appointmentEmployees AppointmentEmployee[]
 
-  createdAt DateTime @default(now())
+  createdAt      DateTime         @default(now())
+  appomnentRooms appomnent_room[]
 
   @@map("appointment")
 }
@@ -283,6 +285,29 @@ model availability_time {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model appomnent_room {
+  id String @id @default(cuid())
+
+  partnerId String?
+  partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  name     String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+  @@index([appointmentId])
+  @@map("appomnent_room")
 }
 
 model SuggestionFeetf1rst {
@@ -407,6 +432,7 @@ model Employees {
   workTypes                   work_types[]
   timelineAnalytics           timeline_analytics[]
   employeeAvailabilities      employee_availability[]
+  appomnentRooms              appomnent_room[]
 
   @@index([partnerId]) // createOrder: find first employee by partner
   @@index([createdAt])
@@ -2299,6 +2325,10 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2322,6 +2352,10 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**

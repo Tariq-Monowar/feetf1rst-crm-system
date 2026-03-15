@@ -1,7 +1,10 @@
 import express from "express";
 
 import exercises from "./exercises/exercises.routes";
+
 import appointment from "./appointment/appointment.routes";
+import appomnent_room from "./appointment/appomnent_room/appomnent_room.routes";
+
 import featureAccess from "./feature_access/feature_access.routes";
 import notifications from "./notifications/notifications.routes";
 import dashboardOverview from "./dashboard_overview/dashboard_overview.routes";
@@ -42,12 +45,14 @@ import order_step from "./shoe_orders/order_step/order_step.routes";
 import inventory_management from "./inventory_management/inventory_management.routes";
 import employee_availability from "./employee_availability/employee_availability.routes";
 
-
 const router = express.Router();
 
 const moduleRoutes = [
   { path: "/exercises", route: exercises },
+
   { path: "/appointment", route: appointment },
+  { path: "/appointment/appomnent-room", route: appomnent_room },
+
   { path: "/feature-access", route: featureAccess },
   { path: "/notifications", route: notifications },
   { path: "/dashboard-overview", route: dashboardOverview },
