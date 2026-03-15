@@ -1,6 +1,35 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
 
+export const getEmployeeAvailability = async (req: Request, res: Response) => {
+  try {
+    const employeeId = req.params.employeeId;
+    const partnerId = req.user?.id;
+
+    const list = await prisma.employee_availability.findMany({
+      where: { employeeId, partnerId },
+      orderBy: { dayOfWeek: "asc" },
+      include: {
+        availability_time: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: list,
+    });
+  } catch (error) {
+    console.error("Get employee availability error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (error as Error).message,
+    });
+  }
+};
+
 export const createEmployeeAvailability = async (
   req: Request,
   res: Response,
@@ -11,12 +40,14 @@ export const createEmployeeAvailability = async (
 
     const { dayOfWeek, availability_time } = req.body;
     /**
-     * availability_time should be an array of objects like:
+     * availability_time is optional. If provided, array of objects like:
      * [
      *   { title: "Morning Shift", startTime: "09:00", endTime: "12:00" },
      *   { title: "Afternoon Shift", startTime: "13:00", endTime: "17:00" }
      * ]
      */
+
+    const timeSlots = Array.isArray(availability_time) ? availability_time : [];
 
     //check if dayOfWeek is valid
     if (dayOfWeek < 0 || dayOfWeek > 6) {
@@ -45,20 +76,22 @@ export const createEmployeeAvailability = async (
       });
     }
 
-    // Create employee availability with multiple availability times
+    // Create employee availability (optionally with time slots)
     const employeeAvailability = await prisma.employee_availability.create({
       data: {
         employeeId,
         partnerId,
         dayOfWeek,
-        isActive: true, // optional
-        availability_time: {
-          create: availability_time.map((slot: any) => ({
-            title: slot.title,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-          })),
-        },
+        isActive: true,
+        ...(timeSlots.length > 0 && {
+          availability_time: {
+            create: timeSlots.map((slot: any) => ({
+              title: slot.title,
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+            })),
+          },
+        }),
       },
       include: {
         availability_time: true,

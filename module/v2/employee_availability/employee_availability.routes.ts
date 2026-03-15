@@ -2,6 +2,7 @@ import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
 import {
+  getEmployeeAvailability,
   createEmployeeAvailability,
   activeEmployeeAvailability,
   addEmployeeAvailability,
@@ -11,6 +12,7 @@ import {
 
 const router = express.Router();
 
+router.get("/availability-list/:employeeId", verifyUser("PARTNER"), getEmployeeAvailability);
 router.post("/create/:employeeId", verifyUser("PARTNER"), createEmployeeAvailability);
 
 router.patch("/toggle-activity/:employeeId", verifyUser("PARTNER"), activeEmployeeAvailability);
