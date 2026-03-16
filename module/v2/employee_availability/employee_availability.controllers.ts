@@ -42,9 +42,10 @@ export const createEmployeeAvailability = async (
     /**
      * availability_time is optional. If provided, array of objects like:
      * [
-     *   { title: "Morning Shift", startTime: "09:00", endTime: "12:00" },
-     *   { title: "Afternoon Shift", startTime: "13:00", endTime: "17:00" }
+     *   { title: "Morning Shift", startTime: "09:00", endTime: "12:00", isActive?: boolean },
+     *   { title: "Afternoon Shift", startTime: "13:00", endTime: "17:00", isActive?: boolean }
      * ]
+     * isActive defaults to true when not provided.
      */
 
     const timeSlots = Array.isArray(availability_time) ? availability_time : [];
@@ -89,6 +90,7 @@ export const createEmployeeAvailability = async (
               title: slot.title,
               startTime: slot.startTime,
               endTime: slot.endTime,
+              isActive: slot.isActive ?? true,
             })),
           },
         }),
@@ -201,7 +203,14 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
       if (!s || typeof s !== "object" || !s.title || !s.startTime || !s.endTime) {
         return res.status(400).json({
           success: false,
-          message: `availability_time[${i}] must include title, startTime, and endTime.`,
+          message:
+            `availability_time[${i}] must include title, startTime, and endTime.`,
+        });
+      }
+      if (s.isActive !== undefined && typeof s.isActive !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: `availability_time[${i}].isActive must be boolean when provided.`,
         });
       }
     }
@@ -222,12 +231,20 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
     }
 
     const created = await prisma.availability_time.createMany({
-      data: list.map((s: { title: string; startTime: string; endTime: string }) => ({
-        employeeAvailabilityId: availability_id,
-        title: s.title,
-        startTime: s.startTime,
-        endTime: s.endTime,
-      })),
+      data: list.map(
+        (s: {
+          title: string;
+          startTime: string;
+          endTime: string;
+          isActive?: boolean;
+        }) => ({
+          employeeAvailabilityId: availability_id,
+          title: s.title,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          isActive: s.isActive ?? true,
+        }),
+      ),
     });
 
     const allTimes = await prisma.availability_time.findMany({
@@ -262,7 +279,7 @@ export const updateAvailabilityTime = async (req: Request, res: Response) => {
       });
     }
     const availability_time_id = req.params.availability_time_id;
-    const { title, startTime, endTime } = req.body;
+    const { title, startTime, endTime, isActive } = req.body;
 
     if (!availability_time_id) {
       return res.status(400).json({
@@ -285,15 +302,16 @@ export const updateAvailabilityTime = async (req: Request, res: Response) => {
       });
     }
 
-    const data: { title?: string; startTime?: string; endTime?: string } = {};
+    const data: { title?: string; startTime?: string; endTime?: string; isActive?: boolean } = {};
     if (title !== undefined) data.title = title;
     if (startTime !== undefined) data.startTime = startTime;
     if (endTime !== undefined) data.endTime = endTime;
+    if (isActive !== undefined) data.isActive = isActive;
 
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Provide at least one of: title, startTime, endTime.",
+        message: "Provide at least one of: title, startTime, endTime, isActive.",
       });
     }
 

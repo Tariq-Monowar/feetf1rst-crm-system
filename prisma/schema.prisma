@@ -281,6 +281,7 @@ model availability_time {
   id String @id @default(cuid())
 
   title String // "Working Hours"
+  isActive Boolean @default(true)
 
   startTime String // "09:00" format (HH:mm)
   endTime   String // "17:00"
