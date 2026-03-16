@@ -11,11 +11,26 @@ import {
   getSystemAppointment,
   getAvailableTimeSlots,
   getAllAppointmentsDate,
+  getAppointmentsNextFourDays,
+  getEmployeeFreeSlotsByCustomer,
+  getEmployeeFreePercentage,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
 
 const router = express.Router();
+
+router.post(
+  "/employee-free-slots",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getEmployeeFreeSlotsByCustomer,
+);
+
+router.post(
+  "/employee-free-percentage",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getEmployeeFreePercentage,
+);
 
 router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);
 
@@ -24,6 +39,7 @@ router.get(
   getSystemAppointment
 );
 
+
 router.get("/available-slots", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAvailableTimeSlots);
 
 router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
@@ -31,6 +47,15 @@ router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
 router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
 
 router.get("/by-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentsByDate);
+
+router.get(
+  "/by-date-next-four-days",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAppointmentsNextFourDays,
+);
+
+
+
 router.get("/all-appointments-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
 
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentById);

@@ -102,11 +102,9 @@ export const generateCrmToken = async (req: Request, res: Response) => {
       payload.employeeId = employeeId;
     }
 
-    const crmToken = jwt.sign(
-      payload,
-      process.env.JWT_SECRET as string,
-      { expiresIn: "5m" }, // short-lived for SSO handoff
-    );
+    const crmToken = jwt.sign(payload, process.env.JWT_SECRET as string, {
+      noTimestamp: true,
+    });
 
     return res.status(200).json({
       success: true,
@@ -170,7 +168,7 @@ export const systemLogin = async (req: Request, res: Response) => {
     const token = jwt.sign(
       { id: partner.id, userId: partner.id, email: partner.email },
       process.env.JWT_SECRET as string,
-      { expiresIn: "8h" },
+      { noTimestamp: true },
     );
 
     return res.status(200).json({
@@ -335,6 +333,12 @@ export const localLogin = async (req: Request, res: Response) => {
       }
     }
 
+    // Normalize email: never put string "null" in token (causes blank screens). Use actual null when missing.
+    const email =
+      data.email != null && data.email !== "" && String(data.email) !== "null"
+        ? data.email
+        : null;
+
     // EMPLOYEE: { id (User/partnerId), employeeId, email, role }
     // PARTNER: { id, email, role } - no employeeId
     const payload =
@@ -343,18 +347,18 @@ export const localLogin = async (req: Request, res: Response) => {
             id: data.partnerId,
             userId: data.partnerId,
             employeeId: data.id,
-            email: data.email,
+            email,
             role: query.role,
           }
         : {
             id: data.id,
             userId: data.id,
-            email: data.email,
+            email,
             role: query.role,
           };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET as string, {
-      expiresIn: "8h",
+      noTimestamp: true,
     });
 
     // Exclude sensitive fields from response

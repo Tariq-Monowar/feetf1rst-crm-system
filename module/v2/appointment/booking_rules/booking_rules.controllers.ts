@@ -8,12 +8,6 @@ import { prisma } from "../../../../db";
 export const manageBookingRules = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
-    if (!partnerId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized.",
-      });
-    }
 
     const { minNoticeHours, cancellationHours, defaultSlotMinutes } = req.body;
 

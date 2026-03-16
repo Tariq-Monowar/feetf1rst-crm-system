@@ -48,7 +48,8 @@ export const loginEmployee = async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { id: employee.id, email: employee.email, role: "EMPLOYEE" },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { noTimestamp: true },
     );
 
     return res.status(200).json({
@@ -108,7 +109,8 @@ export const loginEmployeeById = async (req: Request, res: Response) => {
 
     const token = jwt.sign(
       { id: employee.user.id, employeeId: employee.id, email: employee.user.email, role: "EMPLOYEE" },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { noTimestamp: true },
     );
 
     return res.status(200).json({

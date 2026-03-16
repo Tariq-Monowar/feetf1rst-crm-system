@@ -141,7 +141,8 @@ export const createUser = async (req: Request, res: Response) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET as string,
-      { expiresIn: "100d" },
+      // { expiresIn: "100d" },
+      { noTimestamp: true },
     );
 
     res.status(201).json({
@@ -251,6 +252,7 @@ export const loginUser = async (req: Request, res: Response) => {
     const token = jwt.sign(
       { id: user.id, email: user.email, role: userRole },
       process.env.JWT_SECRET as string,
+      { noTimestamp: true },
     );
 
     // Handle admin login notification

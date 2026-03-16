@@ -6,6 +6,7 @@ import {
   managePrescription,
   validateInsuranceChangelog,
 } from "./insurance.cotrollers";
+ 
 
 const router = express.Router();
 
@@ -33,5 +34,7 @@ router.post(
   memoryUpload,
   validateInsuranceChangelog,
 );
+
+ 
 
 export default router;

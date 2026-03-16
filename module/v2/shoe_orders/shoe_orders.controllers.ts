@@ -250,6 +250,24 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     const newOrder = await prisma.$transaction(async (tx) => {
       const orderNumber = await getNextShoeOrderNumberForPartner(tx, partnerId);
 
+      // Auto-link a recent prescription (not older than 4 weeks) when order is for insurance/broth
+      let prescriptionId: string | undefined;
+      if (payment_type === "insurance" || payment_type === "broth") {
+        const now = new Date();
+        const fourWeeksAgo = new Date(now.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
+
+        const recentPrescription = await tx.prescription.findFirst({
+          where: {
+            customerId,
+            createdAt: { gte: fourWeeksAgo },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        if (recentPrescription) {
+          prescriptionId = recentPrescription.id;
+        }
+      }
+
       const order = await tx.shoe_order.create({
         data: {
           orderNumber,
@@ -285,6 +303,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           deposit_provision: Number(deposit_provision),
           foot_analysis_price: footAnalysisPrice ?? undefined,
           discount: hasDiscount ? Number(discount) : undefined,
+          ...(prescriptionId && { prescriptionId }),
         },
       });
 

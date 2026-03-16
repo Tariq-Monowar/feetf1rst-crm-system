@@ -7,6 +7,7 @@ import {
   getInventoryById,
   updateInventory,
   deleteInventory,
+  getDashboardKpis,
 } from "./inventory_management.controllers";
 
 const router = express.Router();
@@ -33,6 +34,7 @@ const handleDelevearyNoteUpload = (req: Request, res: Response, next: NextFuncti
  * - Response: { success, message, data?, hasMore? }
  */
 
+router.get("/dashboard-kpis", verifyUser("EMPLOYEE", "PARTNER"), getDashboardKpis);
 router.post("/create-inventory", verifyUser("EMPLOYEE", "PARTNER"), handleDelevearyNoteUpload, createInventory);
 router.get("/get-all-inventory", verifyUser("EMPLOYEE", "PARTNER"), getAllInventories);
 router.get("/get-single-inventory/:id", verifyUser("EMPLOYEE", "PARTNER"), getInventoryById);

@@ -3,9 +3,90 @@ import { prisma } from "../../../db";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
 import { INVENTORY_RESPONSE_MESSAGES } from "./inventory_management.format";
 
+function startOfWeek(d: Date, weekStartsOnMonday = true) {
+  const x = new Date(d);
+  const day = x.getDay();
+  const diff = weekStartsOnMonday ? (day === 0 ? -6 : 1 - day) : -day;
+  x.setDate(x.getDate() + diff);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function endOfWeek(d: Date, weekStartsOnMonday = true) {
+  const s = startOfWeek(d, weekStartsOnMonday);
+  s.setDate(s.getDate() + 6);
+  s.setHours(23, 59, 59, 999);
+  return s;
+}
+function startOfMonth(d: Date) {
+  const x = new Date(d);
+  x.setDate(1);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
 const VALID_INVENTORY_TYPES = ["Orders", "Invoices"];
 const VALID_STATUSES = ["Ordered", "Delivered", "Partially"];
 const VALID_PAYMENT_STATUSES = ["Open", "Paid"];
+
+/** GET dashboard KPIs: open_orders, we_this_week, total_expenditures (Orders total amount), average_monthly_expenses (Invoices avg monthly total). All 0 when no data. */
+export const getDashboardKpis = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+    const now = new Date();
+    const weekStart = startOfWeek(now, true);
+    const weekEnd = endOfWeek(now, true);
+    const baseWhere = { partnerId };
+
+    const [openOrdersCount, weThisWeekCount, ordersForTotal, invoicesForMonthly] = await Promise.all([
+      prisma.inventory_management.count({
+        where: { ...baseWhere, inventory_type: "Orders", payment_status: "Open" },
+      }),
+      prisma.inventory_management.count({
+        where: {
+          ...baseWhere,
+          date: { gte: weekStart, lte: weekEnd },
+        },
+      }),
+      prisma.inventory_management.findMany({
+        where: { ...baseWhere, inventory_type: "Orders" },
+        select: { amount: true },
+      }),
+      prisma.inventory_management.findMany({
+        where: { ...baseWhere, inventory_type: "Invoices" },
+        select: { amount: true, date: true },
+      }),
+    ]);
+
+    const totalExpenditures = ordersForTotal.reduce((s, r) => s + (r.amount ?? 0), 0);
+
+    const byMonth = new Map<string, number>();
+    for (const row of invoicesForMonthly.filter((r) => r.date)) {
+      const key = startOfMonth(new Date(row.date!)).toISOString().slice(0, 7);
+      byMonth.set(key, (byMonth.get(key) ?? 0) + (row.amount ?? 0));
+    }
+    const monthlyTotals = [...byMonth.values()];
+    const averageMonthlyExpenses =
+      monthlyTotals.length > 0 ? monthlyTotals.reduce((a, b) => a + b, 0) / monthlyTotals.length : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: "Dashboard KPIs fetched successfully",
+      data: {
+        open_orders: openOrdersCount,
+        we_this_week: weThisWeekCount,
+        total_expenditures: totalExpenditures,
+        average_monthly_expenses: Number(averageMonthlyExpenses.toFixed(2)),
+      },
+    });
+  } catch (error: any) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error?.message,
+    });
+  }
+};
 
 /** GET all inventories. Query: inventory_type (required), optional: status, payment_status, cursor, limit. */
 export const getAllInventories = async (req: Request, res: Response) => {

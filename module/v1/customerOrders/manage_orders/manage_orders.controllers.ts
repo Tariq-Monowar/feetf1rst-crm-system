@@ -14,7 +14,11 @@ export const updateMultiplePaymentStatus = async (
   res: Response
 ) => {
   try {
-    const { orderIds, bezahlt } = req.body;
+    const { orderIds, insurance_payed, private_payed } = req.body as {
+      orderIds?: string[];
+      insurance_payed?: boolean;
+      private_payed?: boolean;
+    };
 
     if (!orderIds) {
       return res.status(400).json({
@@ -29,32 +33,18 @@ export const updateMultiplePaymentStatus = async (
         message: "Order IDs must be a non-empty array",
       });
     }
-    if (!bezahlt) {
+    if (
+      typeof insurance_payed !== "boolean" &&
+      typeof private_payed !== "boolean"
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Payment status is required",
+        message:
+          "At least one of insurance_payed or private_payed (boolean) is required",
       });
     }
 
-    const validPaymentStatuses = new Set([
-      "Privat_Bezahlt",
-      "Privat_offen",
-      "Krankenkasse_Ungenehmigt",
-      "Krankenkasse_Genehmigt",
-    ]);
-
-    if (!validPaymentStatuses.has(bezahlt)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment status",
-        error: `Payment status must be one of: ${Array.from(
-          validPaymentStatuses
-        ).join(", ")}`,
-        validStatuses: Array.from(validPaymentStatuses),
-      });
-    }
-
-    // First get all orders with their current status
+    // Load current payment flags for the orders
     const orders = await prisma.customerOrders.findMany({
       where: {
         id: {
@@ -64,69 +54,68 @@ export const updateMultiplePaymentStatus = async (
       select: {
         id: true,
         customerId: true,
-        bezahlt: true,
+        insurance_payed: true,
+        private_payed: true,
         orderStatus: true,
       },
     });
 
-    // Update all orders
-    const updateResult = await prisma.customerOrders.updateMany({
-      where: {
-        id: {
-          in: orderIds,
-        },
-      },
-      data: {
-        bezahlt,
-        statusUpdate: new Date(),
-      },
-    });
+    let updatedCount = 0;
 
-    // Create history for each order that changed
     for (const order of orders) {
-      if (order.bezahlt !== bezahlt) {
-        await prisma.customerOrdersHistory.create({
-          data: {
-            orderId: order.id,
-            statusFrom: order.orderStatus,
-            statusTo: order.orderStatus,
-            paymentFrom: order.bezahlt,
-            paymentTo: bezahlt,
-            isPrementChange: true,
-            partnerId: req.user?.id || null,
-            employeeId: null,
-            note: `Payment status changed from "${order.bezahlt}" to "${bezahlt}"`,
-          },
-        });
+      const newInsurance =
+        typeof insurance_payed === "boolean"
+          ? insurance_payed
+          : order.insurance_payed ?? false;
+      const newPrivate =
+        typeof private_payed === "boolean"
+          ? private_payed
+          : order.private_payed ?? false;
 
-        // Customer history for payment change
-        const paymentLabels = {
-          Privat_Bezahlt: "Privat bezahlt",
-          Privat_offen: "Privat offen",
-          Krankenkasse_Ungenehmigt: "Krankenkasse ungenehmigt",
-          Krankenkasse_Genehmigt: "Krankenkasse genehmigt",
-        };
-        const paymentLabel = paymentLabels[bezahlt] ?? bezahlt;
-        
-        await prisma.customerHistorie.create({
-          data: {
-            customerId: order.customerId,
-            orderId: order.id,
-            category: "Zahlungen",
-            eventId: order.id,
-            paymentIs: bezahlt,
-            system_note: paymentLabel,
-          },
-        });
+      const insuranceChanged = newInsurance !== (order.insurance_payed ?? false);
+      const privateChanged = newPrivate !== (order.private_payed ?? false);
+
+      if (!insuranceChanged && !privateChanged) {
+        continue;
       }
+
+      await prisma.customerOrders.update({
+        where: { id: order.id },
+        data: {
+          insurance_payed: newInsurance,
+          private_payed: newPrivate,
+          statusUpdate: new Date(),
+        },
+      });
+
+      updatedCount += 1;
+
+      await prisma.customerOrdersHistory.create({
+        data: {
+          orderId: order.id,
+          statusFrom: order.orderStatus,
+          statusTo: order.orderStatus,
+          paymentFrom: null,
+          paymentTo: null,
+          isPrementChange: true,
+          partnerId: req.user?.id || null,
+          employeeId: null,
+          note: `Payment flags changed: insurance_payed ${String(
+            order.insurance_payed ?? false,
+          )} -> ${String(newInsurance)}, private_payed ${String(
+            order.private_payed ?? false,
+          )} -> ${String(newPrivate)}`,
+        },
+      });
     }
 
     res.status(200).json({
       success: true,
-      message: `Successfully updated ${updateResult.count} order(s) to payment status: ${bezahlt}`,
-      updatedCount: updateResult.count,
+      message: `Successfully updated ${updatedCount} order(s) payment flags`,
+      updatedCount,
       ids: orderIds,
-      bezahlt,
+      insurance_payed,
+      private_payed,
     });
   } catch (error) {
     console.error("Update Multiple Order Statuses Error:", error);
