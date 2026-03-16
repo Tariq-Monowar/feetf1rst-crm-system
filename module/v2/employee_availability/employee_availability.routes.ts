@@ -8,6 +8,8 @@ import {
   addEmployeeAvailability,
   updateAvailabilityTime,
   deleteAvailabilityTime,
+  checkEmployeeAvailabilitySlot,
+  getCombinedAvailableTimeSlots,
 } from "./employee_availability.controllers";
 
 const router = express.Router();
@@ -29,5 +31,17 @@ router.all("/update-availability-time/:availability_time_id", (req, res, next) =
 });
 router.patch("/update-availability-time/:availability_time_id", verifyUser("PARTNER"), updateAvailabilityTime);
 router.delete("/delete-availability-time/:availability_time_id", verifyUser("PARTNER"), deleteAvailabilityTime);
+
+router.get(
+  "/check-slot/:employeeId",
+  verifyUser("PARTNER"),
+  checkEmployeeAvailabilitySlot,
+);
+
+router.post(
+  "/combined-available-slots",
+  verifyUser("PARTNER"),
+  getCombinedAvailableTimeSlots,
+);
 
 export default router;
