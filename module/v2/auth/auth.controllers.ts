@@ -333,6 +333,12 @@ export const localLogin = async (req: Request, res: Response) => {
       }
     }
 
+    // Normalize email: never put string "null" in token (causes blank screens). Use actual null when missing.
+    const email =
+      data.email != null && data.email !== "" && String(data.email) !== "null"
+        ? data.email
+        : null;
+
     // EMPLOYEE: { id (User/partnerId), employeeId, email, role }
     // PARTNER: { id, email, role } - no employeeId
     const payload =
@@ -341,13 +347,13 @@ export const localLogin = async (req: Request, res: Response) => {
             id: data.partnerId,
             userId: data.partnerId,
             employeeId: data.id,
-            email: data.email,
+            email,
             role: query.role,
           }
         : {
             id: data.id,
             userId: data.id,
-            email: data.email,
+            email,
             role: query.role,
           };
 
