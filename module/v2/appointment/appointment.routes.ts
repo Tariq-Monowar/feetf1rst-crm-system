@@ -13,6 +13,7 @@ import {
   getAllAppointmentsDate,
   getAppointmentsNextFourDays,
   getEmployeeFreeSlotsByCustomer,
+  getEmployeeFreePercentage,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
@@ -25,6 +26,11 @@ router.post(
   getEmployeeFreeSlotsByCustomer,
 );
 
+router.post(
+  "/employee-free-percentage",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getEmployeeFreePercentage,
+);
 
 router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);
 

@@ -333,26 +333,7 @@ export const getEmployeeFreeSlotsByCustomer = async (
       return h * 60 + m;
     };
 
-    type Interval = { start: number; end: number };
-
-    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
-      if (!busy.length || !base.length) return base;
-      let result = base.slice();
-      for (const b of busy) {
-        const next: Interval[] = [];
-        for (const f of result) {
-          if (b.end <= f.start || b.start >= f.end) {
-            next.push(f);
-          } else {
-            if (b.start > f.start) next.push({ start: f.start, end: b.start });
-            if (b.end < f.end) next.push({ start: b.end, end: f.end });
-          }
-        }
-        result = next;
-        if (!result.length) break;
-      }
-      return result;
-    };
+    type DutyInterval = { start: number; end: number };
 
     // Pre-index availability and busy intervals per employee for O(n) lookups
     const availabilityByEmployee = new Map<
@@ -380,6 +361,27 @@ export const getEmployeeFreeSlotsByCustomer = async (
         list.push(interval);
       }
     }
+
+    type Interval = { start: number; end: number };
+
+    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
+      if (!busy.length || !base.length) return base;
+      let result = base.slice();
+      for (const b of busy) {
+        const next: Interval[] = [];
+        for (const f of result) {
+          if (b.end <= f.start || b.start >= f.end) {
+            next.push(f);
+          } else {
+            if (b.start > f.start) next.push({ start: f.start, end: b.start });
+            if (b.end < f.end) next.push({ start: b.end, end: f.end });
+          }
+        }
+        result = next;
+        if (!result.length) break;
+      }
+      return result;
+    };
 
     const format = (m: number) => {
       const h = Math.floor(m / 60);
@@ -412,6 +414,229 @@ export const getEmployeeFreeSlotsByCustomer = async (
     });
   } catch (error: any) {
     console.error("Get employee free slots by customer error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+// Compute per-employee free percentage over one or more dates
+export const getEmployeeFreePercentage = async (req: Request, res: Response) => {
+  try {
+    const { id: partnerId } = req.user;
+    const { dates } = req.body as { dates?: string[] };
+
+    if (!Array.isArray(dates) || dates.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: "dates[] is required (array of ISO date strings)",
+      });
+      return;
+    }
+
+    const parsedDates = dates.map((d) => new Date(d));
+    if (parsedDates.some((d) => isNaN(d.getTime()))) {
+      res.status(400).json({
+        success: false,
+        message: "All dates must be valid date strings",
+      });
+      return;
+    }
+
+    // Fetch all employees for this partner
+    const employees = await prisma.employees.findMany({
+      where: { partnerId },
+      select: { id: true, employeeName: true },
+    });
+
+    if (employees.length === 0) {
+      res.status(200).json({
+        success: true,
+        data: [],
+      });
+      return;
+    }
+
+    const employeeIds = employees.map((e) => e.id);
+
+    const dayNumbers = parsedDates.map((d) => d.getDay());
+
+    // Get availability for all employees on all requested weekdays
+    const availability = await prisma.employee_availability.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        partnerId,
+        dayOfWeek: { in: dayNumbers },
+        isActive: true,
+      },
+      include: {
+        availability_time: {
+          where: { isActive: true },
+          orderBy: { startTime: "asc" },
+        },
+      },
+    });
+
+    // Date range for appointments query
+    const rangeStart = new Date(
+      Math.min(...parsedDates.map((d) => d.getTime())),
+    );
+    const rangeEnd = new Date(
+      Math.max(...parsedDates.map((d) => d.getTime())) + 24 * 60 * 60 * 1000,
+    );
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        userId: partnerId,
+        date: {
+          gte: rangeStart,
+          lt: rangeEnd,
+        },
+        appointmentEmployees: {
+          some: {
+            employeeId: { in: employeeIds },
+          },
+        },
+      },
+      select: {
+        id: true,
+        time: true,
+        duration: true,
+        date: true,
+        appointmentEmployees: {
+          select: { employeeId: true },
+        },
+      },
+    });
+
+    const toMinutes = (t: string) => {
+      const [timeStr, period] = t.includes(" ") ? t.split(" ") : [t, ""];
+      const [hStr, mStr] = timeStr.split(":");
+      let h = Number(hStr);
+      const m = Number(mStr);
+      const p = period.toLowerCase();
+      if (p === "pm" && h !== 12) h += 12;
+      if (p === "am" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    type Interval = { start: number; end: number };
+
+    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
+      if (!busy.length || !base.length) return base;
+      let result = base.slice();
+      for (const b of busy) {
+        const next: Interval[] = [];
+        for (const f of result) {
+          if (b.end <= f.start || b.start >= f.end) {
+            next.push(f);
+          } else {
+            if (b.start > f.start) next.push({ start: f.start, end: b.start });
+            if (b.end < f.end) next.push({ start: b.end, end: f.end });
+          }
+        }
+        result = next;
+        if (!result.length) break;
+      }
+      return result;
+    };
+
+    // Index availability by (employeeId, dayOfWeek)
+    const availabilityByKey = new Map<
+      string,
+      { start: number; end: number }[]
+    >();
+    for (const av of availability) {
+      const key = `${av.employeeId}:${av.dayOfWeek}`;
+      const list =
+        availabilityByKey.get(key) ??
+        availabilityByKey.set(key, []).get(key)!;
+      for (const t of av.availability_time) {
+        list.push({ start: toMinutes(t.startTime), end: toMinutes(t.endTime) });
+      }
+    }
+
+    // Index appointments by (employeeId, dateKey)
+    const busyByKey = new Map<string, Interval[]>();
+    for (const appt of appointments) {
+      const dateKey = new Date(appt.date).toISOString().slice(0, 10);
+      const start = toMinutes(appt.time);
+      const durMinutes = (appt.duration || 1) * 60;
+      const interval = { start, end: start + durMinutes };
+      for (const ae of appt.appointmentEmployees) {
+        const key = `${ae.employeeId}:${dateKey}`;
+        const list =
+          busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
+        list.push(interval);
+      }
+    }
+
+    const result = employees.map((emp) => {
+      let totalDutyMinutes = 0;
+      let totalWorkedMinutes = 0;
+
+      for (const d of parsedDates) {
+        const day = d.getDay();
+        const dateKey = d.toISOString().slice(0, 10);
+        const avKey = `${emp.id}:${day}`;
+        const dutySlots = availabilityByKey.get(avKey);
+
+        // If no duty defined for this weekday, skip this day entirely
+        if (!dutySlots || dutySlots.length === 0) {
+          continue;
+        }
+
+        const busyKey = `${emp.id}:${dateKey}`;
+        const busy = busyByKey.get(busyKey) ?? [];
+
+        // Compute worked intervals as overlaps between duty and busy intervals
+        const workedIntervals: Interval[] = [];
+        if (busy.length) {
+          for (const dSlot of dutySlots) {
+            for (const b of busy) {
+              const start = Math.max(dSlot.start, b.start);
+              const end = Math.min(dSlot.end, b.end);
+              if (start < end) {
+                workedIntervals.push({ start, end });
+              }
+            }
+          }
+        }
+
+        const dayDuty = dutySlots.reduce(
+          (sum, iv) => sum + (iv.end - iv.start),
+          0,
+        );
+        const dayWorked = workedIntervals.reduce(
+          (sum, iv) => sum + (iv.end - iv.start),
+          0,
+        );
+
+        totalDutyMinutes += dayDuty;
+        totalWorkedMinutes += dayWorked;
+      }
+
+      const paidPercentage =
+        totalDutyMinutes > 0
+          ? Math.round((totalWorkedMinutes / totalDutyMinutes) * 100)
+          : 0;
+
+      return {
+        employeeId: emp.id,
+        employeeName: emp.employeeName,
+        paidPercentage,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      dates: parsedDates.map((d) => d.toISOString().slice(0, 10)),
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Get employee free percentage error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -1315,7 +1540,14 @@ export const getAppointmentsNextFourDays = async (
     // Group by date and return only lightweight info for the week view
     const daysMap: Record<
       string,
-      { date: string; appointments: { id: string; time: string; customer_name: string | null }[] }
+      {
+        date: string;
+        appointments: {
+          id: string;
+          time: string;
+          employeeName: string | null;
+        }[];
+      }
     > = {};
 
     for (const appt of appointments) {
@@ -1324,10 +1556,14 @@ export const getAppointmentsNextFourDays = async (
       if (!daysMap[key]) {
         daysMap[key] = { date: key, appointments: [] };
       }
+
+      const firstEmployee =
+        appt.appointmentEmployees?.[0]?.employee?.employeeName ?? null;
+
       daysMap[key].appointments.push({
         id: appt.id,
         time: appt.time,
-        customer_name: appt.customer_name ?? null,
+        employeeName: firstEmployee,
       });
     }
 
