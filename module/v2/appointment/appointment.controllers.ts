@@ -1047,6 +1047,123 @@ export const getAppointmentsByDate = async (req: Request, res: Response) => {
   }
 };
 
+// Get appointments for a given date and the next 3 days (4 days total)
+export const getAppointmentsNextFourDays = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.user;
+    const { date, employee } = req.query;
+
+    if (!date) {
+      res.status(400).json({
+        success: false,
+        message: "Query param 'date' is required",
+      });
+      return;
+    }
+
+    const parsed = new Date(date as string);
+    if (isNaN(parsed.getTime())) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid date",
+      });
+      return;
+    }
+
+    const startOfDay = new Date(
+      parsed.getFullYear(),
+      parsed.getMonth(),
+      parsed.getDate(),
+    );
+    const endOfFourthDay = new Date(
+      parsed.getFullYear(),
+      parsed.getMonth(),
+      parsed.getDate() + 4,
+    );
+
+    const employeeIds: string[] = employee
+      ? (Array.isArray(employee)
+          ? (employee as string[])
+          : (employee as string).split(",")
+        )
+          .map((e) => e.trim())
+          .filter(Boolean)
+      : [];
+
+    const whereCondition: any = {
+      userId: id,
+      date: {
+        gte: startOfDay,
+        lt: endOfFourthDay,
+      },
+    };
+
+    if (employeeIds.length > 0) {
+      whereCondition.appointmentEmployees = {
+        some: {
+          employeeId: { in: employeeIds },
+        },
+      };
+    }
+
+    const appointments = await prisma.appointment.findMany({
+      where: whereCondition,
+      orderBy: { date: "asc" },
+      include: {
+        appointmentEmployees: {
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Group by date and return only lightweight info for the week view
+    const daysMap: Record<
+      string,
+      { date: string; appointments: { id: string; time: string; customer_name: string | null }[] }
+    > = {};
+
+    for (const appt of appointments) {
+      const d = new Date(appt.date);
+      const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+      if (!daysMap[key]) {
+        daysMap[key] = { date: key, appointments: [] };
+      }
+      daysMap[key].appointments.push({
+        id: appt.id,
+        time: appt.time,
+        customer_name: appt.customer_name ?? null,
+      });
+    }
+
+    const days = Object.values(daysMap).sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+
+    res.status(200).json({
+      success: true,
+      days,
+    });
+  } catch (error: any) {
+    console.error("Get appointments next four days error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const getAllAppointmentsDate = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;

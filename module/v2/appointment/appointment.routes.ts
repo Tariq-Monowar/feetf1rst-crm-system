@@ -11,6 +11,7 @@ import {
   getSystemAppointment,
   getAvailableTimeSlots,
   getAllAppointmentsDate,
+  getAppointmentsNextFourDays,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
@@ -24,6 +25,8 @@ router.get(
   getSystemAppointment
 );
 
+
+
 router.get("/available-slots", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAvailableTimeSlots);
 
 router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
@@ -31,6 +34,12 @@ router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
 router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
 
 router.get("/by-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentsByDate);
+
+router.get(
+  "/by-date-next-four-days",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAppointmentsNextFourDays,
+);
 
 router.get("/all-appointments-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
 
