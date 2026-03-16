@@ -71,6 +71,27 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/", v1);
 app.use("/v2", v2);
 app.use("/location", searchLocation);
+
+// Image proxy – fetches S3 assets server-side so the browser avoids CORS issues
+app.get("/proxy-image", async (req: Request, res: Response) => {
+  const url = req.query.url as string;
+  if (!url || !url.startsWith("https://feetf1rst.s3.eu-central-1.amazonaws.com/")) {
+    return res.status(400).json({ message: "Invalid or disallowed URL" });
+  }
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ message: "Failed to fetch image" });
+    }
+    const contentType = upstream.headers.get("content-type") || "image/jpeg";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    const buffer = await upstream.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    res.status(500).json({ message: "Proxy error" });
+  }
+});
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.status(404).json({
     message: `404 route not found`,
