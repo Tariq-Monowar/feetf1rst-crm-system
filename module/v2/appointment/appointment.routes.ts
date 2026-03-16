@@ -12,11 +12,19 @@ import {
   getAvailableTimeSlots,
   getAllAppointmentsDate,
   getAppointmentsNextFourDays,
+  getEmployeeFreeSlotsByCustomer,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
 
 const router = express.Router();
+
+router.post(
+  "/employee-free-slots",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getEmployeeFreeSlotsByCustomer,
+);
+
 
 router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);
 
@@ -24,7 +32,6 @@ router.get(
   "/system-appointment/:customerId/:appointmentId",
   getSystemAppointment
 );
-
 
 
 router.get("/available-slots", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAvailableTimeSlots);
@@ -40,6 +47,8 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAppointmentsNextFourDays,
 );
+
+
 
 router.get("/all-appointments-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
 

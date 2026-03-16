@@ -235,6 +235,191 @@ export const getAvailableTimeSlots = async (req: Request, res: Response) => {
   }
 };
 
+// Get per-employee free intervals for a date based on availability_time minus existing appointments
+export const getEmployeeFreeSlotsByCustomer = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id: partnerId } = req.user;
+    const { date, employeeIds } = req.body as {
+      date?: string;
+      employeeIds?: string[];
+    };
+
+    if (!date || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: "date and employeeIds[] are required",
+      });
+      return;
+    }
+
+    const targetDate = new Date(date);
+    if (isNaN(targetDate.getTime())) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid date",
+      });
+      return;
+    }
+
+    const dayOfWeek = targetDate.getDay(); // 0-6
+
+    const employees = await prisma.employees.findMany({
+      where: { id: { in: employeeIds } },
+      select: { id: true, employeeName: true },
+    });
+    const foundIds = new Set(employees.map((e) => e.id));
+    const missingEmployeeIds = employeeIds.filter((eid) => !foundIds.has(eid));
+
+    const availability = await prisma.employee_availability.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        partnerId,
+        dayOfWeek,
+        isActive: true,
+      },
+      include: {
+        availability_time: {
+          where: { isActive: true },
+          orderBy: { startTime: "asc" },
+        },
+      },
+    });
+
+    const dayStart = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate(),
+    );
+    const dayEnd = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate() + 1,
+    );
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        userId: partnerId,
+        date: {
+          gte: dayStart,
+          lt: dayEnd,
+        },
+        appointmentEmployees: {
+          some: {
+            employeeId: { in: employeeIds },
+          },
+        },
+      },
+      select: {
+        id: true,
+        time: true,
+        duration: true,
+        appointmentEmployees: {
+          select: { employeeId: true },
+        },
+      },
+    });
+
+    const toMinutes = (t: string) => {
+      const [timeStr, period] = t.includes(" ") ? t.split(" ") : [t, ""];
+      const [hStr, mStr] = timeStr.split(":");
+      let h = Number(hStr);
+      const m = Number(mStr);
+      const p = period.toLowerCase();
+      if (p === "pm" && h !== 12) h += 12;
+      if (p === "am" && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    type Interval = { start: number; end: number };
+
+    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
+      if (!busy.length || !base.length) return base;
+      let result = base.slice();
+      for (const b of busy) {
+        const next: Interval[] = [];
+        for (const f of result) {
+          if (b.end <= f.start || b.start >= f.end) {
+            next.push(f);
+          } else {
+            if (b.start > f.start) next.push({ start: f.start, end: b.start });
+            if (b.end < f.end) next.push({ start: b.end, end: f.end });
+          }
+        }
+        result = next;
+        if (!result.length) break;
+      }
+      return result;
+    };
+
+    // Pre-index availability and busy intervals per employee for O(n) lookups
+    const availabilityByEmployee = new Map<
+      string,
+      { start: number; end: number }[]
+    >();
+    for (const av of availability) {
+      const list =
+        availabilityByEmployee.get(av.employeeId) ??
+        availabilityByEmployee.set(av.employeeId, []).get(av.employeeId)!;
+      for (const t of av.availability_time) {
+        list.push({ start: toMinutes(t.startTime), end: toMinutes(t.endTime) });
+      }
+    }
+
+    const busyByEmployee = new Map<string, Interval[]>();
+    for (const appt of appointments) {
+      const start = toMinutes(appt.time);
+      const durMinutes = (appt.duration || 1) * 60;
+      const interval = { start, end: start + durMinutes };
+      for (const ae of appt.appointmentEmployees) {
+        const list =
+          busyByEmployee.get(ae.employeeId) ??
+          busyByEmployee.set(ae.employeeId, []).get(ae.employeeId)!;
+        list.push(interval);
+      }
+    }
+
+    const format = (m: number) => {
+      const h = Math.floor(m / 60);
+      const mm = m % 60;
+      return `${h.toString().padStart(2, "0")}:${mm.toString().padStart(2, "0")}`;
+    };
+
+    const result = employees.map((emp) => {
+      const slots =
+        availabilityByEmployee.get(emp.id) && availabilityByEmployee.get(emp.id)!.length
+          ? availabilityByEmployee.get(emp.id)!
+          : [{ start: 0, end: 24 * 60 }];
+
+      const busy = busyByEmployee.get(emp.id) ?? [];
+      const free = subtractIntervals(slots, busy);
+      const freeSlots = free.map((iv) => `${format(iv.start)}-${format(iv.end)}`);
+
+      return {
+        employeeId: emp.id,
+        employeeName: emp.employeeName,
+        freeSlots,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      date: targetDate.toISOString().slice(0, 10),
+      missingEmployeeIds,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("Get employee free slots by customer error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 // Create appointment
 export const createAppointment = async (req: Request, res: Response) => {
   try {
