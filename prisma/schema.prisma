@@ -215,6 +215,9 @@ model appointment {
   details      String?
   isClient     Boolean?
   userId       String
+
+  appomnentRoom String?
+
   reminder     Int?     @default(0)
   reminderSent Boolean  @default(false)
 

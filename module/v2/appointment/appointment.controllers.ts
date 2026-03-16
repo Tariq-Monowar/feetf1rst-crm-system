@@ -251,6 +251,7 @@ export const createAppointment = async (req: Request, res: Response) => {
       details,
       isClient,
       reminder,
+      appomnentRoom,
     } = req.body;
     const { id } = req.user;
 
@@ -448,6 +449,7 @@ export const createAppointment = async (req: Request, res: Response) => {
       userId: id,
       customerId,
       duration: appointmentDuration,
+      appomnentRoom: appomnentRoom ? appomnentRoom : null,
     };
 
     // For backward compatibility, set employeId if single employee
@@ -695,295 +697,184 @@ export const getAppointmentById = async (req: Request, res: Response) => {
 
 // Update appointment
 export const updateAppointment = async (req: Request, res: Response) => {
+  const send = (status: number, body: object) => {
+    res.status(status).json(body);
+  };
+
   try {
     const { id } = req.params;
-    const {
-      customer_name,
-      customerId,
-      time,
-      date,
-      reason,
-      assignedTo,
-      employeId,
-      employe, // Array of employees for v2
-      duration,
-      details,
-      isClient,
-      reminder,
-    } = req.body;
-
-    const existingAppointment = await prisma.appointment.findUnique({
+    const body = req.body;
+    const existing = await prisma.appointment.findUnique({
       where: { id },
-      include: {
-        appointmentEmployees: true,
-      },
+      include: { appointmentEmployees: true },
     });
 
-    if (!existingAppointment) {
-      res.status(404).json({
-        success: false,
-        message: "Appointment not found",
-      });
+    if (!existing) {
+      send(404, { success: false, message: "Appointment not found" });
       return;
     }
 
-    // For v2: support assignedTo as array, or fall back to employe array, or single employee
-    let employees: any[] = [];
+    // Normalize employees: assignedTo array or employe array (v2), dedupe by employeId
+    const rawEmployees = Array.isArray(body.assignedTo)
+      ? body.assignedTo
+      : Array.isArray(body.employe)
+        ? body.employe
+        : [];
+    const seen = new Set<string>();
+    const employees = rawEmployees.filter((emp: any) => {
+      if (!emp?.employeId || !emp?.assignedTo) return false;
+      if (seen.has(emp.employeId)) return false;
+      seen.add(emp.employeId);
+      return true;
+    });
 
-    // Check if assignedTo is an array (new format)
-    if (Array.isArray(assignedTo)) {
-      employees = assignedTo;
-    } else if (employe && Array.isArray(employe)) {
-      // Fall back to employe array for backward compatibility
-      employees = employe;
-    }
-
-    // Remove duplicate employees based on employeId to prevent unique constraint violations
-    if (employees.length > 0) {
-      const seen = new Set<string>();
-      employees = employees.filter((emp) => {
-        if (!emp.employeId) return false;
-        if (seen.has(emp.employeId)) {
-          return false; // Duplicate, filter it out
-        }
-        seen.add(emp.employeId);
-        return true;
-      });
-    }
-
-    const hasMultipleEmployees = employees.length > 0;
-
-    // If using multiple employees, validate the array
-    if (hasMultipleEmployees) {
-      for (const emp of employees) {
-        if (!emp.employeId || !emp.assignedTo) {
-          res.status(400).json({
-            success: false,
-            message:
-              "Each employee in 'assignedTo' array must have 'employeId' and 'assignedTo'",
-          });
-          return;
-        }
-      }
-    }
-
-    // Use provided values or fall back to existing values
-    const updatedTime = time !== undefined ? time : existingAppointment.time;
-    let updatedDate = date ? new Date(date) : existingAppointment.date;
-
-    // Validate date if provided
-    if (date) {
-      const parsedDate = new Date(date);
-      if (!parsedDate || isNaN(parsedDate.getTime())) {
-        res.status(400).json({
-          success: false,
-          message: "Invalid date provided",
-        });
-        return;
-      }
-      updatedDate = parsedDate;
-    }
-
-    const updatedEmployeId = hasMultipleEmployees
-      ? employees[0]?.employeId
-      : employeId !== undefined
-        ? employeId
-        : existingAppointment.employeId;
-    const updatedDuration =
-      duration !== undefined ? duration : existingAppointment.duration || 1;
-
-    // Validate duration
-    if (updatedDuration <= 0) {
-      res.status(400).json({
-        success: false,
-        message: "Duration must be greater than 0",
-      });
-      return;
-    }
-
-    // Validate that all employees exist in the database
-    if (hasMultipleEmployees) {
-      const employeeIds = employees.map((emp) => emp.employeId);
-      const existingEmployees = await prisma.employees.findMany({
-        where: {
-          id: { in: employeeIds },
-        },
+    const multiEmployee = employees.length > 0;
+    if (multiEmployee) {
+      const employeeIds = employees.map((e: any) => e.employeId);
+      const found = await prisma.employees.findMany({
+        where: { id: { in: employeeIds } },
         select: { id: true },
       });
-
-      const existingEmployeeIds = new Set(
-        existingEmployees.map((emp) => emp.id),
-      );
-      const missingEmployeeIds = employeeIds.filter(
-        (id) => !existingEmployeeIds.has(id),
-      );
-
-      if (missingEmployeeIds.length > 0) {
-        res.status(400).json({
+      const foundIds = new Set(found.map((e) => e.id));
+      const missing = employeeIds.filter((id) => !foundIds.has(id));
+      if (missing.length) {
+        send(400, {
           success: false,
-          message: `Employees with IDs not found: ${missingEmployeeIds.join(
-            ", ",
-          )}`,
+          message: `Employees not found: ${missing.join(", ")}`,
         });
         return;
       }
-    } else if (employeId && employeId !== existingAppointment.employeId) {
-      // Validate single employee exists if it's being changed
-      const existingEmployee = await prisma.employees.findUnique({
-        where: { id: employeId },
+    } else if (body.employeId && body.employeId !== existing.employeId) {
+      const emp = await prisma.employees.findUnique({
+        where: { id: body.employeId },
         select: { id: true },
       });
-
-      if (!existingEmployee) {
-        res.status(400).json({
+      if (!emp) {
+        send(400, {
           success: false,
-          message: `Employee with ID ${employeId} not found`,
+          message: `Employee with ID ${body.employeId} not found`,
         });
         return;
       }
     }
 
-    // Determine assignedTo value for the appointment record
-    let finalAssignedTo: string;
-    if (hasMultipleEmployees) {
-      // Combine all employee names
-      finalAssignedTo = employees.map((emp) => emp.assignedTo).join(", ");
-    } else if (typeof assignedTo === "string") {
-      // Single employee name (backward compatibility)
-      finalAssignedTo = assignedTo;
-    } else {
-      // Keep existing value if not provided
-      finalAssignedTo = existingAppointment.assignedTo;
-    }
-
-    // Check for overlapping appointments for all employees
-    const shouldCheckOverlap =
-      time !== undefined ||
-      date !== undefined ||
-      duration !== undefined ||
-      employeId !== undefined ||
-      hasMultipleEmployees;
-
-    if (shouldCheckOverlap) {
-      if (hasMultipleEmployees) {
-        // Check overlaps for each employee in the array
-        for (const emp of employees) {
-          try {
-            const overlapCheck = await checkAppointmentOverlap(
-              emp.employeId,
-              updatedDate,
-              updatedTime,
-              updatedDuration,
-              id, // Exclude current appointment from overlap check
-            );
-
-            if (overlapCheck.hasOverlap) {
-              res.status(409).json({
-                success: false,
-                message: overlapCheck.message,
-                conflictingAppointment: overlapCheck.conflictingAppointment,
-              });
-              return;
-            }
-          } catch (error) {
-            res.status(400).json({
-              success: false,
-              message: error.message || "Error checking appointment overlap",
-            });
-            return;
+    const updatedTime = body.time ?? existing.time;
+    const updatedDate = body.date
+      ? (() => {
+          const d = new Date(body.date);
+          if (isNaN(d.getTime())) {
+            send(400, { success: false, message: "Invalid date" });
+            return null;
           }
-        }
-      } else if (updatedEmployeId) {
-        // Single employee overlap check (backward compatibility)
-        try {
-          const overlapCheck = await checkAppointmentOverlap(
-            updatedEmployeId,
+          return d;
+        })()
+      : existing.date;
+    if (updatedDate === null) return;
+
+    const updatedDuration = body.duration ?? existing.duration ?? 1;
+    if (updatedDuration <= 0) {
+      send(400, { success: false, message: "Duration must be greater than 0" });
+      return;
+    }
+
+    const employeId = multiEmployee
+      ? employees[0].employeId
+      : body.employeId ?? existing.employeId;
+    const assignedToStr = multiEmployee
+      ? employees.map((e: any) => e.assignedTo).join(", ")
+      : typeof body.assignedTo === "string"
+        ? body.assignedTo
+        : existing.assignedTo;
+
+    const employeeList = multiEmployee
+      ? employees
+      : employeId
+        ? [{ employeId, assignedTo: assignedToStr }]
+        : [];
+    const scheduleChanged =
+      body.time !== undefined ||
+      body.date !== undefined ||
+      body.duration !== undefined ||
+      body.employeId !== undefined ||
+      multiEmployee;
+
+    if (scheduleChanged && employeeList.length) {
+      try {
+        for (const emp of employeeList) {
+          const check = await checkAppointmentOverlap(
+            emp.employeId,
             updatedDate,
             updatedTime,
             updatedDuration,
-            id, // Exclude current appointment from overlap check
+            id,
           );
-
-          if (overlapCheck.hasOverlap) {
-            res.status(409).json({
+          if (check.hasOverlap) {
+            send(409, {
               success: false,
-              message: overlapCheck.message,
-              conflictingAppointment: overlapCheck.conflictingAppointment,
+              message: check.message,
+              conflictingAppointment: check.conflictingAppointment,
             });
             return;
           }
-        } catch (error) {
-          res.status(400).json({
-            success: false,
-            message: error.message || "Error checking appointment overlap",
-          });
-          return;
         }
+      } catch (err: any) {
+        send(400, {
+          success: false,
+          message: err?.message ?? "Error checking appointment overlap",
+        });
+        return;
       }
     }
 
-    // Prepare update data - allow updating all fields
     const updateData: any = {
-      customer_name:
-        customer_name !== undefined
-          ? customer_name
-          : existingAppointment.customer_name,
+      customer_name: body.customer_name ?? existing.customer_name,
       time: updatedTime,
       date: updatedDate,
-      reason: reason !== undefined ? reason : existingAppointment.reason,
-      assignedTo: finalAssignedTo,
-      employeId: updatedEmployeId,
+      reason: body.reason ?? existing.reason,
+      assignedTo: assignedToStr,
+      employeId,
       duration: updatedDuration,
-      details: details !== undefined ? details : existingAppointment.details,
-      isClient:
-        isClient !== undefined ? isClient : existingAppointment.isClient,
-      customerId:
-        customerId !== undefined ? customerId : existingAppointment.customerId,
-      reminder:
-        reminder !== undefined ? reminder : existingAppointment.reminder,
+      details: body.details ?? existing.details,
+      isClient: body.isClient ?? existing.isClient,
+      customerId: body.customerId ?? existing.customerId,
+      reminder: body.reminder ?? existing.reminder,
+      appomnentRoom: body.appomnentRoom ?? existing.appomnentRoom,
     };
-
-    // Handle employees update
-    if (hasMultipleEmployees) {
-      // Delete existing employees and create new ones
+    if (multiEmployee) {
       updateData.appointmentEmployees = {
         deleteMany: {},
-        create: employees.map((emp) => ({
-          employeeId: emp.employeId,
-          assignedTo: emp.assignedTo,
+        create: employees.map((e: any) => ({
+          employeeId: e.employeId,
+          assignedTo: e.assignedTo,
         })),
       };
     }
 
-    const updatedAppointment = await prisma.appointment.update({
+    const updated = await prisma.appointment.update({
       where: { id },
       data: updateData,
       include: {
         appointmentEmployees: {
           include: {
             employee: {
-              select: {
-                id: true,
-                employeeName: true,
-                email: true,
-              },
+              select: { id: true, employeeName: true, email: true },
             },
           },
         },
       },
     });
 
-    res.status(200).json({
+    send(200, {
       success: true,
       message: "Appointment updated successfully",
-      appointment: formatAppointmentResponse(updatedAppointment),
+      appointment: formatAppointmentResponse(updated),
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Update appointment error:", error);
-    res.status(500).json({
+    send(500, {
       success: false,
       message: "Something went wrong",
-      error: error.message,
+      error: error?.message,
     });
   }
 };

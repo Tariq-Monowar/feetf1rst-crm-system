@@ -31,6 +31,7 @@ router.get("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointments);
 router.get("/my", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getMyAppointments);
 
 router.get("/by-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentsByDate);
+
 router.get("/all-appointments-date", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllAppointmentsDate);
 
 router.get("/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppointmentById);

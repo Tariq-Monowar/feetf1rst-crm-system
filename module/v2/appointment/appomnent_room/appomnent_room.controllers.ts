@@ -1,5 +1,17 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../../db";
+import redis from "../../../../config/redis.config";
+
+const REDIS_KEY_ACTIVE_ROOMS = (partnerId: string) =>
+  `appomnent_rooms_active:${partnerId}`;
+
+const clearActiveRoomsCache = async (partnerId: string) => {
+  try {
+    await redis.del(REDIS_KEY_ACTIVE_ROOMS(partnerId));
+  } catch (e) {
+    console.error("Redis clear active rooms cache error:", e);
+  }
+};
 
 export const getAllAppomnentRooms = async (req: Request, res: Response) => {
   try {
@@ -28,6 +40,52 @@ export const getAllAppomnentRooms = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Get all appomnent rooms error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (error as Error).message,
+    });
+  }
+};
+
+export const getAllAppomnentRoomsActive = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const cacheKey = REDIS_KEY_ACTIVE_ROOMS(partnerId);
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const data = JSON.parse(cached) as { name: string }[];
+      return res.status(200).json({
+        success: true,
+        data,
+      });
+    }
+
+    const rooms = await prisma.appomnent_room.findMany({
+      where: { partnerId, isActive: true },
+      select: {
+        name: true,
+      },
+    });
+
+    await redis.setex(cacheKey, 3600, JSON.stringify(rooms));
+
+    res.status(200).json({
+      success: true,
+      data: rooms,
+    });
+  } catch (error) {
+    console.error("Get all appomnent rooms active error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -113,6 +171,8 @@ export const createAppomnentRoom = async (req: Request, res: Response) => {
       },
     });
 
+    await clearActiveRoomsCache(partnerId);
+
     res.status(201).json({
       success: true,
       message: "Appointment room created successfully",
@@ -183,6 +243,8 @@ export const updateAppomnentRoom = async (req: Request, res: Response) => {
       },
     });
 
+    await clearActiveRoomsCache(partnerId);
+
     res.status(200).json({
       success: true,
       message: "Appointment room updated successfully",
@@ -224,6 +286,8 @@ export const deleteAppomnentRoom = async (req: Request, res: Response) => {
     await prisma.appomnent_room.delete({
       where: { id },
     });
+
+    await clearActiveRoomsCache(partnerId);
 
     res.status(200).json({
       success: true,
