@@ -274,9 +274,7 @@ export const createOrder = async (req: Request, res: Response) => {
         return bad(400, "totalPrice must be a valid number");
     }
 
-    const totalPrice = isHalbprobe
-      ? 0
-      : Number(totalPriceFromClient);
+    const totalPrice = isHalbprobe ? 0 : Number(totalPriceFromClient);
 
     // --- 2. Payment type ---
     const num = (v: unknown) =>
@@ -1377,6 +1375,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
       insuranceTotalPrice: true,
       insoleStandards: true,
       halbprobe: true,
+      kva: true,
       customer: {
         select: {
           id: true,
@@ -1449,6 +1448,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           );
         }
       }
+
       if (req.query.bezahlt) {
         const validBezahlt = [
           "Privat_Bezahlt",
@@ -1495,6 +1495,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           )`,
         );
       });
+
       if (cursor) {
         const cursorCond = effectivePartnerId
           ? Prisma.sql`(co."createdAt", co.id) < (
@@ -1602,6 +1603,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
         u_orderType: row.u_orderType,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
+        kva: (row as any).kva ?? null,
 
         ausführliche_diagnose: row.ausführliche_diagnose ?? null,
         privatePrice:
@@ -1756,6 +1758,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
         ...o,
         invoice: o.invoice || null,
         barcodeLabel: o.barcodeLabel || null,
+        kva: o.kva ?? null,
       })),
       pagination: {
         limit,
@@ -2335,7 +2338,7 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { orderNotes, statusNote, versorgung_note,  } = req.body;
+    const { orderNotes, statusNote, versorgung_note } = req.body;
 
     if (!id) {
       return res
