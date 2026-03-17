@@ -22,7 +22,11 @@ router.get(
 );
 
 router.post("/create", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
+
 router.patch("/update/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), updateOrder);
+
+
+
 router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getAllOrders);
 router.get("/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getOrderById);
 
