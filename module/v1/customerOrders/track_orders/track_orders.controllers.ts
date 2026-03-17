@@ -2170,6 +2170,11 @@ export const getKvaData = async (req: Request, res: Response) => {
                 bankInfo: true,
               },
             },
+            orderSettings: {
+              select: {
+                shipping_addresses_for_kv: true,
+              },
+            },
           },
         },
         customer: {
@@ -2226,6 +2231,7 @@ export const getKvaData = async (req: Request, res: Response) => {
           phone: order?.customer?.telefon,
           email: order?.customer?.email,
         },
+        shippingAddressesForKv: order?.partner?.orderSettings?.shipping_addresses_for_kv,
       },
     });
   } catch (error) {

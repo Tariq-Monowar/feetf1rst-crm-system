@@ -247,17 +247,15 @@ export const createOrder = async (req: Request, res: Response) => {
       halbprobe,
     } = body;
     const privetSupply = key;
+    const isHalbprobe = toBool(halbprobe);
 
     // --- 1. Required fields ---
-    const required = privetSupply
-      ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
-      : [
-          "customerId",
-          "versorgungId",
-          "bezahlt",
-          "geschaeftsstandort",
-          "totalPrice",
-        ];
+    const requiredBase = privetSupply
+      ? ["customerId", "geschaeftsstandort"]
+      : ["customerId", "versorgungId", "geschaeftsstandort"];
+    const required = isHalbprobe
+      ? requiredBase
+      : [...requiredBase, "bezahlt", "totalPrice"];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
     const okStatus = [
       "Privat_Bezahlt",
@@ -265,12 +263,20 @@ export const createOrder = async (req: Request, res: Response) => {
       "Krankenkasse_Ungenehmigt",
       "Krankenkasse_Genehmigt",
     ];
-    if (!okStatus.includes(bezahlt))
-      return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
-    const totalPrice = Number(totalPriceFromClient);
-    if (Number.isNaN(totalPrice))
-      return bad(400, "totalPrice must be a valid number");
+    // For halbprobe orders, ignore payment status and totalPrice validation
+    if (!isHalbprobe) {
+      if (!okStatus.includes(bezahlt))
+        return bad(400, "Invalid payment status", { validStatuses: okStatus });
+
+      const tp = Number(totalPriceFromClient);
+      if (Number.isNaN(tp))
+        return bad(400, "totalPrice must be a valid number");
+    }
+
+    const totalPrice = isHalbprobe
+      ? 0
+      : Number(totalPriceFromClient);
 
     // --- 2. Payment type ---
     const num = (v: unknown) =>
@@ -284,9 +290,10 @@ export const createOrder = async (req: Request, res: Response) => {
     else if (priv || addon) payment_type = "private";
 
     let vat_country;
+    const bezahltForVat = isHalbprobe ? null : bezahlt;
     if (
-      bezahlt === "Krankenkasse_Genehmigt" ||
-      bezahlt === "Krankenkasse_Ungenehmigt"
+      bezahltForVat === "Krankenkasse_Genehmigt" ||
+      bezahltForVat === "Krankenkasse_Ungenehmigt"
     ) {
       if (!insurances)
         return bad(
@@ -362,8 +369,8 @@ export const createOrder = async (req: Request, res: Response) => {
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const needPartnerVat =
-      bezahlt === "Krankenkasse_Genehmigt" ||
-      bezahlt === "Krankenkasse_Ungenehmigt";
+      bezahltForVat === "Krankenkasse_Genehmigt" ||
+      bezahltForVat === "Krankenkasse_Ungenehmigt";
 
     // --- 4. Load customer, versorgung, prescription, order settings ---
     const [
@@ -2328,7 +2335,7 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { orderNotes, statusNote, versorgung_note } = req.body;
+    const { orderNotes, statusNote, versorgung_note,  } = req.body;
 
     if (!id) {
       return res

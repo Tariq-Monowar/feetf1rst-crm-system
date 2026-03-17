@@ -12,6 +12,7 @@ const DEFAULT_ORDER_SETTINGS = {
   pickupAssignmentMode: true,
   appomnentOverlap: false,
   lookWorkTime: true,
+  shipping_addresses_for_kv: null,
 };
 
 /**
@@ -85,6 +86,7 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
       pickupAssignmentMode,
       appomnentOverlap,
       lookWorkTime,
+      shipping_addresses_for_kv,
     } = req.body;
 
     // Validate boolean fields if provided
@@ -188,6 +190,19 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
         });
       }
       updateData.lookWorkTime = lookWorkTime;
+    }
+
+    if (shipping_addresses_for_kv !== undefined) {
+      if (
+        shipping_addresses_for_kv !== null &&
+        typeof shipping_addresses_for_kv !== "string"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "shipping_addresses_for_kv must be a string or null",
+        });
+      }
+      updateData.shipping_addresses_for_kv = shipping_addresses_for_kv;
     }
 
     // Check if at least one field is provided

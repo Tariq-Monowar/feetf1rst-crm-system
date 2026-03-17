@@ -41,22 +41,24 @@ const checkAppointmentOverlap = async (
     throw new Error("Invalid date provided");
   }
 
-  // Parse the time string (assuming format like "14:30" or "2:30 PM")
-  const [timeStr, period] = time.includes(" ") ? time.split(" ") : [time, ""];
-  const [hours, minutes] = timeStr.split(":").map(Number);
+  // Parse the time string (24h format "HH:MM")
+  const [hoursStr, minutesStr] = time.split(":");
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
 
-  // Validate time parsing
-  if (isNaN(hours) || isNaN(minutes)) {
-    throw new Error("Invalid time format");
+  // Validate time parsing (24h clock)
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    throw new Error("Invalid time format, expected 24h 'HH:MM'");
   }
 
-  let startHour = hours;
-  if (period.toLowerCase() === "pm" && hours !== 12) {
-    startHour += 12;
-  } else if (period.toLowerCase() === "am" && hours === 12) {
-    startHour = 0;
-  }
-
+  const startHour = hours;
   const startTime = new Date(date);
   startTime.setHours(startHour, minutes, 0, 0);
 
