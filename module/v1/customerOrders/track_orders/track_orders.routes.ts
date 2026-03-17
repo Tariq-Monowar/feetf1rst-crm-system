@@ -13,7 +13,8 @@ import {
   getNewOrderHistory,
   getPriceDetails,
   getOrderStatusNote,
-  getWaitingForVersorgungsStartCount
+  getWaitingForVersorgungsStartCount,
+  getWerkstattzettelSheetPdfData
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -82,6 +83,14 @@ router.get(
   "/waiting-for-versorgungsstart/count",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getWaitingForVersorgungsStartCount,
+);
+
+
+//Werkstattzettel pdf data
+router.get(
+  "/werkstattzettel-sheet-pdf-data/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getWerkstattzettelSheetPdfData,
 );
 
 export default router;

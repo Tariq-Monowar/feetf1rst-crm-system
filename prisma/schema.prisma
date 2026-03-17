@@ -212,14 +212,14 @@ model appointment {
   employeId     String?
   duration      Float?
 
-  details      String?
-  isClient     Boolean?
-  userId       String
+  details  String?
+  isClient Boolean?
+  userId   String
 
   appomnentRoom String?
 
-  reminder     Int?     @default(0)
-  reminderSent Boolean  @default(false)
+  reminder     Int?    @default(0)
+  reminderSent Boolean @default(false)
 
   customerId String?
   user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -280,7 +280,7 @@ model employee_availability {
 model availability_time {
   id String @id @default(cuid())
 
-  title String // "Working Hours"
+  title    String // "Working Hours"
   isActive Boolean @default(true)
 
   startTime String // "09:00" format (HH:mm)
@@ -1145,8 +1145,9 @@ model customerOrders {
   //total_price
   //versorgung_note
 
-  orderCategory OrderCategory @default(insole)
+  orderCategory   OrderCategory @default(insole)
   //============================================================== 
+  werkstattzettel Boolean?      @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2362,6 +2363,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2385,6 +2387,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

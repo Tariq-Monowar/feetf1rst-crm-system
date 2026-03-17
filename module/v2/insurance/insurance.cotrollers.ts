@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
-import { decideInsuranceMatchWithAi } from "./ai.utils";
 import * as XLSX from "xlsx";
 
 //---------------------------------insurance list---------------------------------
@@ -1018,8 +1017,7 @@ export const validateInsuranceChangelog = async (req, res) => {
       const val = headerRow[key];
       if (val != null && String(val).trim()) headerToKey[String(val).trim()] = key;
     }
-    // Use 'Patient' column only for the person name
-    const keyVersicherter = headerToKey["Patient"] || "__EMPTY_3";
+    const keyVersicherter = headerToKey["Versicherter"] || headerToKey["Patient"] || "__EMPTY_3";
     const keyMeldung = headerToKey["Meldung"] || "__EMPTY_5";
 
     const data = [];
@@ -1043,15 +1041,7 @@ export const validateInsuranceChangelog = async (req, res) => {
         if (!isNaN(n)) mwst = n;
       }
       if (mwst == null && betrag != null) mwst = Math.round(betrag * 0.2 * 100) / 100;
-
-      // Keep both a simplified view and the full raw Excel row so AI can see everything.
-      data.push({
-        rawRow: row, // full Excel row as parsed by XLSX (all columns)
-        Versicherter: versicherter,
-        Meldung: meldung,
-        Betrag: betrag,
-        "MwSt 20%": mwst,
-      });
+      data.push({ Versicherter: versicherter, Meldung: meldung, Betrag: betrag, "MwSt 20%": mwst });
     }
 
     const { id } = req.user;
@@ -1080,129 +1070,136 @@ export const validateInsuranceChangelog = async (req, res) => {
     const n = (s) => (s == null || s === "" ? "" : String(s).toLowerCase().trim().replace(/\s+/g, " "));
     const numEq = (a, b) => a != null && b != null && Math.abs(Number(a) - Number(b)) <= tol;
 
-    const matchedInsole = [];
-    const matchedShoe = [];
-    const notMatchedInsole = [];
-    const notMatchedShoe = [];
+    const machInsole = [];
+    const machShoe = [];
+    const notMachInsole = [];
+    const notMachShoe = [];
 
     for (const item of data) {
-      const decision = await decideInsuranceMatchWithAi({
-        // Send full Excel row text/structure to the AI helper for maximum context.
-        row: item.rawRow || item,
-        insole: insole
-          ? {
-              id: insole.id,
-              orderNumber: insole.orderNumber,
-              insuranceType: "insole",
-              customer: insole.customer,
-              prescription: {
-                insurance_provider: insole.prescription?.insurance_provider || null,
-                insurance_number: insole.prescription?.insurance_number || null,
-              },
-              grossAmount: insole.insuranceTotalPrice ?? insole.totalPrice ?? null,
-              vatAmount: insole.vatRate ?? null,
-            }
-          : null,
-        shoe: shoe
-          ? {
-              id: shoe.id,
-              orderNumber: shoe.orderNumber,
-              insuranceType: "shoe",
-              customer: shoe.customer,
-              prescription: {
-                insurance_provider: shoe.prescription?.insurance_provider || null,
-                insurance_number: shoe.prescription?.insurance_number || null,
-              },
-              grossAmount: shoe.insurance_price ?? shoe.total_price ?? null,
-              vatAmount: shoe.vat_rate ?? null,
-            }
-          : null,
-      });
+      const v = item.Versicherter;
+      const vNumMatch = v && v.match(/\d+/);
+      const vNum = vNumMatch ? vNumMatch[0] : null;
+      const vNamePart = v ? v.replace(/^\d+\s*/, "").trim() : "";
+      const vParts = vNamePart.split(",").map((s) => s.trim());
+      const vNachname = vParts[0] || "";
+      const vVorname = vParts[1] || "";
 
-      // If AI says "no match", skip this row entirely (no insole/shoe output)
-      if (decision.kind !== "insole" && decision.kind !== "shoe" && decision.kind !== "both") {
-        continue;
+      // Insole scoring (0–1 based on 4 checks)
+      if (insole) {
+        const versicherterMatchInsole =
+          !v ||
+          (insole.customer &&
+            ((insole.customer.telefon &&
+              vNum &&
+              String(insole.customer.telefon).replace(/\D/g, "").includes(vNum)) ||
+              (n(insole.customer.nachname) === n(vNachname) &&
+                n(insole.customer.vorname) === n(vVorname))));
+        const meldungMatchInsole =
+          !item.Meldung ||
+          !insole.prescription?.insurance_provider ||
+          n(item.Meldung).includes(n(insole.prescription.insurance_provider)) ||
+          n(insole.prescription.insurance_provider).includes(n(item.Meldung));
+        const betragMatchInsole =
+          item.Betrag == null ||
+          insole.insuranceTotalPrice == null ||
+          numEq(item.Betrag, insole.insuranceTotalPrice);
+        const mwstMatchInsole =
+          item["MwSt 20%"] == null ||
+          insole.vatRate == null ||
+          numEq(item["MwSt 20%"], insole.vatRate);
+
+        const checksInsole = [
+          versicherterMatchInsole,
+          meldungMatchInsole,
+          betragMatchInsole,
+          mwstMatchInsole,
+        ];
+        const insoleScore =
+          checksInsole.filter(Boolean).length / checksInsole.length;
+
+        if (insoleScore > 0) {
+          const insoleResult = {
+            id: insole.id,
+            orderNumber: insole.orderNumber,
+            paymnentType: insole.paymnentType,
+            totalPrice: insole.totalPrice,
+            insuranceTotalPrice: insole.insuranceTotalPrice,
+            private_payed: insole.private_payed,
+            insurance_status: insole.insurance_status,
+            createdAt: insole.createdAt,
+            vatRate: insole.vatRate,
+            prescription: insole.prescription,
+            customer: insole.customer,
+            insuranceType: "insole" as const,
+            matchScore: insoleScore,
+          };
+          if (insoleScore >= 0.9) machInsole.push(insoleResult);
+          else notMachInsole.push(insoleResult);
+        }
       }
 
-      // Excel values (shared)
-      const excelVat = item["MwSt 20%"];
-      const excelAmount = item.Betrag;
+      // Shoe scoring (0–1 based on 4 checks)
+      if (shoe) {
+        const versicherterMatchShoe =
+          !v ||
+          (shoe.customer &&
+            ((shoe.customer.telefon &&
+              vNum &&
+              String(shoe.customer.telefon).replace(/\D/g, "").includes(vNum)) ||
+              (n(shoe.customer.nachname) === n(vNachname) &&
+                n(shoe.customer.vorname) === n(vVorname))));
+        const meldungMatchShoe =
+          !item.Meldung ||
+          !shoe.prescription?.insurance_provider ||
+          n(item.Meldung).includes(n(shoe.prescription.insurance_provider)) ||
+          n(shoe.prescription.insurance_provider).includes(n(item.Meldung));
+        const betragMatchShoe =
+          item.Betrag == null ||
+          shoe.insurance_price == null ||
+          numEq(item.Betrag, shoe.insurance_price);
+        const mwstMatchShoe =
+          item["MwSt 20%"] == null ||
+          shoe.vat_rate == null ||
+          numEq(item["MwSt 20%"], shoe.vat_rate);
 
-      // Helper to compute simple match flags and score
-      const buildMatch = (dbVat: number | null, dbGross: number | null) => {
-        const vatMatch =
-          excelVat != null && dbVat != null ? numEq(excelVat, dbVat) : false;
-        const amountMatch =
-          excelAmount != null && dbGross != null ? numEq(excelAmount, dbGross) : false;
-        const checks = [vatMatch, amountMatch];
-        const score = checks.filter(Boolean).length / checks.length;
-        return { vatMatch, amountMatch, score };
-      };
+        const checksShoe = [
+          versicherterMatchShoe,
+          meldungMatchShoe,
+          betragMatchShoe,
+          mwstMatchShoe,
+        ];
+        const shoeScore =
+          checksShoe.filter(Boolean).length / checksShoe.length;
 
-      // Insole side (90%+ score → matched, otherwise notMatched)
-      if ((decision.kind === "insole" || decision.kind === "both") && insole) {
-        const dbVat = insole.vatRate ?? null;
-        const dbGross =
-          insole.insuranceTotalPrice ?? insole.totalPrice ?? null;
-        const { vatMatch, score } = buildMatch(dbVat, dbGross);
-        const insoleResult = {
-          id: insole.id,
-          orderNumber: insole.orderNumber,
-          paymnentType: insole.paymnentType,
-          totalPrice: insole.totalPrice,
-          insuranceTotalPrice: insole.insuranceTotalPrice,
-          private_payed: insole.private_payed,
-          insurance_status: insole.insurance_status,
-          createdAt: insole.createdAt,
-          // keep plain number for backward‑compatible response shape
-          vatRate: insole.vatRate,
-          prescription: insole.prescription,
-          customer: insole.customer,
-          insuranceType: "insole" as const,
-          matchScore: score,
-        };
-
-        // 90%+ score → matched, otherwise goes to notMatchedInsole
-        if (score >= 0.9) matchedInsole.push(insoleResult);
-        else notMatchedInsole.push(insoleResult);
-      }
-
-      // Shoe side (90%+ score → matched, otherwise notMatched)
-      if ((decision.kind === "shoe" || decision.kind === "both") && shoe) {
-        const dbVat = shoe.vat_rate ?? null;
-        const dbGross =
-          shoe.insurance_price ?? shoe.total_price ?? null;
-        const { vatMatch, score } = buildMatch(dbVat, dbGross);
-        const shoeResult = {
-          id: shoe.id,
-          orderNumber: shoe.orderNumber,
-          paymnentType: shoe.payment_type,
-          totalPrice: shoe.total_price,
-          insuranceTotalPrice: shoe.insurance_price,
-          private_payed: shoe.private_payed,
-          insurance_status: shoe.insurance_status,
-          createdAt: shoe.createdAt,
-          // keep plain number for backward‑compatible response shape
-          vatRate: shoe.vat_rate,
-          prescription: shoe.prescription,
-          customer: shoe.customer,
-          insuranceType: "shoe" as const,
-          matchScore: score,
-        };
-
-        // 90%+ score → matched, otherwise goes to notMatchedShoe
-        if (score >= 0.9) matchedShoe.push(shoeResult);
-        else notMatchedShoe.push(shoeResult);
+        if (shoeScore > 0) {
+          const shoeResult = {
+            id: shoe.id,
+            orderNumber: shoe.orderNumber,
+            paymnentType: shoe.payment_type,
+            totalPrice: shoe.total_price,
+            insuranceTotalPrice: shoe.insurance_price,
+            private_payed: shoe.private_payed,
+            insurance_status: shoe.insurance_status,
+            createdAt: shoe.createdAt,
+            vatRate: shoe.vat_rate,
+            prescription: shoe.prescription,
+            customer: shoe.customer,
+            insuranceType: "shoes" as const,
+            matchScore: shoeScore,
+          };
+          if (shoeScore >= 0.9) machShoe.push(shoeResult);
+          else notMachShoe.push(shoeResult);
+        }
       }
     }
 
     return res.status(200).json({
       success: true,
       message: "Insurance changelog validated successfully",
-      matchedInsole,
-      matchedShoe,
-      notMatchedInsole,
-      notMatchedShoe,
+      machInsole,
+      machShoe,
+      notMachInsole,
+      notMachShoe,
     });
   } catch (error) {
     console.error("Validate insurance changelog error:", error);

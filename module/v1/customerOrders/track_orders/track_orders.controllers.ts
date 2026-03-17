@@ -1659,7 +1659,6 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
   }
 };
 
-
 // router.get(
 //   "/barcode-label/:orderId",
 //   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
@@ -1974,6 +1973,165 @@ export const getWaitingForVersorgungsStartCount = async (
     res.status(500).json({
       success: false,
       message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getWerkstattzettelSheetPdfData = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { orderId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        orderNumber: true,
+        //address
+        geschaeftsstandort: true,
+        createdAt: true,
+        fertigstellungBis: true,
+
+        einlagentyp: true,
+        //notes
+        versorgung_note: true,
+        fussanalysePreis: true,
+        werkstattzettel: true,
+
+        addonPrices: true,
+        discount: true,
+        quantity: true,
+        vatRate: true,
+        insuranceTotalPrice: true,
+        privatePrice: true,
+        insurance_payed: true,
+        private_payed: true,
+        net_price: true,
+        totalPrice: true,
+        einlagenversorgungPreis: true,
+
+        product: {
+          select: {
+            name: true,
+            versorgung: true,
+            diagnosis_status: true,
+            material: true,
+            langenempfehlung: true,
+            rohlingHersteller: true,
+            artikelHersteller: true,
+            status: true,
+          },
+        },
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            fusslange1: true,
+            fusslange2: true,
+          },
+        },
+      },
+    });
+
+    const partner = await prisma.user.findUnique({
+      where: { id: partnerId },
+      select: {
+        image: true,
+        busnessName: true,
+        name: true,
+        // AUFTRAGSNR
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Werkstattzettel sheet pdf data fetched successfully",
+      data: {
+        logo: partner?.image,
+        auftragsnr: order?.orderNumber,
+
+        //customer
+        left: "-----------------------------",
+        customerName: `${order?.customer?.vorname} ${order?.customer?.nachname}`,
+        customerAddress: order?.customer?.wohnort,
+        CustomerPhone: order?.customer?.telefon,
+        CustomerEmail: order?.customer?.email,
+
+        //address
+        right: "-----------------------------",
+        auftragsDatum: order?.createdAt, //অর্ডারের তারিখ
+        auftragErstelltVon: partner?.name || partner?.busnessName, //অর্ডার প্রস্তুতকারী
+        filialeAnnahmeStelle: order?.geschaeftsstandort, //শাখা / প্রাপ্তি স্থান
+        fertigstellungBis: order?.fertigstellungBis, ////পরিপূরক date of deleveary
+
+        //product
+        product1: "----------EINLAGE TYP--------------",
+        einlagentyp: order?.einlagentyp,
+        product2:
+          "----------ZUSATZPOSITIONEN ZUSATZPOSITIONEN (Z.B. REPARATUR, LEDERDECKE)--------------",
+        zusatzpositionen: order?.product,
+        product3: "-------------GRÖSSE--------------",
+        grösse:
+          (Number(order?.customer?.fusslange1) +
+            Number(order?.customer?.fusslange2) +
+            5) /
+          2,
+
+        product4: "-------------FUSSANALYSE (JA / NEIN)--------------",
+        werkstattzettel: order?.werkstattzettel,
+        fussanalysePreis: order?.fussanalysePreis,
+
+        product5: "-------------WIRTSCHAFTLICHER AUFPREIS--------------",
+        wirtschaftlicherAufpreis: order?.addonPrices,
+
+        manage: order?.quantity,
+        rabatt: order?.discount,
+
+        //notes
+        notes: "-----------------------------",
+        versorgungNote: order?.versorgung_note,
+
+        // PREISÜBERSICHT (raw prices – frontend does calculations)
+        preisuebersicht: {
+          net_price: order?.net_price,
+          vatRate: order?.vatRate,
+          privatePrice: order?.privatePrice,
+          insuranceTotalPrice: order?.insuranceTotalPrice,
+          totalPrice: order?.totalPrice,
+          einlagenversorgungPreis: order?.einlagenversorgungPreis,
+          fussanalysePreis: order?.fussanalysePreis,
+          addonPrices: order?.addonPrices,
+          discount: order?.discount,
+          quantity: order?.quantity,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Werkstattzettel Sheet Pdf Data Error:", error);
+    res.status(500).json({
+      success: false,
+      message:
+        "Something went wrong while fetching werkstattzettel sheet pdf data",
       error: error.message,
     });
   }
