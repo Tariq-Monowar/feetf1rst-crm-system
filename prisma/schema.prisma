@@ -3022,6 +3022,16 @@ model order_settings {
   // 6 - detailed / extended meas. points 10+11
   showMeasPoints10_11_Det Boolean @default(false)
 
+
+  // 7 - when orser is created this time i should create appomnent or not
+  order_creation_appomnent Boolean @default(true)
+
+  // 8 - appomnent overlap
+  appomnentOverlap Boolean @default(false)
+
+  // 9 - we should loock worke time (employee availability)
+  lookWorkTime Boolean @default(true)
+
   // Optional: multi-company support
   partnerId String? @unique
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)

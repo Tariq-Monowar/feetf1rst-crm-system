@@ -8,6 +8,10 @@ const DEFAULT_ORDER_SETTINGS = {
   showMeasPoints10_11: false,
   printFootScans: true,
   showMeasPoints10_11_Det: false,
+  order_creation_appomnent: true,
+  pickupAssignmentMode: true,
+  appomnentOverlap: false,
+  lookWorkTime: true,
 };
 
 /**
@@ -77,6 +81,10 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
       showMeasPoints10_11,
       printFootScans,
       showMeasPoints10_11_Det,
+      order_creation_appomnent,
+      pickupAssignmentMode,
+      appomnentOverlap,
+      lookWorkTime,
     } = req.body;
 
     // Validate boolean fields if provided
@@ -140,6 +148,46 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
         });
       }
       updateData.showMeasPoints10_11_Det = showMeasPoints10_11_Det;
+    }
+
+    if (order_creation_appomnent !== undefined) {
+      if (typeof order_creation_appomnent !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "order_creation_appomnent must be a boolean value",
+        });
+      }
+      updateData.order_creation_appomnent = order_creation_appomnent;
+    }
+
+    if (pickupAssignmentMode !== undefined) {
+      if (typeof pickupAssignmentMode !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "pickupAssignmentMode must be a boolean value",
+        });
+      }
+      updateData.pickupAssignmentMode = pickupAssignmentMode;
+    }
+
+    if (appomnentOverlap !== undefined) {
+      if (typeof appomnentOverlap !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "appomnentOverlap must be a boolean value",
+        });
+      }
+      updateData.appomnentOverlap = appomnentOverlap;
+    }
+
+    if (lookWorkTime !== undefined) {
+      if (typeof lookWorkTime !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "lookWorkTime must be a boolean value",
+        });
+      }
+      updateData.lookWorkTime = lookWorkTime;
     }
 
     // Check if at least one field is provided

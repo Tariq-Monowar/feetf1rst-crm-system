@@ -414,7 +414,10 @@ export const createOrder = async (req: Request, res: Response) => {
         : Promise.resolve(null),
       prisma.order_settings.findUnique({
         where: { partnerId },
-        select: { autoSendToProd: true },
+        select: {
+          autoSendToProd: true,
+          order_creation_appomnent: true,
+        },
       }),
     ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
@@ -769,6 +772,65 @@ export const createOrder = async (req: Request, res: Response) => {
 
       return { ...newOrder, matchedSizeKey, storeUpdatePayload };
     });
+
+    // If settings say we should create an appointment when an order is created, do it as a background task
+    if (orderSettings?.order_creation_appomnent) {
+      const { employeeId: createdOrderEmployeeId } = order;
+      const kundenNameCopy = kundenName;
+      const fertigstellungBisCopy = fertigstellungBis;
+      const customerIdCopy = customerId;
+      const partnerIdCopy = partnerId;
+
+      setImmediate(async () => {
+        try {
+          // Try to resolve employee name for assignedTo
+          let assignedToName = "";
+          if (createdOrderEmployeeId) {
+            const emp = await prisma.employees.findUnique({
+              where: { id: createdOrderEmployeeId },
+              select: { employeeName: true },
+            });
+            assignedToName = emp?.employeeName ?? "";
+          }
+
+          // Use fertigstellungBis if provided; otherwise fallback to "now"
+          const appointmentDate = fertigstellungBisCopy
+            ? new Date(fertigstellungBisCopy)
+            : new Date();
+          const hours = appointmentDate
+            .getHours()
+            .toString()
+            .padStart(2, "0");
+          const minutes = appointmentDate
+            .getMinutes()
+            .toString()
+            .padStart(2, "0");
+          const timeStr = `${hours}:${minutes}`; // 24h format "HH:MM"
+
+          await prisma.appointment.create({
+            data: {
+              customer_name: kundenNameCopy ?? "",
+              time: timeStr,
+              date: appointmentDate,
+              reason: "Einlagenbestellung erstellt",
+              assignedTo: assignedToName,
+              employeId: createdOrderEmployeeId ?? null,
+              duration: 5,
+              details: null,
+              isClient: false,
+              userId: partnerIdCopy,
+              customerId: customerIdCopy,
+              reminder: 30, // 30 minutes
+            },
+          });
+        } catch (e) {
+          console.error(
+            "[createOrder] Failed to auto-create appointment for order (background):",
+            e,
+          );
+        }
+      });
+    }
 
     // --- 9. Background: customerHistorie, customerOrdersHistory, customerOrderInsurance (keeps main transaction fast)
     const fallbackVat =
