@@ -2559,6 +2559,7 @@ enum custom_shafts_catagoary {
   row
 }
 
+
 enum custom_shafts_status {
   Neu
   Zu_Produzent_abgeschickt
