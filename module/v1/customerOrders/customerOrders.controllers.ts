@@ -170,6 +170,16 @@ const getNextOrderNumberForPartner = async (
   return maxOrder ? maxOrder.orderNumber + 1 : 1000;
 };
 
+// Next KVA sequence (1, 2, 3...) per partner; only used when kva is true
+const getNextKvaNumberForPartner = async (tx, partnerId) => {
+  const max = await tx.customerOrders.findFirst({
+    where: { partnerId, kva: true, kvaNumber: { not: null } },
+    orderBy: { kvaNumber: "desc" },
+    select: { kvaNumber: true },
+  });
+  return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
+};
+
 // Helper to get quantity from size data (handles both old and new formats)
 const getQuantity = (sizeData: any): number => {
   if (sizeData && typeof sizeData === "object" && "quantity" in sizeData) {
@@ -186,21 +196,12 @@ const updateSizeQuantity = (sizeData: any, newQty: number): any => {
   return typeof sizeData === "number" ? newQty : { quantity: newQty };
 };
 
-/*-------------------------------------------------------
-  // createOrder:
-  // - Roles: ADMIN, PARTNER, EMPLOYEE (via verifyUser)
-  // - Requires: customerId, bezahlt, geschaeftsstandort, totalPrice (+ versorgungId if not private/key)
-  // - Payment type: insurance | private | broth from insuranceTotalPrice/privatePrice/addonPrices
-  // - Auto-links latest prescription (<= 4 weeks) and versorgung (or creates private supply from key)
-  // - Validates screenerId OR customer foot lengths (fusslange1/2) exist
-  // - Respects partner order_settings.autoSendToProd → initial orderStatus In_Fertigung or Warten_auf_Versorgungsstart
-  // - Persists werkstattzettel, kva, halbprobe, VAT, prices, and creates history + store stock update
-  // - if kva is true i need to generate a sequanc of number like 1,2,3,4,5,6,7,8,9......
-*/
+// createOrder: allowed roles ADMIN, PARTNER, EMPLOYEE. Steps: validate body → load customer/versorgung/prescription/settings → create order + history → optional store stock update.
 
 export const createOrder = async (req: Request, res: Response) => {
-  const bad = (code: number, message: string, extra?: object) =>
+  const bad = (code, message, extra) =>
     res.status(code).json({ success: false, message, ...extra });
+  const toBool = (v) => v === true || v === "true";
 
   try {
     const partnerId = req.user.id;
@@ -247,7 +248,7 @@ export const createOrder = async (req: Request, res: Response) => {
     } = body;
     const privetSupply = key;
 
-    // screenerId is optional when customer has foot data (fusslange1, fusslange2)
+    // --- 1. Required fields ---
     const required = privetSupply
       ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
       : [
@@ -258,7 +259,6 @@ export const createOrder = async (req: Request, res: Response) => {
           "totalPrice",
         ];
     for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
-
     const okStatus = [
       "Privat_Bezahlt",
       "Privat_offen",
@@ -269,11 +269,9 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
     const totalPrice = Number(totalPriceFromClient);
-    if (Number.isNaN(totalPrice)) {
-      return bad(400, "totalPrice must be a valid number");
-    }
+    if (Number.isNaN(totalPrice)) return bad(400, "totalPrice must be a valid number");
 
-    // Payment type: insurance | private | broth (same logic as shoe_orders)
+    // --- 2. Payment type ---
     const num = (v: unknown) =>
       v != null && v !== "" && !Number.isNaN(Number(v));
     const ins = num(insuranceTotalPrice);
@@ -284,7 +282,7 @@ export const createOrder = async (req: Request, res: Response) => {
     else if (ins) payment_type = "insurance";
     else if (priv || addon) payment_type = "private";
 
-    let vat_country: string | undefined;
+    let vat_country;
     if (
       bezahlt === "Krankenkasse_Genehmigt" ||
       bezahlt === "Krankenkasse_Ungenehmigt"
@@ -308,10 +306,10 @@ export const createOrder = async (req: Request, res: Response) => {
             `insurances[${i}] must contain at least price or description`,
           );
       }
-      // vat_country is set from partnerForVat after the parallel fetch below
     }
 
-    let normalizedInsoleStandards: any[] = [];
+    // --- 3. Insole standards (optional) ---
+    let normalizedInsoleStandards = [];
     if (insoleStandards != null) {
       if (!Array.isArray(insoleStandards))
         return bad(400, "insoleStandards must be an array");
@@ -366,6 +364,7 @@ export const createOrder = async (req: Request, res: Response) => {
       bezahlt === "Krankenkasse_Genehmigt" ||
       bezahlt === "Krankenkasse_Ungenehmigt";
 
+    // --- 4. Load customer, versorgung, prescription, order settings ---
     const [
       screenerFile,
       customer,
@@ -423,13 +422,13 @@ export const createOrder = async (req: Request, res: Response) => {
 
     if (needPartnerVat) {
       if (!partnerForVat) return bad(400, "Partner not found");
-      const acc = partnerForVat.accountInfos?.find((a: any) => a.vat_country);
+      const acc = partnerForVat.accountInfos?.find((a) => a.vat_country);
       if (!acc?.vat_country)
         return bad(400, "Please set the vat country in your account info");
       vat_country = acc.vat_country;
     }
 
-    // When no screenerId, customer must have foot data to create order
+    // --- 5. Foot data: need screenerId or customer fusslange1/2 ---
     if (!screenerId) {
       const hasFootData =
         customer.fusslange1 != null &&
@@ -443,8 +442,9 @@ export const createOrder = async (req: Request, res: Response) => {
         );
     }
 
-    let versorgung: any;
-    let effectiveVersorgungId: string | null;
+    // --- 6. Resolve versorgung (private supply from key, or by versorgungId) ---
+    let versorgung;
+    let effectiveVersorgungId;
 
     if (privetSupply) {
       const raw = rawShadowOrVersorgung as string | null;
@@ -541,7 +541,7 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, msg);
     }
 
-    // Explicit VAT from client (overrides supplyStatus vatRate if provided)
+    // --- 7. VAT, quantity, discount, initial status ---
     const explicitVatRate =
       vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
         ? Number(vat_rate)
@@ -551,7 +551,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
 
-    const orderVatRate: number | undefined =
+    const orderVatRate =
       explicitVatRate ??
       (typeof versorgung?.supplyStatus?.vatRate === "number"
         ? versorgung.supplyStatus.vatRate
@@ -564,12 +564,11 @@ export const createOrder = async (req: Request, res: Response) => {
     // rady_insole: reserve by closest length (longest foot + 5 mm). milling_block: reserve by block (1/2/3) from foot length range.
     const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
 
-    // When order_settings.autoSendToProd is true, new order starts as In_Fertigung instead of Warten_auf_Versorgungsstart
     const initialOrderStatus = orderSettings?.autoSendToProd
       ? ("In_Fertigung" as const)
       : ("Warten_auf_Versorgungsstart" as const);
 
-    // STEP 4: Create order and related records in one transaction (timeout 20s to avoid "Transaction already closed")
+    // --- 8. Create order + product + history in transaction ---
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
 
@@ -664,8 +663,8 @@ export const createOrder = async (req: Request, res: Response) => {
             ? Number(insuranceTotalPrice) || 0
             : 0,
         paymnentType: payment_type,
-        kva: kva === true || kva === "true",
-        halbprobe: halbprobe === true || halbprobe === "true",
+        kva: toBool(kva),
+        halbprobe: toBool(halbprobe),
         ...(privatePriceFromBody != null &&
           privatePriceFromBody !== "" &&
           !Number.isNaN(Number(privatePriceFromBody)) && {
@@ -688,8 +687,7 @@ export const createOrder = async (req: Request, res: Response) => {
       if (einlagenversorgungPreis != null)
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
-      orderData.werkstattzettel =
-        werkstattzettel === false || werkstattzettel === "false" ? false : true;
+      orderData.werkstattzettel = werkstattzettel !== false && werkstattzettel !== "false";
       orderData.type = store?.type ?? "rady_insole";
       orderData.u_orderType =
         body.orderCategory === "sonstiges"
@@ -700,21 +698,20 @@ export const createOrder = async (req: Request, res: Response) => {
       if (normalizedInsoleStandards.length > 0) {
         orderData.insoleStandards = { create: normalizedInsoleStandards };
       }
+      if (toBool(kva)) {
+        orderData.kvaNumber = await getNextKvaNumberForPartner(tx, partnerId);
+      }
 
       const newOrder = await tx.customerOrders.create({
         data: orderData,
-        select: { id: true, employeeId: true },
+        select: {
+          id: true,
+          employeeId: true,
+          kvaNumber: true,
+        },
       });
 
-      // Validate store stock and compute matchedSizeKey; actual store update runs in background after response
-      let storeUpdatePayload: {
-        storeId: string;
-        sizeKey: string;
-        orderId: string;
-        customerId: string;
-        partnerId: string;
-        isMillingBlock: boolean;
-      } | null = null;
+      let storeUpdatePayload = null;
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
         const sizes = { ...(store.groessenMengen as Record<string, any>) };
         const isMillingBlock = store.type === "milling_block";
@@ -770,62 +767,73 @@ export const createOrder = async (req: Request, res: Response) => {
         };
       }
 
-      const fallbackVat =
-        bezahlt === "Krankenkasse_Genehmigt" ||
-        bezahlt === "Krankenkasse_Ungenehmigt"
-          ? vat_country
-          : null;
-      const list = Array.isArray(insurances)
-        ? insurances
-        : insurances && typeof insurances === "object"
-          ? [insurances]
-          : [];
+      return { ...newOrder, matchedSizeKey, storeUpdatePayload };
+    });
 
-      await Promise.all([
-        tx.customerHistorie.create({
-          data: {
-            customerId,
-            category: "Bestellungen",
-            eventId: newOrder.id,
-            note: "",
-            system_note: "Einlagenbestellung erstellt",
-            paymentIs: totalPrice.toString(),
-          } as any,
-        }),
-        tx.customerOrdersHistory.create({
-          data: {
-            orderId: newOrder.id,
-            statusFrom: "Warten_auf_Versorgungsstart",
-            statusTo: initialOrderStatus,
-            partnerId,
-            employeeId: newOrder.employeeId ?? null,
-            note: null,
-          } as any,
-        }),
-        ...list.map((item: any) =>
-          tx.customerOrderInsurance.create({
+    // --- 9. Background: customerHistorie, customerOrdersHistory, customerOrderInsurance (keeps main transaction fast)
+    const fallbackVat =
+      bezahlt === "Krankenkasse_Genehmigt" ||
+      bezahlt === "Krankenkasse_Ungenehmigt"
+        ? vat_country
+        : null;
+    const insuranceList = Array.isArray(insurances)
+      ? insurances
+      : insurances && typeof insurances === "object"
+        ? [insurances]
+        : [];
+    const orderId = order.id;
+    const employeeId = order.employeeId;
+    setImmediate(() => {
+      prisma
+        .$transaction([
+          prisma.customerHistorie.create({
             data: {
-              orderId: newOrder.id,
-              price:
-                item.price != null && item.price !== ""
-                  ? Number(item.price)
-                  : null,
-              description:
-                item.description != null && item.description !== ""
-                  ? item.description
-                  : null,
-              vat_country: fallbackVat,
+              customerId,
+              category: "Bestellungen",
+              eventId: orderId,
+              note: "",
+              system_note: "Einlagenbestellung erstellt",
+              paymentIs: totalPrice.toString(),
             },
           }),
-        ),
-      ]);
-
-      return { ...newOrder, matchedSizeKey, storeUpdatePayload };
+          prisma.customerOrdersHistory.create({
+            data: {
+              orderId,
+              statusFrom: "Warten_auf_Versorgungsstart",
+              statusTo: initialOrderStatus,
+              partnerId,
+              employeeId,
+              note: null,
+            },
+          }),
+          ...insuranceList.map((item) =>
+            prisma.customerOrderInsurance.create({
+              data: {
+                orderId,
+                price:
+                  item.price != null && item.price !== ""
+                    ? Number(item.price)
+                    : null,
+                description:
+                  item.description != null && item.description !== ""
+                    ? item.description
+                    : null,
+                vat_country: fallbackVat,
+              },
+            }),
+          ),
+        ])
+        .catch((e) =>
+          console.error(
+            "[createOrder] Background history/insurance create failed:",
+            e,
+          ),
+        );
     });
 
     if (privetSupply) redis.del(privetSupply).catch(() => {});
 
-    // Reduce store quantity in background so response is sent first
+    // --- 10. Background: decrement store stock if order used a size ---
     if (order.storeUpdatePayload) {
       const {
         storeId,
@@ -889,6 +897,8 @@ export const createOrder = async (req: Request, res: Response) => {
       orderId: order.id,
       matchedSize: order.matchedSizeKey,
       supplyType: privetSupply ? "private" : "public",
+      customerNumber: order.customerNumber,
+      kvaNumber: order.kvaNumber,
     });
   } catch (err: any) {
     if (err?.message === "NO_MATCHED_SIZE_IN_STORE")
