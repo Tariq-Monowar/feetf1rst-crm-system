@@ -2295,6 +2295,11 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
       });
     }
 
+    const firstScreener =
+      order.customer?.screenerFile && order.customer.screenerFile.length > 0
+        ? order.customer.screenerFile[0]
+        : null;
+
     return res.status(200).json({
       success: true,
       message: "Halbprobe data fetched successfully",
@@ -2316,16 +2321,16 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
         },
         screenerFile: {
           anamul_vai_1: "ei 10 ar 12 hocche boro duita image",
-          picture_23: order?.customer?.screenerFile?.[0]?.picture_23,
-          picture_24: order?.customer?.screenerFile?.[0]?.picture_24,
+          picture_23: firstScreener?.picture_23 ?? null,
+          picture_24: firstScreener?.picture_24 ?? null,
 
           anamul_vai_2: "ei duita dan paser uporer image",
-          picture_17: order?.customer?.screenerFile?.[0]?.picture_17,
-          picture_16: order?.customer?.screenerFile?.[0]?.picture_16,
+          picture_17: firstScreener?.picture_17 ?? null,
+          picture_16: firstScreener?.picture_16 ?? null,
 
           anamul_vai_3: "ei duita dan paser nicer image",
-          picture_10: order?.customer?.screenerFile?.[0]?.picture_10,
-          picture_11: order?.customer?.screenerFile?.[0]?.picture_11,
+          picture_10: firstScreener?.picture_10 ?? null,
+          picture_11: firstScreener?.picture_11 ?? null,
 
         },
       },
