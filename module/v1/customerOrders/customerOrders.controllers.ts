@@ -186,6 +186,18 @@ const updateSizeQuantity = (sizeData: any, newQty: number): any => {
   return typeof sizeData === "number" ? newQty : { quantity: newQty };
 };
 
+/*-------------------------------------------------------
+  // createOrder:
+  // - Roles: ADMIN, PARTNER, EMPLOYEE (via verifyUser)
+  // - Requires: customerId, bezahlt, geschaeftsstandort, totalPrice (+ versorgungId if not private/key)
+  // - Payment type: insurance | private | broth from insuranceTotalPrice/privatePrice/addonPrices
+  // - Auto-links latest prescription (<= 4 weeks) and versorgung (or creates private supply from key)
+  // - Validates screenerId OR customer foot lengths (fusslange1/2) exist
+  // - Respects partner order_settings.autoSendToProd → initial orderStatus In_Fertigung or Warten_auf_Versorgungsstart
+  // - Persists werkstattzettel, kva, halbprobe, VAT, prices, and creates history + store stock update
+  // - if kva is true i need to generate a sequanc of number like 1,2,3,4,5,6,7,8,9......
+*/
+
 export const createOrder = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
@@ -229,6 +241,9 @@ export const createOrder = async (req: Request, res: Response) => {
       key,
       totalPrice: totalPriceFromClient,
       vat_rate,
+      werkstattzettel,
+      kva,
+      halbprobe,
     } = body;
     const privetSupply = key;
 
@@ -357,6 +372,7 @@ export const createOrder = async (req: Request, res: Response) => {
       rawShadowOrVersorgung,
       validPrescription,
       partnerForVat,
+      orderSettings,
     ] = await Promise.all([
       screenerId
         ? prisma.screener_file.findUnique({
@@ -397,6 +413,10 @@ export const createOrder = async (req: Request, res: Response) => {
             select: { accountInfos: { select: { vat_country: true } } },
           })
         : Promise.resolve(null),
+      prisma.order_settings.findUnique({
+        where: { partnerId },
+        select: { autoSendToProd: true },
+      }),
     ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
@@ -544,6 +564,11 @@ export const createOrder = async (req: Request, res: Response) => {
     // rady_insole: reserve by closest length (longest foot + 5 mm). milling_block: reserve by block (1/2/3) from foot length range.
     const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
 
+    // When order_settings.autoSendToProd is true, new order starts as In_Fertigung instead of Warten_auf_Versorgungsstart
+    const initialOrderStatus = orderSettings?.autoSendToProd
+      ? ("In_Fertigung" as const)
+      : ("Warten_auf_Versorgungsstart" as const);
+
     // STEP 4: Create order and related records in one transaction (timeout 20s to avoid "Transaction already closed")
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
@@ -586,6 +611,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
       const orderData: any = {
         orderNumber,
+        orderStatus: initialOrderStatus,
         fußanalyse: null,
         einlagenversorgung: null,
         totalPrice,
@@ -638,6 +664,8 @@ export const createOrder = async (req: Request, res: Response) => {
             ? Number(insuranceTotalPrice) || 0
             : 0,
         paymnentType: payment_type,
+        kva: kva === true || kva === "true",
+        halbprobe: halbprobe === true || halbprobe === "true",
         ...(privatePriceFromBody != null &&
           privatePriceFromBody !== "" &&
           !Number.isNaN(Number(privatePriceFromBody)) && {
@@ -660,6 +688,8 @@ export const createOrder = async (req: Request, res: Response) => {
       if (einlagenversorgungPreis != null)
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
+      orderData.werkstattzettel =
+        werkstattzettel === false || werkstattzettel === "false" ? false : true;
       orderData.type = store?.type ?? "rady_insole";
       orderData.u_orderType =
         body.orderCategory === "sonstiges"
@@ -766,7 +796,7 @@ export const createOrder = async (req: Request, res: Response) => {
           data: {
             orderId: newOrder.id,
             statusFrom: "Warten_auf_Versorgungsstart",
-            statusTo: "Warten_auf_Versorgungsstart",
+            statusTo: initialOrderStatus,
             partnerId,
             employeeId: newOrder.employeeId ?? null,
             note: null,

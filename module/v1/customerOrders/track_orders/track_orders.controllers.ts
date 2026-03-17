@@ -2136,3 +2136,74 @@ export const getWerkstattzettelSheetPdfData = async (
     });
   }
 };
+
+export const getKvaData = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        customerOrderInsurances: true,
+        geschaeftsstandort: true,
+
+        partner: {
+          select: {
+            image: true,
+            busnessName: true,
+            name: true,
+            phone: true,
+            email: true,
+            accountInfos: {
+              select: {
+                vat_number: true,
+              },
+            },
+          },
+        },
+      },
+      
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Kva data fetched successfully",
+      data: {
+        logo: order?.partner?.image,
+        partnerInfo: {
+          name: order?.partner?.name,
+          busnessName: order?.partner?.busnessName,
+          phone: order?.partner?.phone,
+          email: order?.partner?.email,
+          vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+          orderLocation: order?.geschaeftsstandort
+        },
+        insurancesInfo: order?.customerOrderInsurances,
+        // kviNumber: order?.kviNumber,
+
+      },
+    });
+  } catch (error) {
+    console.error("Get Kva Data Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching kva data",
+      error: error.message,
+    });
+  }
+};

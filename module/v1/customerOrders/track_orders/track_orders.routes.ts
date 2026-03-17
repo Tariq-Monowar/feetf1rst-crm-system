@@ -14,7 +14,8 @@ import {
   getPriceDetails,
   getOrderStatusNote,
   getWaitingForVersorgungsStartCount,
-  getWerkstattzettelSheetPdfData
+  getWerkstattzettelSheetPdfData,
+  getKvaData
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -91,6 +92,12 @@ router.get(
   "/werkstattzettel-sheet-pdf-data/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   getWerkstattzettelSheetPdfData,
+);
+
+router.get(
+  "/kva-data/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getKvaData,
 );
 
 export default router;

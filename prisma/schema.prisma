@@ -1149,6 +1149,10 @@ model customerOrders {
   //============================================================== 
   werkstattzettel Boolean?      @default(true)
 
+  kva       Boolean? @default(true)
+  halbprobe Boolean? @default(true)
+  kvaNumber Int? //it's start form 1
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1937,6 +1941,7 @@ model shoe_order {
 
   kva       Boolean? @default(true)
   halbprobe Boolean? @default(true)
+  kvaNumber Int? //it's start form 1
 
   /**
    * ----------------------
@@ -2364,6 +2369,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2387,6 +2394,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
