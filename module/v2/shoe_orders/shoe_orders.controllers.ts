@@ -16,6 +16,16 @@ const SHOE_ORDER_STATUSES = [
   "Ausgeführt",
 ];
 
+// Next KVA sequence (1, 2, 3...) per partner for shoe orders; only used when kva is true
+const getNextShoeKvaNumberForPartner = async (tx: any, partnerId: string) => {
+  const max = await tx.shoe_order.findFirst({
+    where: { partnerId, kva: true, kvaNumber: { not: null } },
+    orderBy: { kvaNumber: "desc" },
+    select: { kvaNumber: true },
+  });
+  return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
+};
+
 /** Get next order number for a partner (starts from 1000, unique per partner) - raw query for speed */
 const getNextShoeOrderNumberForPartner = async (
   tx: any,
@@ -268,6 +278,11 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         }
       }
 
+      const nextKvaNumber =
+        kva === true || kva === "true"
+          ? await getNextShoeKvaNumberForPartner(tx, partnerId)
+          : null;
+
       const order = await tx.shoe_order.create({
         data: {
           orderNumber,
@@ -294,6 +309,7 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           employeeId: employeeId ?? undefined,
           kva: kva === true || kva === "true",
           halbprobe: halbprobe === true || halbprobe === "true",
+          kvaNumber: nextKvaNumber ?? undefined,
           half_sample_required: halfSampleRequired,
           has_trim_strips: hasTrimStrips,
           bedding_required: beddingRequired,

@@ -15,6 +15,7 @@
     "fix:cache-lookup": "ts-node scripts/fix-cache-lookup.ts",
     "backfill:appomnent-room-partnerId": "ts-node scripts/backfill-appomnent-room-partnerId.ts",
     "backfill:kva-number": "ts-node scripts/backfill-kva-number.ts",
+    "backfill:kva-both": "ts-node scripts/backfill-kva-number-both.ts",
     "clean:diagnosis-status-data": "ts-node scripts/clean-diagnosis-status-data.ts",
     "backup:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts backup",
     "restore:diagnosis-status": "ts-node scripts/backup-restore-diagnosis-status.ts restore",
