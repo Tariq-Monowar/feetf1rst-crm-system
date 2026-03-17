@@ -269,7 +269,8 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
     const totalPrice = Number(totalPriceFromClient);
-    if (Number.isNaN(totalPrice)) return bad(400, "totalPrice must be a valid number");
+    if (Number.isNaN(totalPrice))
+      return bad(400, "totalPrice must be a valid number");
 
     // --- 2. Payment type ---
     const num = (v: unknown) =>
@@ -690,7 +691,8 @@ export const createOrder = async (req: Request, res: Response) => {
       if (einlagenversorgungPreis != null)
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (discount != null) orderData.discount = discountPercent;
-      orderData.werkstattzettel = werkstattzettel !== false && werkstattzettel !== "false";
+      orderData.werkstattzettel =
+        werkstattzettel !== false && werkstattzettel !== "false";
       orderData.type = store?.type ?? "rady_insole";
       orderData.u_orderType =
         body.orderCategory === "sonstiges"
@@ -797,10 +799,7 @@ export const createOrder = async (req: Request, res: Response) => {
           const appointmentDate = fertigstellungBisCopy
             ? new Date(fertigstellungBisCopy)
             : new Date();
-          const hours = appointmentDate
-            .getHours()
-            .toString()
-            .padStart(2, "0");
+          const hours = appointmentDate.getHours().toString().padStart(2, "0");
           const minutes = appointmentDate
             .getMinutes()
             .toString()
@@ -1370,6 +1369,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
       privatePrice: true,
       insuranceTotalPrice: true,
       insoleStandards: true,
+      halbprobe: true,
       customer: {
         select: {
           id: true,
