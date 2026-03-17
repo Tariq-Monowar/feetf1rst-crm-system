@@ -2237,3 +2237,105 @@ export const getKvaData = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getHalbprobeData = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+            gender: true,
+            customerNumber: true,
+            screenerFile: {
+              select: {
+                picture_10: true,
+                picture_23: true,
+                
+                
+                picture_11: true,
+                picture_24: true,
+
+                picture_16: true,
+                picture_17: true,
+              },
+            },
+          },
+        },
+        product: {
+          select: {
+            diagnosis_status: true,
+          },
+        },
+        quantity: true,
+        einlagentyp: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Halbprobe data fetched successfully",
+      data: {
+        customerInfo: {
+          gender: order?.customer?.gender,
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+          customerNumber: order?.customer?.customerNumber,
+        },
+        productInfo: {
+          diagnosisStatus: order?.product?.diagnosis_status,
+          quantity: order?.quantity,
+          einlagentyp: order?.einlagentyp,
+        },
+        screenerFile: {
+          anamul_vai_1: "ei 10 ar 12 hocche boro duita image",
+          picture_23: order?.customer?.screenerFile?.[0]?.picture_23,
+          picture_24: order?.customer?.screenerFile?.[0]?.picture_24,
+
+          anamul_vai_2: "ei duita dan paser uporer image",
+          picture_17: order?.customer?.screenerFile?.[0]?.picture_17,
+          picture_16: order?.customer?.screenerFile?.[0]?.picture_16,
+
+          anamul_vai_3: "ei duita dan paser nicer image",
+          picture_10: order?.customer?.screenerFile?.[0]?.picture_10,
+          picture_11: order?.customer?.screenerFile?.[0]?.picture_11,
+
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Halbprobe Data Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching halbprobe data",
+      error: error.message,
+    });
+  }
+};
