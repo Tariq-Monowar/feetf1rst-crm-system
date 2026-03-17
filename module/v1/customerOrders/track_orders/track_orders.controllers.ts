@@ -2154,6 +2154,8 @@ export const getKvaData = async (req: Request, res: Response) => {
       select: {
         customerOrderInsurances: true,
         geschaeftsstandort: true,
+        kvaNumber: true,
+        createdAt: true,
 
         partner: {
           select: {
@@ -2165,12 +2167,22 @@ export const getKvaData = async (req: Request, res: Response) => {
             accountInfos: {
               select: {
                 vat_number: true,
+                bankInfo: true,
               },
             },
           },
         },
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+          },
+        },
       },
-      
     });
 
     if (!order) {
@@ -2179,6 +2191,16 @@ export const getKvaData = async (req: Request, res: Response) => {
         message: "Order not found",
       });
     }
+
+    const year =
+      order.createdAt instanceof Date
+        ? order.createdAt.getFullYear()
+        : new Date(order.createdAt as unknown as string).getFullYear();
+
+    const formattedKviNumber =
+      order.kvaNumber != null
+        ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
+        : null;
 
     return res.status(200).json({
       success: true,
@@ -2191,11 +2213,19 @@ export const getKvaData = async (req: Request, res: Response) => {
           phone: order?.partner?.phone,
           email: order?.partner?.email,
           vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
-          orderLocation: order?.geschaeftsstandort
+          orderLocation: order?.geschaeftsstandort,
+          bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
         },
         insurancesInfo: order?.customerOrderInsurances,
-        // kviNumber: order?.kviNumber,
-
+        kviNumber: formattedKviNumber,
+        customerInfo: {
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+        },
       },
     });
   } catch (error) {

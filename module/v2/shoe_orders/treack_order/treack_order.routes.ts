@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyUser } from "../../../../middleware/verifyUsers";
-import { getBarcodeLabel } from "./treack_order.controllers";
+import { getBarcodeLabel, getKvaData } from "./treack_order.controllers";
 
 const router = express.Router();
 
@@ -144,5 +144,13 @@ router.get(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getBarcodeLabel,
 );
+
+
+router.get(
+  "/kva-data/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getKvaData,
+);
+
 
 export default router;

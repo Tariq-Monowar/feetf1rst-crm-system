@@ -138,3 +138,106 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+
+export const getKvaData = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.shoe_order.findUnique({
+      where: { id: orderId },
+      select: {
+        insurances: true,
+        branch_location: true,
+        kvaNumber: true,
+        createdAt: true,
+
+        partner: {
+          select: {
+            image: true,
+            busnessName: true,
+            name: true,
+            phone: true,
+            email: true,
+            accountInfos: {
+              select: {
+                vat_number: true,
+                bankInfo: true,
+              },
+            },
+          },
+        },
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const year =
+      order.createdAt instanceof Date
+        ? order.createdAt.getFullYear()
+        : new Date(order.createdAt as unknown as string).getFullYear();
+
+    const formattedKviNumber =
+      order.kvaNumber != null
+        ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
+        : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Kva data fetched successfully",
+      data: {
+        logo: order?.partner?.image,
+        partnerInfo: {
+          name: order?.partner?.name,
+          busnessName: order?.partner?.busnessName,
+          phone: order?.partner?.phone,
+          email: order?.partner?.email,
+          vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+          orderLocation: order?.branch_location,
+          bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
+        },
+        insurancesInfo: order?.insurances,
+        kviNumber: formattedKviNumber,
+        customerInfo: {
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Kva Data Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching kva data",
+      error: error.message,
+    });
+  }
+};
