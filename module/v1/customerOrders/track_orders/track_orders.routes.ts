@@ -18,6 +18,7 @@ import {
   getKvaData,
   getHalbprobeData,
   getWerkstattzettelA3Pdf,
+  identifyKvaData,
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -111,4 +112,12 @@ router.get(
   verifyUser("PARTNER", "EMPLOYEE"),
   getWerkstattzettelA3Pdf,
 );
+
+//identify lest kva-data insole also shoe
+router.get(
+  "/identify-kva-data/:customerId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  identifyKvaData,
+);
+
 export default router;

@@ -2440,6 +2440,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         },
         customer: {
           select: {
+            id: true,
             fusslange1: true,
             fusslange2: true,
 
@@ -2480,6 +2481,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
       data: {
         partnerInfo: order?.partner,
         customerInfo: {
+          id: order?.customer?.id,
           firstName: order?.customer?.vorname,
           lastName: order?.customer?.nachname,
           birthDate: order?.customer?.geburtsdatum,
@@ -2511,6 +2513,269 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Something went wrong while fetching werkstattzettel data",
+      error: error?.message,
+    });
+  }
+};
+
+
+export const identifyKvaData = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    const { customerId } = req.params;
+
+    if (!customerId || String(customerId).trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    const custId = String(customerId).trim();
+
+    // Find latest KVA-enabled order for this customer across both tables
+    const [latestInsole, latestShoe] = await Promise.all([
+      prisma.customerOrders.findFirst({
+        where: {
+          customerId: custId,
+          partnerId,
+          kva: true,
+        } as any,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, createdAt: true },
+      }),
+      prisma.shoe_order.findFirst({
+        where: {
+          customerId: custId,
+          partnerId,
+          kva: true,
+        } as any,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, createdAt: true },
+      }),
+    ]);
+
+    if (!latestInsole && !latestShoe) {
+      return res.status(404).json({
+        success: false,
+        message: "No KVA order found for this customer",
+      });
+    }
+
+    const pickShoe =
+      latestShoe &&
+      (!latestInsole ||
+        new Date(latestShoe.createdAt as any).getTime() >=
+          new Date(latestInsole.createdAt as any).getTime());
+
+    // Return the actual KVA payload (same shape as the respective getKvaData endpoints)
+    if (pickShoe) {
+      const id = latestShoe!.id;
+      const order = await prisma.shoe_order.findUnique({
+        where: { id },
+        select: {
+          insurances: true,
+          branch_location: true,
+          kvaNumber: true,
+          createdAt: true,
+          kvaPdf: true,
+          partner: {
+            select: {
+              image: true,
+              busnessName: true,
+              name: true,
+              phone: true,
+              email: true,
+              accountInfos: {
+                select: {
+                  vat_number: true,
+                  bankInfo: true,
+                },
+              },
+            },
+          },
+          customer: {
+            select: {
+              vorname: true,
+              nachname: true,
+              wohnort: true,
+              telefon: true,
+              email: true,
+              geburtsdatum: true,
+            },
+          },
+          prescription: {
+            select: {
+              doctor_name: true,
+              doctor_location: true,
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      const year =
+        order.createdAt instanceof Date
+          ? order.createdAt.getFullYear()
+          : new Date(order.createdAt as unknown as string).getFullYear();
+
+      const formattedKviNumber =
+        order.kvaNumber != null
+          ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
+          : null;
+
+      return res.status(200).json({
+        success: true,
+        message: "Kva data identified successfully",
+        data: {
+          orderType: "shoe",
+          orderId: id,
+          customerId: custId,
+          kvaPdf: order?.kvaPdf ?? null,
+          kvaData: {
+            logo: order?.partner?.image,
+            partnerInfo: {
+              name: order?.partner?.name,
+              busnessName: order?.partner?.busnessName,
+              phone: order?.partner?.phone,
+              email: order?.partner?.email,
+              vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+              orderLocation: order?.branch_location,
+              bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
+            },
+            insurancesInfo: order?.insurances,
+            kviNumber: formattedKviNumber,
+            customerInfo: {
+              firstName: order?.customer?.vorname,
+              lastName: order?.customer?.nachname,
+              birthDate: order?.customer?.geburtsdatum,
+              address: order?.customer?.wohnort,
+              phone: order?.customer?.telefon,
+              email: order?.customer?.email,
+            },
+            prescriptionInfo: {
+              doctorName: order?.prescription?.doctor_name,
+              doctorLocation: order?.prescription?.doctor_location,
+            },
+          },
+        },
+      });
+    }
+
+    const id = latestInsole!.id;
+    const order = await prisma.customerOrders.findUnique({
+      where: { id },
+      select: {
+        customerOrderInsurances: true,
+        geschaeftsstandort: true,
+        kvaNumber: true,
+        createdAt: true,
+        kvaPdf: true,
+        partner: {
+          select: {
+            image: true,
+            busnessName: true,
+            name: true,
+            phone: true,
+            email: true,
+            accountInfos: {
+              select: {
+                vat_number: true,
+                bankInfo: true,
+              },
+            },
+            orderSettings: {
+              select: {
+                shipping_addresses_for_kv: true,
+              },
+            },
+          },
+        },
+        customer: {
+          select: {
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+          },
+        },
+        prescription: {
+          select: {
+            doctor_name: true,
+            doctor_location: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const year =
+      order.createdAt instanceof Date
+        ? order.createdAt.getFullYear()
+        : new Date(order.createdAt as unknown as string).getFullYear();
+
+    const formattedKviNumber =
+      order.kvaNumber != null
+        ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
+        : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Kva data identified successfully",
+      data: {
+        orderType: "insole",
+        orderId: id,
+        customerId: custId,
+        kvaPdf: order?.kvaPdf ?? null,
+        kvaData: {
+          logo: order?.partner?.image,
+          partnerInfo: {
+            name: order?.partner?.name,
+            busnessName: order?.partner?.busnessName,
+            phone: order?.partner?.phone,
+            email: order?.partner?.email,
+            vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+            orderLocation: order?.geschaeftsstandort,
+            bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
+          },
+          insurancesInfo: order?.customerOrderInsurances,
+          kviNumber: formattedKviNumber,
+          customerInfo: {
+            firstName: order?.customer?.vorname,
+            lastName: order?.customer?.nachname,
+            birthDate: order?.customer?.geburtsdatum,
+            address: order?.customer?.wohnort,
+            phone: order?.customer?.telefon,
+            email: order?.customer?.email,
+          },
+          shippingAddressesForKv:
+            order?.partner?.orderSettings?.shipping_addresses_for_kv,
+          prescriptionInfo: {
+            doctorName: order?.prescription?.doctor_name,
+            doctorLocation: order?.prescription?.doctor_location,
+          },
+        },
+      },
+    });
+  } catch (error: any) {
+    console.error("Identify Kva Data Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while identifying kva data",
       error: error?.message,
     });
   }

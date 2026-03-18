@@ -12,6 +12,7 @@ import {
   sendInvoiceEmail,
 } from "../../../utils/emailService.utils";
 import redis from "../../../config/redis.config";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 const extractLengthValue = (value: any): number | null => {
   if (value === null || value === undefined) {
@@ -2356,9 +2357,21 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
 };
 
 export const updateOrder = async (req: Request, res: Response) => {
+  const toTrimmedOrNull = (v: unknown) => {
+    if (v == null) return null;
+    const s = String(v).trim();
+    return s ? s : null;
+  };
+
+  let uploadedFileLocation: string | null = null;
+
   try {
     const { id } = req.params;
     const { orderNotes, statusNote, versorgung_note } = req.body;
+    uploadedFileLocation =
+      (req as any).file?.location != null
+        ? String((req as any).file.location)
+        : null;
 
     if (!id) {
       return res
@@ -2367,25 +2380,21 @@ export const updateOrder = async (req: Request, res: Response) => {
     }
 
     const data: Record<string, any> = {};
+    const uploadedKvaPdf = uploadedFileLocation;
 
     if (orderNotes !== undefined) {
-      data.orderNotes =
-        orderNotes != null && String(orderNotes).trim() !== ""
-          ? String(orderNotes).trim()
-          : null;
+      data.orderNotes = toTrimmedOrNull(orderNotes);
     }
 
     if (statusNote !== undefined) {
-      data.statusNote =
-        statusNote != null && String(statusNote).trim() !== ""
-          ? String(statusNote).trim()
-          : null;
+      data.statusNote = toTrimmedOrNull(statusNote);
     }
     if (versorgung_note !== undefined) {
-      data.versorgung_note =
-        versorgung_note != null && String(versorgung_note).trim() !== ""
-          ? String(versorgung_note).trim()
-          : null;
+      data.versorgung_note = toTrimmedOrNull(versorgung_note);
+    }
+
+    if (uploadedKvaPdf) {
+      data.kvaPdf = uploadedKvaPdf;
     }
 
     if (Object.keys(data).length === 0) {
@@ -2396,14 +2405,31 @@ export const updateOrder = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.customerOrders.update({
+    const existingOrder = await prisma.customerOrders.findUnique({
       where: { id },
-      data,
+      select: { id: true, kvaPdf: true },
     });
+    if (!existingOrder) {
+      if (uploadedKvaPdf) await deleteFileFromS3(uploadedKvaPdf);
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    await prisma.customerOrders.update({ where: { id }, data });
+
+    if (uploadedKvaPdf && existingOrder.kvaPdf) {
+      // Best-effort: delete previous file after successful update
+      deleteFileFromS3(existingOrder.kvaPdf).catch(() => {});
+    }
 
     res.status(200).json({ success: true, data });
   } catch (error: any) {
     console.error("Update Order Error:", error);
+    if (uploadedFileLocation) {
+      // Cleanup newly uploaded file if update fails
+      deleteFileFromS3(uploadedFileLocation).catch(() => {});
+    }
     //order not found
     if (error.code === "P2025") {
       return res
