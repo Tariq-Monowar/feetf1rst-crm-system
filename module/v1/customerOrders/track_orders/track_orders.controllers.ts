@@ -711,6 +711,31 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
   }
 };
 
+/** Derive payment display from paymnentType + insurance_payed + private_payed (do not use bezahlt) */
+function getPaymentStatusDisplay(order: {
+  paymnentType: string | null;
+  insurance_payed: boolean | null;
+  private_payed: boolean | null;
+  insuranceTotalPrice?: number | null;
+  privatePrice?: number | null;
+}): string {
+  const type = order.paymnentType ?? "private";
+  const insPaid = order.insurance_payed ?? false;
+  const privPaid = order.private_payed ?? false;
+  if (type === "insurance") {
+    return insPaid ? "Insurance (paid)" : "Insurance (pending)";
+  }
+  if (type === "private") {
+    return privPaid ? "Private (paid)" : "Private (open)";
+  }
+  if (type === "broth") {
+    const ins = insPaid ? "paid" : "pending";
+    const priv = privPaid ? "paid" : "open";
+    return `Broth: Insurance ${ins}, Private ${priv}`;
+  }
+  return "Not set";
+}
+
 export const getNewOrderHistory = async (req: Request, res: Response) => {
   // Helper functions
   const formatStatusName = (status: string): string => {
@@ -791,7 +816,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       });
     }
 
-    // Get order with all necessary relations
+    // Get order with all necessary relations (payment from paymnentType + insurance_payed + private_payed, not bezahlt)
     const order = await prisma.customerOrders.findUnique({
       where: { id: orderId },
       select: {
@@ -803,6 +828,11 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
         barcodeLabel: true,
         barcodeCreatedAt: true,
         bezahlt: true,
+        paymnentType: true,
+        insuranceTotalPrice: true,
+        privatePrice: true,
+        insurance_payed: true,
+        private_payed: true,
         employeeId: true,
         employee: {
           select: {
@@ -1068,15 +1098,19 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
         record.employee?.employeeName || record.partner?.name || "System";
 
       if (record.isPrementChange) {
-        // ✅ Payment change entry
+        // Payment change: show note when it describes insurance/private flags (broth); else use paymentFrom → paymentTo
+        const noteText =
+          record.note && record.note.trim() !== ""
+            ? record.note
+            : record.paymentFrom != null || record.paymentTo != null
+              ? `${formatPaymentStatus(record.paymentFrom)} → ${formatPaymentStatus(record.paymentTo)}`
+              : "Zahlungsstatus geändert";
         changeLog.push({
           id: record.id,
           date: record.createdAt,
           user: userName,
           action: "Zahlungsstatus geändert",
-          note: `${formatPaymentStatus(
-            record.paymentFrom,
-          )} → ${formatPaymentStatus(record.paymentTo)}`,
+          note: noteText,
           type: "payment_change",
           details: {
             partnerId: record.partnerId || null,
@@ -1190,7 +1224,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           details: entry.details,
         })),
 
-        // SECTION 3: Payment Status History
+        // SECTION 3: Payment Status History (payment changes only; for broth, note has insurance/private flag changes)
         paymentStatusHistory: allHistory
           .filter((record) => record.isPrementChange)
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -1204,11 +1238,22 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
             paymentTo: record.paymentTo,
             paymentFromDisplay: formatPaymentStatus(record.paymentFrom),
             paymentToDisplay: formatPaymentStatus(record.paymentTo),
+            note: record.note ?? null,
             details: {
               partnerId: record.partnerId || null,
               employeeId: record.employeeId || null,
             },
           })),
+
+        // Payment info (paymnentType + insurance/private amounts and paid flags; bezahlt is neutral)
+        paymentInfo: {
+          paymnentType: order.paymnentType ?? null,
+          insuranceTotalPrice: order.insuranceTotalPrice ?? null,
+          privatePrice: order.privatePrice ?? null,
+          insurance_payed: order.insurance_payed ?? false,
+          private_payed: order.private_payed ?? false,
+          display: getPaymentStatusDisplay(order),
+        },
 
         // SECTION 4: Barcode Information
         barcodeInfo: (() => {
@@ -1242,10 +1287,10 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           }
         })(),
 
-        // Summary
+        // Summary (current payment from paymnentType + paid flags, not bezahlt)
         summary: {
           currentStatus: formatStatusName(order.orderStatus),
-          currentPaymentStatus: formatPaymentStatus(order.bezahlt),
+          currentPaymentStatus: getPaymentStatusDisplay(order),
           totalEvents: changeLog.length,
           totalPaymentChanges: allHistory.filter(
             (record) => record.isPrementChange,
@@ -1628,6 +1673,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
           orderStatus: order.orderStatus,
           bezahlt: order.bezahlt,
           paymnentType: order.paymnentType,
+          paymentStatusDisplay: getPaymentStatusDisplay(order),
           quantity,
           totalPrice,
           privatePrice,
@@ -1865,7 +1911,10 @@ export const getPriceDetails = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      data: order,
+      data: {
+        ...order,
+        paymentStatusDisplay: getPaymentStatusDisplay(order),
+      },
     });
   } catch (error: any) {
     console.error("Get Price Details Error:", error);
