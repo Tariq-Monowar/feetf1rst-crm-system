@@ -2533,8 +2533,8 @@ export const identifyKvaData = async (req: Request, res: Response) => {
 
     const custId = String(customerId).trim();
 
-    // Find latest KVA-enabled order for this customer across both tables
-    const [latestInsole, latestShoe] = await Promise.all([
+    // Fast path: find latest IDs only (cheap), then fetch full payload for the winner (1 heavy query).
+    const [latestInsoleMeta, latestShoeMeta] = await Promise.all([
       prisma.customerOrders.findFirst({
         where: {
           customerId: custId,
@@ -2555,7 +2555,7 @@ export const identifyKvaData = async (req: Request, res: Response) => {
       }),
     ]);
 
-    if (!latestInsole && !latestShoe) {
+    if (!latestInsoleMeta && !latestShoeMeta) {
       return res.status(404).json({
         success: false,
         message: "No KVA order found for this customer",
@@ -2563,22 +2563,19 @@ export const identifyKvaData = async (req: Request, res: Response) => {
     }
 
     const pickShoe =
-      latestShoe &&
-      (!latestInsole ||
-        new Date(latestShoe.createdAt as any).getTime() >=
-          new Date(latestInsole.createdAt as any).getTime());
+      latestShoeMeta &&
+      (!latestInsoleMeta ||
+        new Date(latestShoeMeta.createdAt as any).getTime() >=
+          new Date(latestInsoleMeta.createdAt as any).getTime());
 
-    // Return the actual KVA payload (same shape as the respective getKvaData endpoints)
     if (pickShoe) {
-      const id = latestShoe!.id;
       const order = await prisma.shoe_order.findUnique({
-        where: { id },
+        where: { id: latestShoeMeta!.id },
         select: {
           insurances: true,
           branch_location: true,
           kvaNumber: true,
           createdAt: true,
-          kvaPdf: true,
           partner: {
             select: {
               image: true,
@@ -2612,7 +2609,6 @@ export const identifyKvaData = async (req: Request, res: Response) => {
           },
         },
       });
-
       if (!order) {
         return res.status(404).json({
           success: false,
@@ -2624,7 +2620,6 @@ export const identifyKvaData = async (req: Request, res: Response) => {
         order.createdAt instanceof Date
           ? order.createdAt.getFullYear()
           : new Date(order.createdAt as unknown as string).getFullYear();
-
       const formattedKviNumber =
         order.kvaNumber != null
           ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
@@ -2632,51 +2627,44 @@ export const identifyKvaData = async (req: Request, res: Response) => {
 
       return res.status(200).json({
         success: true,
-        message: "Kva data identified successfully",
+        message: "Kva data fetched successfully",
+        orderType: "shoe",
         data: {
-          orderType: "shoe",
-          orderId: id,
-          customerId: custId,
-          kvaPdf: order?.kvaPdf ?? null,
-          kvaData: {
-            logo: order?.partner?.image,
-            partnerInfo: {
-              name: order?.partner?.name,
-              busnessName: order?.partner?.busnessName,
-              phone: order?.partner?.phone,
-              email: order?.partner?.email,
-              vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
-              orderLocation: order?.branch_location,
-              bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
-            },
-            insurancesInfo: order?.insurances,
-            kviNumber: formattedKviNumber,
-            customerInfo: {
-              firstName: order?.customer?.vorname,
-              lastName: order?.customer?.nachname,
-              birthDate: order?.customer?.geburtsdatum,
-              address: order?.customer?.wohnort,
-              phone: order?.customer?.telefon,
-              email: order?.customer?.email,
-            },
-            prescriptionInfo: {
-              doctorName: order?.prescription?.doctor_name,
-              doctorLocation: order?.prescription?.doctor_location,
-            },
+          logo: order?.partner?.image,
+          partnerInfo: {
+            name: order?.partner?.name,
+            busnessName: order?.partner?.busnessName,
+            phone: order?.partner?.phone,
+            email: order?.partner?.email,
+            vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+            orderLocation: order?.branch_location,
+            bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
+          },
+          insurancesInfo: order?.insurances,
+          kviNumber: formattedKviNumber,
+          customerInfo: {
+            firstName: order?.customer?.vorname,
+            lastName: order?.customer?.nachname,
+            birthDate: order?.customer?.geburtsdatum,
+            address: order?.customer?.wohnort,
+            phone: order?.customer?.telefon,
+            email: order?.customer?.email,
+          },
+          prescriptionInfo: {
+            doctorName: order?.prescription?.doctor_name,
+            doctorLocation: order?.prescription?.doctor_location,
           },
         },
       });
     }
 
-    const id = latestInsole!.id;
     const order = await prisma.customerOrders.findUnique({
-      where: { id },
+      where: { id: latestInsoleMeta!.id },
       select: {
         customerOrderInsurances: true,
         geschaeftsstandort: true,
         kvaNumber: true,
         createdAt: true,
-        kvaPdf: true,
         partner: {
           select: {
             image: true,
@@ -2715,7 +2703,6 @@ export const identifyKvaData = async (req: Request, res: Response) => {
         },
       },
     });
-
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -2727,7 +2714,6 @@ export const identifyKvaData = async (req: Request, res: Response) => {
       order.createdAt instanceof Date
         ? order.createdAt.getFullYear()
         : new Date(order.createdAt as unknown as string).getFullYear();
-
     const formattedKviNumber =
       order.kvaNumber != null
         ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
@@ -2735,39 +2721,34 @@ export const identifyKvaData = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "Kva data identified successfully",
+      message: "Kva data fetched successfully",
+      orderType: "insole",
       data: {
-        orderType: "insole",
-        orderId: id,
-        customerId: custId,
-        kvaPdf: order?.kvaPdf ?? null,
-        kvaData: {
-          logo: order?.partner?.image,
-          partnerInfo: {
-            name: order?.partner?.name,
-            busnessName: order?.partner?.busnessName,
-            phone: order?.partner?.phone,
-            email: order?.partner?.email,
-            vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
-            orderLocation: order?.geschaeftsstandort,
-            bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
-          },
-          insurancesInfo: order?.customerOrderInsurances,
-          kviNumber: formattedKviNumber,
-          customerInfo: {
-            firstName: order?.customer?.vorname,
-            lastName: order?.customer?.nachname,
-            birthDate: order?.customer?.geburtsdatum,
-            address: order?.customer?.wohnort,
-            phone: order?.customer?.telefon,
-            email: order?.customer?.email,
-          },
-          shippingAddressesForKv:
-            order?.partner?.orderSettings?.shipping_addresses_for_kv,
-          prescriptionInfo: {
-            doctorName: order?.prescription?.doctor_name,
-            doctorLocation: order?.prescription?.doctor_location,
-          },
+        logo: order?.partner?.image,
+        partnerInfo: {
+          name: order?.partner?.name,
+          busnessName: order?.partner?.busnessName,
+          phone: order?.partner?.phone,
+          email: order?.partner?.email,
+          vat_number: order?.partner?.accountInfos?.[0]?.vat_number,
+          orderLocation: order?.geschaeftsstandort,
+          bankInfo: order?.partner?.accountInfos?.[0]?.bankInfo,
+        },
+        insurancesInfo: order?.customerOrderInsurances,
+        kviNumber: formattedKviNumber,
+        customerInfo: {
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+        },
+        shippingAddressesForKv:
+          order?.partner?.orderSettings?.shipping_addresses_for_kv,
+        prescriptionInfo: {
+          doctorName: order?.prescription?.doctor_name,
+          doctorLocation: order?.prescription?.doctor_location,
         },
       },
     });
