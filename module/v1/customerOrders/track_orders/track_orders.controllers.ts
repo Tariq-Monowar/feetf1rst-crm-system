@@ -2328,6 +2328,10 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
         },
         einlagentyp: true,
         diagnosisList: true,
+        ausführliche_diagnose: true,
+        versorgung_laut_arzt: true,
+
+
         diagnosis: true,
         customer: {
           select: {
@@ -2410,6 +2414,8 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
 
         diagnosis: order?.diagnosis,
         diagnosisList: order?.diagnosisList,
+        ausführliche_diagnose: order?.ausführliche_diagnose,
+        versorgung_laut_arzt: order?.versorgung_laut_arzt,
       },
     });
   } catch (error) {
