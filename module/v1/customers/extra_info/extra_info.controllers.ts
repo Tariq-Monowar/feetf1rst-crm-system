@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../../db";
 import { Prisma } from "@prisma/client";
+import redis from "../../../../config/redis.config";
+
+
 export const customerOrderStatus = async (req: Request, res: Response) => {
   const MAX_ORDERS_PER_TYPE = 20;
 
@@ -65,3 +68,140 @@ export const customerOrderStatus = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+export const addLatestActivityDate = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params as { customerId?: string };
+    const customerIdTrimmed = String(customerId ?? "").trim();
+
+    if (!customerIdTrimmed) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    const cacheKey = `customers:latest-activity-date:${customerIdTrimmed}`;
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return res.status(200).json(JSON.parse(cached));
+      }
+    } catch {
+      // ignore cache read errors
+    }
+
+    const rows = await prisma.$queryRaw<
+      Array<{ customerExists: boolean; latestActivityDate: Date | null }>
+    >(
+      Prisma.sql`
+        SELECT
+          EXISTS (SELECT 1 FROM "customers" WHERE id = ${customerIdTrimmed}) AS "customerExists",
+          (
+            SELECT MAX(ts)
+            FROM (
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "customerOrders"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "massschuhe_order"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "massschuhe_order_history"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "shoe_order"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX("createdAt") AS ts
+              FROM "prescription"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "customerHistorie"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "customers_sign"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "customer_files"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX("createdAt") AS ts
+              FROM "appointment"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "storeshistory"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "custom_shafts"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "custom_models"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "CourierContact"
+              WHERE "customerId" = ${customerIdTrimmed}
+
+              UNION ALL
+              SELECT MAX(GREATEST("createdAt", COALESCE("updatedAt", "createdAt"))) AS ts
+              FROM "admin_order_transitions"
+              WHERE "customerId" = ${customerIdTrimmed}
+            ) t
+          ) AS "latestActivityDate"
+      `
+    );
+
+    const customerExists = rows?.[0]?.customerExists ?? false;
+    if (!customerExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const latestActivityDate = rows?.[0]?.latestActivityDate ?? null;
+    const payload = {
+      success: true,
+      message: "Latest activity date fetched successfully",
+      customerId: customerIdTrimmed,
+      latestActivityDate,
+    };
+
+    try {
+      await redis.set(cacheKey, JSON.stringify(payload), "EX", 60 * 5);
+    } catch {
+      // ignore cache write errors
+    }
+
+    return res.status(200).json(payload);
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error?.message ?? String(error),
+    });
+  }
+}
