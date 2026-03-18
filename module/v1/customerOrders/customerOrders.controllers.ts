@@ -213,6 +213,7 @@ export const createOrder = async (req: Request, res: Response) => {
       versorgungId,
       einlagentyp,
       überzug,
+      diagnosisList,
       versorgung_note,
       schuhmodell_wählen,
       kostenvoranschlag,
@@ -643,6 +644,10 @@ export const createOrder = async (req: Request, res: Response) => {
         orderStatus: initialOrderStatus,
         fußanalyse: null,
         einlagenversorgung: null,
+        diagnosisList:
+          Array.isArray(diagnosisList) && diagnosisList.length > 0
+            ? diagnosisList.map((d: any) => String(d))
+            : [],
         totalPrice,
         product: { connect: { id: customerProduct.id } },
         customer: { connect: { id: customerId } },

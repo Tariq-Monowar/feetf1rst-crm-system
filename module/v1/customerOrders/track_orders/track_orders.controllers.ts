@@ -2326,6 +2326,9 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
             image: true,
           },
         },
+        einlagentyp: true,
+        diagnosisList: true,
+        diagnosis: true,
         customer: {
           select: {
             vorname: true,
@@ -2356,7 +2359,6 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
           },
         },
         quantity: true,
-        einlagentyp: true,
       },
     });
 
@@ -2405,6 +2407,9 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
           picture_11: firstScreener?.picture_11 ?? null,
         },
         partnerInfo: order?.partner,
+
+        diagnosis: order?.diagnosis,
+        diagnosisList: order?.diagnosisList,
       },
     });
   } catch (error) {
@@ -2443,7 +2448,6 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             name: true,
             material: true,
             versorgung: true,
-
           },
         },
         customer: {
@@ -2525,7 +2529,6 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const identifyKvaData = async (req: Request, res: Response) => {
   try {

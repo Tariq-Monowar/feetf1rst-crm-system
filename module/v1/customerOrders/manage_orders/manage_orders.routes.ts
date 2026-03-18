@@ -63,7 +63,7 @@ router.post(
   sendInvoiceToCustomer
 );
 
-//if not kvaNumber
+//if not kvaNumber create kvaNumber
 router.post(
   "/get-kva-number/:orderId",
   verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
