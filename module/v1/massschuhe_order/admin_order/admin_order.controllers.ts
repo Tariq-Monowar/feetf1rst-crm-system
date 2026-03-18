@@ -1160,39 +1160,50 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     }
 
     const where: any = { order_status: { not: "canceled" } };
-    if (status)
-      where.status =
-        status.toString() === "In_Produktion" ? "In_Produktiony" : status;
-    if (catagoary) where.catagoary = catagoary;
-    if (cursor) where.id = { lt: cursor };
-    if (search) {
-      where.OR = [
-        { orderNumber: { contains: search, mode: "insensitive" } },
-        { other_customer_number: { contains: search, mode: "insensitive" } },
-        {
-          customer: {
-            OR: [
-              { vorname: { contains: search, mode: "insensitive" } },
-              { nachname: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } },
-            ],
-          },
-        },
-        {
-          maßschaft_kollektion: {
-            name: { contains: search, mode: "insensitive" },
-          },
-        },
-        {
-          user: {
-            OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              { email: { contains: search, mode: "insensitive" } },
-            ],
-          },
-        },
-      ];
+    const and: any[] = [];
+
+    if (status) {
+      and.push({
+        status:
+          status.toString() === "In_Produktion" ? "In_Produktiony" : status,
+      });
     }
+    if (catagoary) {
+      and.push({ catagoary });
+    }
+
+    if (search) {
+      and.push({
+        OR: [
+          { orderNumber: { contains: search, mode: "insensitive" } },
+          { other_customer_number: { contains: search, mode: "insensitive" } },
+          {
+            customer: {
+              OR: [
+                { vorname: { contains: search, mode: "insensitive" } },
+                { nachname: { contains: search, mode: "insensitive" } },
+                { email: { contains: search, mode: "insensitive" } },
+              ],
+            },
+          },
+          {
+            maßschaft_kollektion: {
+              name: { contains: search, mode: "insensitive" },
+            },
+          },
+          {
+            user: {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { email: { contains: search, mode: "insensitive" } },
+              ],
+            },
+          },
+        ],
+      });
+    }
+
+    if (and.length) where.AND = and;
 
     const listSelect = {
       id: true,
@@ -1234,15 +1245,29 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       maßschaft_kollektion: { select: { id: true, name: true } },
     };
 
-    const data = await prisma.custom_shafts.findMany({
-      where,
-      take: limit + 1,
-      orderBy: { createdAt: "desc" },
-      select: listSelect as any,
-    });
+    let data: any[] = [];
+    try {
+      data = await prisma.custom_shafts.findMany({
+        where,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        take: limit + 1,
+        // Stable ordering for cursor pagination: createdAt desc, id desc (id is only a tie-breaker)
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: listSelect as any,
+      });
+    } catch (e: any) {
+      if (e?.code === "P2025") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid cursor",
+        });
+      }
+      throw e;
+    }
 
     const hasNextPage = data.length > limit;
     const items = hasNextPage ? data.slice(0, limit) : data;
+    // const nextCursor = hasNextPage ? items[items.length - 1]?.id : null;
     res.status(200).json({
       success: true,
       message: "Admin orders fetched successfully",
