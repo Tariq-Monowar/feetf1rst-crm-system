@@ -82,14 +82,24 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
       });
     }
 
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+      ]);
+    };
+
     const cacheKey = `customers:latest-activity-date:${customerIdTrimmed}`;
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return res.status(200).json(JSON.parse(cached));
+    // Cache read should never block the endpoint.
+    if (redis.status === "ready") {
+      try {
+        const cached = await withTimeout(redis.get(cacheKey), 80);
+        if (cached) {
+          return res.status(200).json(JSON.parse(cached));
+        }
+      } catch {
+        // ignore cache read/parse/timeout errors
       }
-    } catch {
-      // ignore cache read errors
     }
 
     const rows = await prisma.$queryRaw<
@@ -190,10 +200,12 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
       latestActivityDate,
     };
 
-    try {
-      await redis.set(cacheKey, JSON.stringify(payload), "EX", 60 * 5);
-    } catch {
-      // ignore cache write errors
+    if (redis.status === "ready") {
+      try {
+        await withTimeout(redis.set(cacheKey, JSON.stringify(payload), "EX", 60 * 10), 80);
+      } catch {
+        // ignore cache write/timeout errors
+      }
     }
 
     return res.status(200).json(payload);
