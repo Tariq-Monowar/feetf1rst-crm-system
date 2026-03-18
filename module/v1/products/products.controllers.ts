@@ -229,8 +229,18 @@ export const createProduct = async (req: Request, res: Response) => {
     console.log(question);
 
     const files = req.files;
+    const cleanupUploadedFiles = () => {
+      if (!Array.isArray(files)) return;
+      const uploadedLocations = files
+        .map((file: any) => file?.location)
+        .filter((location: unknown): location is string => typeof location === "string");
+      if (uploadedLocations.length > 0) {
+        deleteMultipleFilesFromS3(uploadedLocations);
+      }
+    };
 
     if (!name || !brand) {
+      cleanupUploadedFiles();
       res.status(400).json({
         success: false,
         message: "Name and brand are required fields",
@@ -250,6 +260,7 @@ export const createProduct = async (req: Request, res: Response) => {
     try {
       parsedColors = colors ? JSON.parse(colors) : [];
     } catch {
+      cleanupUploadedFiles();
       res.status(400).json({
         success: false,
         message: "Invalid colors JSON format",
@@ -274,6 +285,7 @@ export const createProduct = async (req: Request, res: Response) => {
       parsedCharacteristics = parsedCharacteristics.map(Number);
     } catch (err) {
       console.log("Characteristics parsing error:", err);
+      cleanupUploadedFiles();
       res.status(400).json({
         success: false,
         message: "Invalid characteristics format",
@@ -356,6 +368,15 @@ export const createProduct = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Create Product Error:", error);
+    const files = (req as any).files;
+    if (Array.isArray(files)) {
+      const uploadedLocations = files
+        .map((file: any) => file?.location)
+        .filter((location: unknown): location is string => typeof location === "string");
+      if (uploadedLocations.length > 0) {
+        deleteMultipleFilesFromS3(uploadedLocations);
+      }
+    }
     res.status(500).json({
       success: false,
       message: "Failed to create product",
@@ -391,6 +412,15 @@ export const updateProduct = async (req: Request, res: Response) => {
 
     console.log("question", question);
     const files = req.files;
+    const cleanupUploadedFiles = () => {
+      if (!Array.isArray(files)) return;
+      const uploadedLocations = files
+        .map((file: any) => file?.location)
+        .filter((location: unknown): location is string => typeof location === "string");
+      if (uploadedLocations.length > 0) {
+        deleteMultipleFilesFromS3(uploadedLocations);
+      }
+    };
 
     const existingProduct = await prisma.product.findUnique({
       where: {
@@ -406,6 +436,7 @@ export const updateProduct = async (req: Request, res: Response) => {
     });
 
     if (!existingProduct) {
+      cleanupUploadedFiles();
       res.status(404).json({
         message: "Product not found",
       });
@@ -416,6 +447,7 @@ export const updateProduct = async (req: Request, res: Response) => {
     try {
       parsedColors = colors ? JSON.parse(colors) : [];
     } catch (e) {
+      cleanupUploadedFiles();
       res.status(400).json({
         success: false,
         message: "Invalid colors format",
@@ -479,6 +511,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       parsedCharacteristics = parsedCharacteristics.map(Number);
     } catch (err) {
       console.log("Characteristics parsing error:", err);
+      cleanupUploadedFiles();
       res.status(400).json({
         success: false,
         message: "Invalid characteristics format",
@@ -552,6 +585,15 @@ export const updateProduct = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Update Product Error:", error);
+    const files = (req as any).files;
+    if (Array.isArray(files)) {
+      const uploadedLocations = files
+        .map((file: any) => file?.location)
+        .filter((location: unknown): location is string => typeof location === "string");
+      if (uploadedLocations.length > 0) {
+        deleteMultipleFilesFromS3(uploadedLocations);
+      }
+    }
     res.status(500).json({
       success: false,
       message: "Failed to update product",

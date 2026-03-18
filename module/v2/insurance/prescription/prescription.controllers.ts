@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../../db";
+import { deleteFileFromS3 } from "../../../../utils/s3utils";
 
 /** Database ↔ External (Excel) field names */
 const EXTERNAL_TO_DB: Record<string, string> = {
@@ -67,6 +68,13 @@ function parsePrescriptionDate(value: unknown): Date | undefined {
 
 export const createPrescription = async (req: Request, res: Response) => {
   try {
+    const file = req.file as any;
+    const cleanupFiles = () => {
+      if (file?.location) {
+        deleteFileFromS3(file.location);
+      }
+    };
+
     const raw = normalizePrescriptionBody(req.body);
     const customerId = await resolveCustomerId(raw);
 
@@ -90,6 +98,7 @@ export const createPrescription = async (req: Request, res: Response) => {
     } = raw as Record<string, unknown>;
 
     if (!customerId) {
+      cleanupFiles();
       res.status(400).json({
         success: false,
         message: "customerId or Patient (customer name: vorname/nachname) is required",
@@ -103,6 +112,7 @@ export const createPrescription = async (req: Request, res: Response) => {
     });
 
     if (!customer) {
+      cleanupFiles();
       res.status(404).json({
         success: false,
         message: "Customer not found",
@@ -132,6 +142,7 @@ export const createPrescription = async (req: Request, res: Response) => {
         status_number: (status_number as string) ?? undefined,
         aid_code: (aid_code as string) ?? undefined,
         is_work_accident: Boolean(is_work_accident ?? false),
+        image: file?.location ?? undefined,
       },
     });
 
@@ -142,6 +153,10 @@ export const createPrescription = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Create Prescription Error:", error);
+    const file = (req as any).file;
+    if (file?.location) {
+      deleteFileFromS3(file.location);
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -152,6 +167,13 @@ export const createPrescription = async (req: Request, res: Response) => {
 
 export const updatePrescription = async (req: Request, res: Response) => {
   try {
+    const file = req.file as any;
+    const cleanupFiles = () => {
+      if (file?.location) {
+        deleteFileFromS3(file.location);
+      }
+    };
+
     const { id } = req.params;
     const raw = normalizePrescriptionBody(req.body);
     const resolvedCustomerId = await resolveCustomerId(raw);
@@ -181,6 +203,7 @@ export const updatePrescription = async (req: Request, res: Response) => {
     });
 
     if (!existingPrescription) {
+      cleanupFiles();
       res.status(404).json({
         success: false,
         message: "Prescription not found",
@@ -222,11 +245,18 @@ export const updatePrescription = async (req: Request, res: Response) => {
     if (aid_code !== undefined) updateData.aid_code = aid_code;
     if (is_work_accident !== undefined)
       updateData.is_work_accident = is_work_accident;
+    if (file?.location) {
+      updateData.image = file.location;
+    }
 
     const updatedPrescription = await prisma.prescription.update({
       where: { id },
       data: updateData,
     });
+
+    if (existingPrescription.image && file?.location && updatedPrescription.image) {
+      deleteFileFromS3(existingPrescription.image);
+    }
 
     res.status(200).json({
       success: true,
@@ -235,6 +265,10 @@ export const updatePrescription = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Update Prescription Error:", error);
+    const file = (req as any).file;
+    if (file?.location) {
+      deleteFileFromS3(file.location);
+    }
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -249,7 +283,7 @@ export const deletePrescription = async (req: Request, res: Response) => {
 
     const existingPrescription = await prisma.prescription.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, image: true },
     });
 
     if (!existingPrescription) {
@@ -263,6 +297,10 @@ export const deletePrescription = async (req: Request, res: Response) => {
     await prisma.prescription.delete({
       where: { id },
     });
+
+    if (existingPrescription.image) {
+      deleteFileFromS3(existingPrescription.image);
+    }
 
     res.status(200).json({
       success: true,
