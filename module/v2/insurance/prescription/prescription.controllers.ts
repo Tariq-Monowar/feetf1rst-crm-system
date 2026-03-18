@@ -455,3 +455,61 @@ export const getAllPrescriptions = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getPrescriptionNumber = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params as { customerId?: string };
+    const customerIdTrimmed = String(customerId ?? "").trim();
+
+    if (!customerIdTrimmed) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    const minDate = new Date(Date.now() - 1000 * 60 * 60 * 24 * 28);
+
+    // Get all valid prescriptions (not older than 4 weeks)
+    const prescriptions = await prisma.prescription.findMany({
+      where: {
+        customerId: customerIdTrimmed,
+        prescription_date: {
+          gte: minDate,
+        },
+      },
+      orderBy: { prescription_date: "desc" },
+      select: {
+        id: true,
+        // customerId: true,
+        prescription_number: true,
+        prescription_date: true,
+      },
+    });
+
+    if (!prescriptions.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No valid prescription found within last 4 weeks",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Prescription numbers fetched successfully",
+      data: prescriptions.map((prescription) => ({
+        id: prescription.id,
+        // customerId: prescription.customerId,
+        prescription_number: prescription.prescription_number ?? null,
+        prescription_date: prescription.prescription_date,
+      })),
+    });
+  } catch (error: any) {
+    console.error("Get Prescription Number Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
