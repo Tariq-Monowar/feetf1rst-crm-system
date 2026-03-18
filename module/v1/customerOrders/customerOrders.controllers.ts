@@ -208,6 +208,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const body = req.body;
     const {
       customerId,
+      prescriptionId: prescriptionIdFromBody,
       versorgungId,
       einlagentyp,
       überzug,
@@ -370,6 +371,11 @@ export const createOrder = async (req: Request, res: Response) => {
       bezahltForVat === "Krankenkasse_Genehmigt" ||
       bezahltForVat === "Krankenkasse_Ungenehmigt";
 
+    const prescriptionId =
+      prescriptionIdFromBody != null && String(prescriptionIdFromBody).trim() !== ""
+        ? String(prescriptionIdFromBody).trim()
+        : null;
+
     // --- 4. Load customer, versorgung, prescription, order settings ---
     const [
       screenerFile,
@@ -404,14 +410,23 @@ export const createOrder = async (req: Request, res: Response) => {
             where: { id: versorgungId },
             select: vSelect,
           }),
-      prisma.prescription.findFirst({
-        where: {
-          customerId,
-          prescription_date: { gte: fourWeeksAgo, not: null },
-        },
-        orderBy: { prescription_date: "desc" },
-        select: { id: true },
-      }),
+      prescriptionId
+        ? prisma.prescription.findFirst({
+            where: {
+              id: prescriptionId,
+              customerId,
+              prescription_date: { gte: fourWeeksAgo, not: null },
+            },
+            select: { id: true },
+          })
+        : prisma.prescription.findFirst({
+            where: {
+              customerId,
+              prescription_date: { gte: fourWeeksAgo, not: null },
+            },
+            orderBy: { prescription_date: "desc" },
+            select: { id: true },
+          }),
       needPartnerVat
         ? prisma.user.findUnique({
             where: { id: partnerId },
@@ -428,6 +443,11 @@ export const createOrder = async (req: Request, res: Response) => {
     ]);
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
+    if (prescriptionId && !validPrescription)
+      return bad(
+        404,
+        "Prescription not found (or not valid within last 4 weeks) for this customer",
+      );
 
     if (needPartnerVat) {
       if (!partnerForVat) return bad(400, "Partner not found");
