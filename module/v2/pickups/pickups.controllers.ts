@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
 import { Prisma } from "@prisma/client";
+
 export const getPickupByOrderId = async (req: Request, res: Response) => {
   try {
     const orderId = req.params.orderId;

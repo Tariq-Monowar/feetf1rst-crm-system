@@ -13,6 +13,8 @@ const DEFAULT_ORDER_SETTINGS = {
   appomnentOverlap: false,
   lookWorkTime: true,
   shipping_addresses_for_kv: null,
+  isInsolePickupDateLine: false,
+  insolePickupDateLine: null,
 };
 
 /**
@@ -87,6 +89,9 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
       appomnentOverlap,
       lookWorkTime,
       shipping_addresses_for_kv,
+      pelottenpositionValue,
+      isInsolePickupDateLine,
+      insolePickupDateLine,
     } = req.body;
 
     // Validate boolean fields if provided
@@ -203,6 +208,38 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
         });
       }
       updateData.shipping_addresses_for_kv = shipping_addresses_for_kv;
+    }
+
+    if (pelottenpositionValue !== undefined) {
+      if (typeof pelottenpositionValue !== "number") {
+        return res.status(400).json({
+          success: false,
+          message: "pelottenpositionValue must be a number",
+        });
+      }
+    }
+
+    if (isInsolePickupDateLine !== undefined) {
+      if (typeof isInsolePickupDateLine !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "isInsolePickupDateLine must be a boolean value",
+        });
+      }
+      updateData.isInsolePickupDateLine = isInsolePickupDateLine;
+    }
+
+    if (insolePickupDateLine !== undefined) {
+      if (
+        insolePickupDateLine !== null &&
+        (typeof insolePickupDateLine !== "number" || !Number.isInteger(insolePickupDateLine))
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "insolePickupDateLine must be an integer or null",
+        });
+      }
+      updateData.insolePickupDateLine = insolePickupDateLine;
     }
 
     // Check if at least one field is provided

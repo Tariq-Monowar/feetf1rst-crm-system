@@ -5,13 +5,13 @@ import { getOrderSettings, manageOrderSettings } from "./order_settings.controll
 
 const router = express.Router();
 
-// GET - Fetch order settings (creates defaults if not exist)
+// GET _baseUrl/v2/order_settings/manage
 router.get("/manage", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getOrderSettings);
 
-// PUT - Update order settings (creates defaults if not exist, then updates)
+// PUT _baseUrl/v2/order_settings/manage (body: e.g. isInsolePickupDateLine, insolePickupDateLine, ...)
 router.put("/manage", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), manageOrderSettings);
 
-// POST - Also support POST for update (same as PUT)
+// PATCH _baseUrl/v2/order_settings/manage
 router.patch("/manage", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), manageOrderSettings);
 
 export default router;

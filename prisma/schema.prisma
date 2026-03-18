@@ -3041,6 +3041,10 @@ model order_settings {
 
   shipping_addresses_for_kv String?
 
+  // 10 - insole pikup deat line
+  isInsolePickupDateLine Boolean @default(false)
+  insolePickupDateLine Int?
+
   // Optional: multi-company support
   partnerId String? @unique
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)

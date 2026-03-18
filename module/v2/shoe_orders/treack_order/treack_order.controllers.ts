@@ -186,6 +186,12 @@ export const getKvaData = async (req: Request, res: Response) => {
             geburtsdatum: true,
           },
         },
+        prescription: {
+          select: {
+            doctor_name: true,
+            doctor_location: true,
+          },
+        },
       },
     });
 
@@ -229,6 +235,10 @@ export const getKvaData = async (req: Request, res: Response) => {
           address: order?.customer?.wohnort,
           phone: order?.customer?.telefon,
           email: order?.customer?.email,
+        },
+        prescriptionInfo: {
+          doctorName: order?.prescription?.doctor_name,
+          doctorLocation: order?.prescription?.doctor_location,
         },
       },
     });

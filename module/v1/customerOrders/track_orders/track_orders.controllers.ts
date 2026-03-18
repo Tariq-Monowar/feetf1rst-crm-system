@@ -2187,6 +2187,12 @@ export const getKvaData = async (req: Request, res: Response) => {
             geburtsdatum: true,
           },
         },
+        prescription: {
+          select: {
+            doctor_name: true,
+            doctor_location: true,
+          },
+        },
       },
     });
 
@@ -2231,7 +2237,12 @@ export const getKvaData = async (req: Request, res: Response) => {
           phone: order?.customer?.telefon,
           email: order?.customer?.email,
         },
-        shippingAddressesForKv: order?.partner?.orderSettings?.shipping_addresses_for_kv,
+        shippingAddressesForKv:
+          order?.partner?.orderSettings?.shipping_addresses_for_kv,
+        prescriptionInfo: {
+          doctorName: order?.prescription?.doctor_name,
+          doctorLocation: order?.prescription?.doctor_location,
+        },
       },
     });
   } catch (error) {
@@ -2273,8 +2284,7 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
               select: {
                 picture_10: true,
                 picture_23: true,
-                
-                
+
                 picture_11: true,
                 picture_24: true,
 
@@ -2337,7 +2347,6 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
           anamul_vai_3: "ei duita dan paser nicer image",
           picture_10: firstScreener?.picture_10 ?? null,
           picture_11: firstScreener?.picture_11 ?? null,
-
         },
       },
     });
