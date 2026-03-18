@@ -10,6 +10,7 @@ import {
   uploadInvoice,
   uploadInvoiceOnly,
   sendInvoiceToCustomer,
+  getKvaNumber,
 } from "./manage_orders.controllers";
 
 const router = express.Router();
@@ -61,5 +62,13 @@ router.post(
   verifyUser("ADMIN", "PARTNER"),
   sendInvoiceToCustomer
 );
+
+//if not kvaNumber
+router.post(
+  "/get-kva-number/:orderId",
+  verifyUser("ADMIN", "PARTNER","EMPLOYEE"),
+  getKvaNumber
+);
+
 
 export default router;

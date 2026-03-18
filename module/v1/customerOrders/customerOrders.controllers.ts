@@ -1397,6 +1397,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
       insoleStandards: true,
       halbprobe: true,
       kva: true,
+      kvaNumber: true,
       customer: {
         select: {
           id: true,
@@ -1555,6 +1556,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
           u_orderType: string | null;
           service_name: string | null;
           sonstiges_category: string | null;
+          kva: boolean | null;
+          kvaNumber: number | null;
           diagnosis: string | null;
           ausführliche_diagnose: string | null;
           privateprice: number | null;
@@ -1580,6 +1583,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co."barcodeLabel",
           co."fertigstellungBis", co."geschaeftsstandort", co."auftragsDatum", co."versorgung_note",
           co."orderCategory", co."u_orderType", co."service_name", co."sonstiges_category",
+          co.kva, co."kvaNumber",
           co.diagnosis, co."ausführliche_diagnose",
           co."privatePrice", co."insuranceTotalPrice",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
@@ -1624,7 +1628,8 @@ export const getAllOrders = async (req: Request, res: Response) => {
         u_orderType: row.u_orderType,
         service_name: row.service_name,
         sonstiges_category: row.sonstiges_category,
-        kva: (row as any).kva ?? null,
+          kva: row.kva ?? null,
+          kvaNumber: row.kvaNumber ?? null,
 
         ausführliche_diagnose: row.ausführliche_diagnose ?? null,
         privatePrice:

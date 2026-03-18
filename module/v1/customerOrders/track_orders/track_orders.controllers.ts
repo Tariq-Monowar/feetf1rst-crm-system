@@ -2319,6 +2319,13 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
     const order = await prisma.customerOrders.findUnique({
       where: { id: orderId },
       select: {
+        partner: {
+          select: {
+            name: true,
+            busnessName: true,
+            image: true,
+          },
+        },
         customer: {
           select: {
             vorname: true,
@@ -2397,6 +2404,7 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
           picture_10: firstScreener?.picture_10 ?? null,
           picture_11: firstScreener?.picture_11 ?? null,
         },
+        partnerInfo: order?.partner,
       },
     });
   } catch (error) {

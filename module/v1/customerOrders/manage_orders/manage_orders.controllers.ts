@@ -9,6 +9,16 @@ import {
   sendInvoiceEmail,
 } from "../../../../utils/emailService.utils";
 
+// Next KVA sequence (1, 2, 3...) per partner; based on kvaNumber only
+const getNextKvaNumberForPartner = async (tx: any, partnerId: string) => {
+  const max = await tx.customerOrders.findFirst({
+    where: { partnerId, kvaNumber: { not: null } },
+    orderBy: { kvaNumber: "desc" },
+    select: { kvaNumber: true },
+  });
+  return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
+};
+
 export const updateMultiplePaymentStatus = async (
   req: Request,
   res: Response
@@ -793,6 +803,71 @@ export const sendInvoiceToCustomer = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong",
       error: error.message,
+    });
+  }
+};
+
+
+export const getKvaNumber = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    const { orderId } = req.params as { orderId?: string };
+    const id = String(orderId ?? "").trim();
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "orderId is required",
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.customerOrders.findFirst({
+        // Only depends on kvaNumber; do not require kva=true.
+        where: { id, partnerId } as any,
+        select: { id: true, kvaNumber: true },
+      });
+      if (!order) return null;
+      if (order.kvaNumber != null) return order;
+
+      const next = await getNextKvaNumberForPartner(tx, partnerId);
+      return tx.customerOrders.update({
+        where: { id: order.id },
+        data: { kvaNumber: next },
+        select: { id: true, kvaNumber: true },
+      });
+    });
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message:
+        result.kvaNumber != null
+          ? "KVA number fetched successfully"
+          : "KVA number generated successfully",
+      data: {
+        orderId: result.id,
+        kvaNumber: result.kvaNumber,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Kva Number Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while getting kva number",
+      error: error?.message,
     });
   }
 };
