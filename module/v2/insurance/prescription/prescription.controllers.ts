@@ -66,6 +66,20 @@ function parsePrescriptionDate(value: unknown): Date | undefined {
   return undefined;
 }
 
+function parseBoolean(value: unknown): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  const s = String(value).trim().toLowerCase();
+  if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+  if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+  return undefined;
+}
+
 export const createPrescription = async (req: Request, res: Response) => {
   try {
     const file = req.file as any;
@@ -141,7 +155,7 @@ export const createPrescription = async (req: Request, res: Response) => {
         cost_bearer_id: (cost_bearer_id as string) ?? undefined,
         status_number: (status_number as string) ?? undefined,
         aid_code: (aid_code as string) ?? undefined,
-        is_work_accident: Boolean(is_work_accident ?? false),
+        is_work_accident: parseBoolean(is_work_accident) ?? false,
         image: file?.location ?? undefined,
       },
     });
@@ -244,7 +258,7 @@ export const updatePrescription = async (req: Request, res: Response) => {
     if (status_number !== undefined) updateData.status_number = status_number;
     if (aid_code !== undefined) updateData.aid_code = aid_code;
     if (is_work_accident !== undefined)
-      updateData.is_work_accident = is_work_accident;
+      updateData.is_work_accident = parseBoolean(is_work_accident);
     if (file?.location) {
       updateData.image = file.location;
     }
