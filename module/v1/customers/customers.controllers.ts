@@ -1432,6 +1432,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
             OR email ILIKE ${p}
             OR telefon ILIKE ${p}
             OR wohnort ILIKE ${p}
+            OR CAST("customerNumber" AS TEXT) ILIKE ${p}
           )`
         );
       }
@@ -1485,11 +1486,10 @@ export const searchCustomers = async (req: Request, res: Response) => {
       whereParts.push(Prisma.sql`geburtsdatum = ${geburtsdatum.trim()}`);
     }
 
-    if (customerNumber) {
-      const num = Number(customerNumber);
-      if (Number.isFinite(num)) {
-        whereParts.push(Prisma.sql`"customerNumber" = ${num}`);
-      }
+    if (customerNumber != null && String(customerNumber).trim() !== "") {
+      const raw = String(customerNumber).trim();
+      const pattern = `%${raw}%`;
+      whereParts.push(Prisma.sql`CAST("customerNumber" AS TEXT) ILIKE ${pattern}`);
     }
 
     const whereClause = Prisma.join(whereParts, " AND ");
