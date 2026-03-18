@@ -94,6 +94,7 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllAdminOrders,
 );
+
 router.get(
   "/get/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

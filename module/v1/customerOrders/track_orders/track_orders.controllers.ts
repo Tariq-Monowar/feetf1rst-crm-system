@@ -2408,3 +2408,110 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: orderId },
+      select: {
+        quantity: true,
+        orderNumber: true,
+        partner: {
+          select: {
+            name: true,
+            busnessName: true,
+            image: true,
+            storeLocations: {
+              where: { isPrimary: true },
+              take: 1,
+              select: { address: true },
+            },
+          },
+        },
+        product: {
+          select: {
+            name: true,
+            material: true,
+            versorgung: true,
+
+          },
+        },
+        customer: {
+          select: {
+            fusslange1: true,
+            fusslange2: true,
+
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+            gender: true,
+          },
+        },
+        screenerFile: {
+          select: {
+            picture_23: true,
+            picture_24: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // grösse:
+    // (Number(order?.customer?.fusslange1) +
+    //   Number(order?.customer?.fusslange2) +
+    //   5) /
+    // 2,
+
+    return res.status(200).json({
+      success: true,
+      message: "Werkstattzettel A3 PDF fetched successfully",
+      data: {
+        partnerInfo: order?.partner,
+        customerInfo: {
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+          gender: order?.customer?.gender,
+        },
+        footSize:
+          (Number(order?.customer?.fusslange1) +
+            Number(order?.customer?.fusslange2) +
+            5) /
+          2,
+        screenerFile: {
+          picture_23: order?.screenerFile?.picture_23 ?? null,
+          picture_24: order?.screenerFile?.picture_24 ?? null,
+        },
+        diagnosisInfo: {
+          productName: order?.product?.name,
+          material: order?.product?.material,
+          versorgung: order?.product?.versorgung,
+        },
+        quantity: order?.quantity,
+        orderNumber: order?.orderNumber,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Werkstattzettel A3 PDF Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching werkstattzettel data",
+      error: error?.message,
+    });
+  }
+};

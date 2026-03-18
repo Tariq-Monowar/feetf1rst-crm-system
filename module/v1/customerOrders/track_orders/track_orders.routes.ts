@@ -17,6 +17,7 @@ import {
   getWerkstattzettelSheetPdfData,
   getKvaData,
   getHalbprobeData,
+  getWerkstattzettelA3Pdf,
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -104,4 +105,10 @@ router.get(
   getHalbprobeData,
 );
 
+//Werkstattzettel A3 (PDF)
+router.get(
+  "/werkstattzettel-a3-pdf/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getWerkstattzettelA3Pdf,
+);
 export default router;
