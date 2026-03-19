@@ -4,6 +4,8 @@ import { verifyUser } from "../../../middleware/verifyUsers";
 import {
   createOrder,
   updateOrder,
+ 
+  deleteOrderInsurances,
   getAllOrders,
   getOrderById,
   deleteMultipleOrders,
@@ -26,12 +28,28 @@ router.get(
 router.post("/create", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
 
 // _baseurl/customerOrders/update/:id
-// multipart/form-data supported (file field: kvaPdf)
+// JSON (application/json) or multipart/form-data (file field: kvaPdf). Multer only for multipart to avoid S3 delay on JSON-only updates.
 router.patch(
   "/update/:id",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
-  upload.single("kvaPdf"),
+  (req, res, next) => {
+    const contentType = (req.headers["content-type"] || "").toLowerCase();
+    if (contentType.includes("multipart/form-data")) {
+      return upload.single("kvaPdf")(req, res, next);
+    }
+    next();
+  },
   updateOrder,
+);
+
+ 
+
+// _baseurl/customerOrders/:orderId/insurances/delete
+// body: { insuranceIds: string[] }
+router.post(
+  "/delete-insurance/delete/:orderId",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  deleteOrderInsurances,
 );
 
 

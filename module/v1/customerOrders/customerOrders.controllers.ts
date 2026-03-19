@@ -2367,89 +2367,352 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
 };
 
 export const updateOrder = async (req: Request, res: Response) => {
-  const toTrimmedOrNull = (v: unknown) => {
-    if (v == null) return null;
-    const s = String(v).trim();
+  type InsuranceInput = { price?: unknown; description?: unknown };
+
+  const respond = (status: number, payload: { success: boolean; data: any; message?: string }) =>
+    res.status(status).json(payload);
+
+  const trimToNull = (value: unknown): string | null => {
+    if (value == null) return null;
+    const s = String(value).trim();
     return s ? s : null;
   };
 
+  const getUploadedFileLocation = (): string | null => {
+    const loc = (req as any).file?.location;
+    return loc != null ? String(loc) : null;
+  };
+
+  const safeParseJson = (value: string): unknown => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
+
+  const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === "object" && !Array.isArray(v);
+
+  const parseInsurancesInput = (value: unknown): InsuranceInput[] | undefined | null => {
+    // undefined => not provided (no change)
+    if (value === undefined) return undefined;
+
+    // Support multipart/form-data JSON strings
+    let raw: unknown = value;
+    if (typeof raw === "string") {
+      const s = raw.trim();
+      if (!s) return [];
+      raw = safeParseJson(s);
+      if (raw === null) return null;
+    }
+
+    if (raw == null) return [];
+    const list = Array.isArray(raw) ? raw : [raw];
+
+    for (const item of list) {
+      if (!isPlainObject(item)) return null;
+      if (!("price" in item) && !("description" in item)) return null;
+    }
+
+    return list as InsuranceInput[];
+  };
+
+  const parseNumber = (value: unknown): number | null => {
+    if (value == null || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const parseBoolean = (value: unknown): boolean | null => {
+    if (value == null || value === "") return null;
+    if (typeof value === "boolean") return value;
+    const s = String(value).toLowerCase();
+    if (s === "true" || s === "1") return true;
+    if (s === "false" || s === "0") return false;
+    return null;
+  };
+
+  const PAYMNENT_TYPES = ["insurance", "private", "broth"] as const;
+  const INSURANCE_STATUSES = ["pending", "approved", "rejected"] as const;
+  const ORDER_CATEGORIES = ["insole", "sonstiges"] as const;
+
+  const buildOrderPatch = (body: any, uploadedKvaPdf: string | null) => {
+    const patch: Record<string, any> = {};
+
+    if (body.orderNotes !== undefined) patch.orderNotes = trimToNull(body.orderNotes);
+    if (body.statusNote !== undefined) patch.statusNote = trimToNull(body.statusNote);
+    if (body.versorgung_note !== undefined)
+      patch.versorgung_note = trimToNull(body.versorgung_note);
+    if (uploadedKvaPdf) patch.kvaPdf = uploadedKvaPdf;
+
+    // Price fields (only set when provided and valid number)
+    const fussanalysePreis = parseNumber(body.fussanalysePreis);
+    if (body.fussanalysePreis !== undefined) patch.fussanalysePreis = fussanalysePreis;
+    const einlagenversorgungPreis = parseNumber(body.einlagenversorgungPreis);
+    if (body.einlagenversorgungPreis !== undefined)
+      patch.einlagenversorgungPreis = einlagenversorgungPreis;
+    const discount = parseNumber(body.discount);
+    if (body.discount !== undefined) patch.discount = discount;
+    const quantity = parseNumber(body.quantity);
+    if (body.quantity !== undefined)
+      patch.quantity = quantity != null ? Math.max(1, Math.floor(quantity)) : null;
+    const addonPrices = parseNumber(body.addonPrices);
+    if (body.addonPrices !== undefined) patch.addonPrices = addonPrices;
+    const totalPrice = parseNumber(body.totalPrice);
+    if (body.totalPrice !== undefined && totalPrice !== null)
+      patch.totalPrice = totalPrice;
+    const privatePrice = parseNumber(body.privatePrice);
+    if (body.privatePrice !== undefined) patch.privatePrice = privatePrice;
+    const insuranceTotalPrice = parseNumber(body.insuranceTotalPrice);
+    if (body.insuranceTotalPrice !== undefined)
+      patch.insuranceTotalPrice = insuranceTotalPrice;
+    const vatRate = parseNumber(body.vat_rate ?? body.vatRate);
+    if (body.vat_rate !== undefined || body.vatRate !== undefined)
+      patch.vatRate = vatRate;
+
+    // fußanalyse / einlagenversorgung (Float?)
+    const fußanalyse = parseNumber(body.fußanalyse ?? body.fussanalyse);
+    if (body.fußanalyse !== undefined || body.fussanalyse !== undefined)
+      patch.fußanalyse = fußanalyse;
+    const einlagenversorgung = parseNumber(body.einlagenversorgung);
+    if (body.einlagenversorgung !== undefined)
+      patch.einlagenversorgung = einlagenversorgung;
+
+    // paymnentType (enum: insurance | private | broth)
+    const paymnentTypeRaw = body.paymnentType ?? body.paymentType;
+    if (paymnentTypeRaw !== undefined) {
+      const v = String(paymnentTypeRaw).toLowerCase();
+      if (PAYMNENT_TYPES.includes(v as any)) patch.paymnentType = v;
+    }
+
+    // insurance_status (enum: pending | approved | rejected)
+    if (body.insurance_status !== undefined) {
+      const v = String(body.insurance_status).toLowerCase();
+      if (INSURANCE_STATUSES.includes(v as any)) patch.insurance_status = v;
+    }
+
+    // Booleans
+    const insurance_payed = parseBoolean(body.insurance_payed);
+    if (body.insurance_payed !== undefined) patch.insurance_payed = insurance_payed;
+    const private_payed = parseBoolean(body.private_payed);
+    if (body.private_payed !== undefined) patch.private_payed = private_payed;
+    const werkstattzettel = parseBoolean(body.werkstattzettel);
+    if (body.werkstattzettel !== undefined) patch.werkstattzettel = werkstattzettel;
+    const kva = parseBoolean(body.kva);
+    if (body.kva !== undefined) patch.kva = kva;
+    const halbprobe = parseBoolean(body.halbprobe);
+    if (body.halbprobe !== undefined) patch.halbprobe = halbprobe;
+
+    // Optional strings
+    if (body.service_name !== undefined) patch.service_name = trimToNull(body.service_name);
+    if (body.sonstiges_category !== undefined)
+      patch.sonstiges_category = trimToNull(body.sonstiges_category);
+
+    // net_price (Float?)
+    const net_price = parseNumber(body.net_price);
+    if (body.net_price !== undefined) patch.net_price = net_price;
+
+    // orderCategory (enum: insole | sonstiges)
+    if (body.orderCategory !== undefined) {
+      const v = String(body.orderCategory).toLowerCase();
+      if (ORDER_CATEGORIES.includes(v as any)) patch.orderCategory = v;
+    }
+
+    return patch;
+  };
+
   let uploadedFileLocation: string | null = null;
+  const t0 = Date.now();
 
   try {
     const { id } = req.params;
-    const { orderNotes, statusNote, versorgung_note } = req.body;
-    uploadedFileLocation =
-      (req as any).file?.location != null
-        ? String((req as any).file.location)
-        : null;
-
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Order ID is required" });
-    }
-
-    const data: Record<string, any> = {};
+    uploadedFileLocation = getUploadedFileLocation();
     const uploadedKvaPdf = uploadedFileLocation;
 
-    if (orderNotes !== undefined) {
-      data.orderNotes = toTrimmedOrNull(orderNotes);
-    }
-
-    if (statusNote !== undefined) {
-      data.statusNote = toTrimmedOrNull(statusNote);
-    }
-    if (versorgung_note !== undefined) {
-      data.versorgung_note = toTrimmedOrNull(versorgung_note);
-    }
-
-    if (uploadedKvaPdf) {
-      data.kvaPdf = uploadedKvaPdf;
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({
+    if (!id) {
+      return respond(400, {
         success: false,
-        message:
-          "At least one of orderNotes, statusNote, or versorgung_note is required",
+        data: null,
+        message: "Order ID is required",
       });
     }
 
+    const insuranceList = parseInsurancesInput((req.body as any).insurances);
+    if (insuranceList === null) {
+      if (uploadedKvaPdf) await deleteFileFromS3(uploadedKvaPdf);
+      return respond(400, {
+        success: false,
+        data: null,
+        message:
+          "insurances must be an object/array (or JSON string) with at least price or description",
+      });
+    }
+
+    const orderPatch = buildOrderPatch(req.body, uploadedKvaPdf);
+    const hasOrderFieldUpdates = Object.keys(orderPatch).length > 0;
+    const hasInsuranceUpdate = insuranceList !== undefined;
+
+    if (!hasOrderFieldUpdates && !hasInsuranceUpdate) {
+      return respond(400, {
+        success: false,
+        data: null,
+        message:
+          "At least one updatable field is required (e.g. orderNotes, statusNote, versorgung_note, insurances, kvaPdf, price fields, fußanalyse, einlagenversorgung, paymnentType, insurance_status, insurance_payed, private_payed, service_name, sonstiges_category, net_price, orderCategory, werkstattzettel, kva, halbprobe)",
+      });
+    }
+
+    const t1 = Date.now();
     const existingOrder = await prisma.customerOrders.findUnique({
       where: { id },
       select: { id: true, kvaPdf: true },
     });
+    const t2 = Date.now();
     if (!existingOrder) {
       if (uploadedKvaPdf) await deleteFileFromS3(uploadedKvaPdf);
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return respond(404, { success: false, data: null, message: "Order not found" });
     }
 
-    await prisma.customerOrders.update({ where: { id }, data });
+    let updatedOrder: Awaited<
+      ReturnType<typeof prisma.customerOrders.findUnique<{ include: { customerOrderInsurances: true } }>>
+    > = null;
 
+    await prisma.$transaction(async (tx) => {
+      if (insuranceList !== undefined && insuranceList.length > 0) {
+        await tx.customerOrderInsurance.createMany({
+          data: insuranceList.map((item) => ({
+            orderId: id,
+            price:
+              item.price != null && item.price !== "" ? Number(item.price) : null,
+            description:
+              item.description != null && item.description !== ""
+                ? String(item.description)
+                : null,
+          })),
+        });
+      }
+      if (hasOrderFieldUpdates) {
+        updatedOrder = await tx.customerOrders.update({
+          where: { id },
+          data: orderPatch,
+          include: { customerOrderInsurances: true },
+        });
+      } else {
+        updatedOrder = await tx.customerOrders.findUnique({
+          where: { id },
+          include: { customerOrderInsurances: true },
+        });
+      }
+    });
+
+    const t3 = Date.now();
     if (uploadedKvaPdf && existingOrder.kvaPdf) {
-      // Best-effort: delete previous file after successful update
       deleteFileFromS3(existingOrder.kvaPdf).catch(() => {});
     }
 
-    res.status(200).json({ success: true, data });
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `updateOrder timing: findUnique ${t2 - t1}ms, transaction ${t3 - t2}ms, total ${t3 - t0}ms`
+      );
+    }
+
+    return respond(200, {
+      success: true,
+      data: updatedOrder,
+      message: updatedOrder
+        ? "Order updated successfully"
+        : "Order updated but could not be fetched",
+    });
   } catch (error: any) {
     console.error("Update Order Error:", error);
+
     if (uploadedFileLocation) {
       // Cleanup newly uploaded file if update fails
       deleteFileFromS3(uploadedFileLocation).catch(() => {});
     }
-    //order not found
+
     if (error.code === "P2025") {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return respond(404, { success: false, data: null, message: "Order not found" });
     }
-    res.status(500).json({
+
+    return respond(500, {
       success: false,
+      data: null,
       message: "Something went wrong",
-      error: error.message,
+    });
+  }
+};
+
+ 
+
+export const deleteOrderInsurances = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params as { orderId?: string };
+    const oid = String(orderId ?? "").trim();
+    const insuranceIdsRaw = (req.body as any)?.insuranceIds;
+
+    if (!oid) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: "orderId is required",
+      });
+    }
+
+    if (!Array.isArray(insuranceIdsRaw)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: "insuranceIds must be an array",
+      });
+    }
+
+    const insuranceIds = insuranceIdsRaw
+      .map((v: any) => String(v ?? "").trim())
+      .filter((v: string) => v.length > 0);
+
+    if (insuranceIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: "insuranceIds must contain at least one id",
+      });
+    }
+
+    const order = await prisma.customerOrders.findUnique({
+      where: { id: oid },
+      select: { id: true },
+    });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const existing = await prisma.customerOrderInsurance.findMany({
+      where: { id: { in: insuranceIds }, orderId: oid },
+      select: { id: true },
+    });
+    const toDeleteIds = existing.map((r) => r.id);
+
+    if (toDeleteIds.length > 0) {
+      await prisma.customerOrderInsurance.deleteMany({
+        where: { id: { in: toDeleteIds }, orderId: oid },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Insurances deleted successfully",
+      deletedId: toDeleteIds,
+    });
+  } catch (error: any) {
+    console.error("Delete Order Insurances Error:", error);
+    return res.status(500).json({
+      success: false,
+      data: null,
+      message: "Something went wrong",
     });
   }
 };
