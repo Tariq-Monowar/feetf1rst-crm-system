@@ -4,6 +4,7 @@ import {
   buyStorage,
   addStorage,
   addStorageFromAdmin,
+  addStorageFromAdminToOverview,
   deleteStorage,
   getAllMyStorage,
   getSingleStorage,
@@ -53,6 +54,13 @@ router.post(
   "/add-storage-from-admin",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   addStorageFromAdmin,
+);
+
+// Create StoreOrderOverview (requested stock) from admin-style payload
+router.post(
+  "/send-order-to-admin",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  addStorageFromAdminToOverview,
 );
 
 router.get(

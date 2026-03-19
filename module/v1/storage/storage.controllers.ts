@@ -442,6 +442,7 @@ export const buyStorage = async (req, res) => {
         : req.body.prise !== undefined
           ? (prise ?? 0)
           : (adminStore.price ?? 0);
+    const unitPriceFinal = Number(adminStore.price ?? priceFinal ?? 0);
 
     // features: body override or fallback to admin_store
     const featuresFinal =
@@ -459,6 +460,7 @@ export const buyStorage = async (req, res) => {
         groessenMengen: transformedGroessenMengen,
         purchase_price: priceFinal,
         selling_price: sellingPriceFinal,
+        unit_price: unitPriceFinal,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
@@ -738,7 +740,7 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
       });
     }
 
-    const adminStore = admin_store_id
+    let adminStore = admin_store_id
       ? await prisma.admin_store.findUnique({ where: { id: admin_store_id } })
       : null;
     if (admin_store_id && !adminStore) {
@@ -760,10 +762,8 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
 
     const storeType = (store.type as StoreType) ?? "rady_insole";
     if (adminStore && (adminStore.type as StoreType) !== storeType) {
-      return res.status(400).json({
-        success: false,
-        message: `Store type (${storeType}) must match admin store type (${adminStore.type}). Both must be the same (rady_insole or milling_block).`,
-      });
+      // Do not block the operation on type mismatch; proceed using partner store type.
+      adminStore = null;
     }
     const type = storeType;
     const toAdd = transformGroessenMengenForStore(
@@ -827,6 +827,106 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("addStorageFromAdmin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? "Unknown error",
+    });
+  }
+};
+
+/**
+ * Create StoreOrderOverview from admin-style quantity input (without directly increasing stock).
+ * Body: storeId (required), groessenMengen (required), admin_store_id (optional).
+ */
+export const addStorageFromAdminToOverview = async (req: any, res: any) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Send a valid token in Authorization header.",
+      });
+    }
+
+    const { admin_store_id, storeId, groessenMengen: bodyGroessenMengen } = req.body;
+
+    const missingField = ["storeId", "groessenMengen"].find((field) => {
+      const val = req.body[field];
+      if (field === "groessenMengen")
+        return val == null || typeof val !== "object" || Array.isArray(val);
+      return val == null || val === "";
+    });
+    if (missingField) {
+      return res.status(400).json({
+        success: false,
+        message: `${missingField} is required (groessenMengen must be an object with sizes and quantities)`,
+      });
+    }
+
+    let adminStore = admin_store_id
+      ? await prisma.admin_store.findUnique({ where: { id: admin_store_id } })
+      : null;
+    if (admin_store_id && !adminStore) {
+      return res.status(404).json({
+        success: false,
+        message: "Admin store not found",
+      });
+    }
+
+    const store = await prisma.stores.findFirst({
+      where: { id: storeId, userId },
+    });
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found or not yours.",
+      });
+    }
+
+    const storeType = (store.type as StoreType) ?? "rady_insole";
+    if (adminStore && (adminStore.type as StoreType) !== storeType) {
+      // Do not block the operation on type mismatch; proceed using partner store type.
+      adminStore = null;
+    }
+
+    const overviewGroessenMengen = transformGroessenMengenForStore(
+      bodyGroessenMengen as Record<string, any>,
+      storeType,
+    );
+
+    // Same as weekly_report: delivered_quantity mirrors rows but quantity starts from 0.
+    const delivered_quantity: Record<string, any> = {};
+    for (const [size, sizeData] of Object.entries(overviewGroessenMengen)) {
+      const item = sizeData as any;
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      delivered_quantity[size] = {
+        ...item,
+        quantity: 0,
+      };
+    }
+
+    const createdOverview = await prisma.storeOrderOverview.create({
+      data: {
+        storeId: store.id,
+        partnerId: userId,
+        artikelnummer: store.artikelnummer,
+        produktname: store.produktname,
+        hersteller: store.hersteller,
+        groessenMengen: overviewGroessenMengen,
+        delivered_quantity,
+        type: storeType,
+        status: "In_bearbeitung",
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Store order overview created successfully",
+      data: createdOverview,
+    });
+  } catch (error: any) {
+    console.error("addStorageFromAdminToOverview error:", error);
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
