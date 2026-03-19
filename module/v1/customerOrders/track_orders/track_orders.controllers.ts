@@ -2070,7 +2070,7 @@ export const getWerkstattzettelSheetPdfData = async (
         totalPrice: true,
         einlagenversorgungPreis: true,
         austria_price: true,
-
+        überzug: true,
         product: {
           select: {
             name: true,
@@ -2176,6 +2176,7 @@ export const getWerkstattzettelSheetPdfData = async (
           quantity: order?.quantity,
           austria_price: order?.austria_price,
         },
+        überzug: order?.überzug,
       },
     });
   } catch (error) {
@@ -2530,7 +2531,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         },
         quantity: order?.quantity,
         orderNumber: order?.orderNumber,
-        überzug: order?.überzug,
+        uberzug: order?.überzug,
       },
     });
   } catch (error: any) {
