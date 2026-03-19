@@ -1021,6 +1021,7 @@ export const getCustomerById = async (req: Request, res: Response) => {
       customerHistorie: processedHistories,
       // werkstattzettel,
       partner: processedPartner,
+      prescription,
       workshopNote,
     };
 
