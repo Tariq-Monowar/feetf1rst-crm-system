@@ -477,6 +477,9 @@ export const deleteVersorgungen = async (req: Request, res: Response) => {
   }
 };
 
+
+
+
 export const getVersorgungenByDiagnosis = async (
   req: Request,
   res: Response,

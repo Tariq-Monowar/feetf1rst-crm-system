@@ -267,6 +267,28 @@ export const createStorage = async (req: Request, res: Response) => {
       }
     }
 
+    // Resolve admin store id from new or legacy field
+    const resolvedAdminStoreIdRaw = adminStoreId ?? model_id;
+    const resolvedAdminStoreId =
+      typeof resolvedAdminStoreIdRaw === "string"
+        ? resolvedAdminStoreIdRaw.trim()
+        : resolvedAdminStoreIdRaw;
+
+    if (resolvedAdminStoreId) {
+      const adminStoreExists = await prisma.admin_store.findUnique({
+        where: { id: resolvedAdminStoreId },
+        select: { id: true },
+      });
+
+      if (!adminStoreExists) {
+        cleanupFile();
+        return res.status(400).json({
+          success: false,
+          message: "Invalid adminStoreId: admin store not found",
+        });
+      }
+    }
+
     // Clean groessenMengen before saving:
     // - keep quantity/length/mindestmenge
     // - drop warningStatus (it's calculated in responses)
@@ -301,8 +323,8 @@ export const createStorage = async (req: Request, res: Response) => {
       userId,
       type: type as StoreType,
       features: parsedFeatures ?? null,
-      create_status: model_id ? "by_models" : "by_self",
-      adminStoreId: model_id ?? null,
+      create_status: resolvedAdminStoreId ? "by_models" : "by_self",
+      adminStoreId: resolvedAdminStoreId || null,
       // Note: adminStoreId is NOT included when create_status is "by_self"
     };
 

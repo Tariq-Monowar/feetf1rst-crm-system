@@ -244,6 +244,7 @@ export const createOrder = async (req: Request, res: Response) => {
       privatePrice: privatePriceFromBody,
       key,
       totalPrice: totalPriceFromClient,
+      austria_price: austriaPriceFromBody,
       vat_rate,
       werkstattzettel,
       kva,
@@ -278,6 +279,13 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const totalPrice = isHalbprobe ? 0 : Number(totalPriceFromClient);
+    if (
+      austriaPriceFromBody != null &&
+      austriaPriceFromBody !== "" &&
+      Number.isNaN(Number(austriaPriceFromBody))
+    ) {
+      return bad(400, "austria_price must be a valid number");
+    }
 
     // --- 2. Payment type ---
     const num = (v: unknown) =>
@@ -721,6 +729,13 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.fussanalysePreis = Number(fussanalysePreis);
       if (einlagenversorgungPreis != null)
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
+      if (
+        austriaPriceFromBody != null &&
+        austriaPriceFromBody !== "" &&
+        !Number.isNaN(Number(austriaPriceFromBody))
+      ) {
+        orderData.austria_price = Number(austriaPriceFromBody);
+      }
       if (discount != null) orderData.discount = discountPercent;
       orderData.werkstattzettel =
         werkstattzettel !== false && werkstattzettel !== "false";

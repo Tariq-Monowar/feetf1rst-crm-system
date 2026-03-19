@@ -1871,6 +1871,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
         quantity: true,
+        austria_price: true,
 
         Versorgungen: {
           select: {
@@ -2068,6 +2069,7 @@ export const getWerkstattzettelSheetPdfData = async (
         net_price: true,
         totalPrice: true,
         einlagenversorgungPreis: true,
+        austria_price: true,
 
         product: {
           select: {
@@ -2172,6 +2174,7 @@ export const getWerkstattzettelSheetPdfData = async (
           addonPrices: order?.addonPrices,
           discount: order?.discount,
           quantity: order?.quantity,
+          austria_price: order?.austria_price,
         },
       },
     });
@@ -2437,6 +2440,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
       select: {
         quantity: true,
         orderNumber: true,
+        austria_price: true,
         partner: {
           select: {
             name: true,
@@ -2508,6 +2512,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
           email: order?.customer?.email,
           gender: order?.customer?.gender,
         },
+        austria_price: order?.austria_price,
         footSize:
           (Number(order?.customer?.fusslange1) +
             Number(order?.customer?.fusslange2) +
