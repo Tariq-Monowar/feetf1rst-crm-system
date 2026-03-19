@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
+import { generateNextOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 import {
   PrismaClient,
   StoreOrderOverviewStatus,
@@ -871,12 +872,19 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       });
     }
 
-    const { admin_store_id, storeId, groessenMengen: bodyGroessenMengen } = req.body;
+    const {
+      admin_store_id,
+      storeId,
+      groessenMengen: bodyGroessenMengen,
+    } = req.body;
 
     const missingField = ["storeId", "groessenMengen"].find((field) => {
       const val = req.body[field];
-      if (field === "groessenMengen")
-        return val == null || typeof val !== "object" || Array.isArray(val);
+      if (field === "groessenMengen") {
+        return (
+          val == null || typeof val !== "object" || Array.isArray(val)
+        );
+      }
       return val == null || val === "";
     });
     if (missingField) {
@@ -886,14 +894,24 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       });
     }
 
-    let adminStore = admin_store_id
-      ? await prisma.admin_store.findUnique({ where: { id: admin_store_id } })
-      : null;
-    if (admin_store_id && !adminStore) {
-      return res.status(404).json({
-        success: false,
-        message: "Admin store not found",
+    let adminStore = null as any;
+    if (admin_store_id) {
+      adminStore = await prisma.admin_store.findUnique({
+        where: { id: admin_store_id },
+        select: {
+          id: true,
+          price: true,
+          groessenMengen: true,
+          type: true,
+        },
       });
+
+      if (!adminStore) {
+        return res.status(404).json({
+          success: false,
+          message: "Admin store not found",
+        });
+      }
     }
 
     const store = await prisma.stores.findFirst({
@@ -908,7 +926,6 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
 
     const storeType = (store.type as StoreType) ?? "rady_insole";
     if (adminStore && (adminStore.type as StoreType) !== storeType) {
-      // Do not block the operation on type mismatch; proceed using partner store type.
       adminStore = null;
     }
 
@@ -940,6 +957,86 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
         type: storeType,
         status: "In_bearbeitung",
       },
+    });
+
+    const sumQuantityFromGroessenMengen = (value: any): number => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+
+      let total = 0;
+      for (const entry of Object.values(value as Record<string, any>)) {
+        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+          total += Number((entry as any).quantity ?? 0);
+        } else if (typeof entry === "number") {
+          total += entry;
+        }
+      }
+      return total;
+    };
+
+    setImmediate(() => {
+      const run = async () => {
+        if (!admin_store_id) return;
+
+        const admin = await prisma.admin_store.findUnique({
+          where: { id: admin_store_id },
+          select: { price: true },
+        });
+        const unitPrice = Number(admin?.price ?? 0);
+        if (!unitPrice) return;
+
+        const totalQuantity = sumQuantityFromGroessenMengen(overviewGroessenMengen);
+        const totalPrice = totalQuantity * unitPrice;
+
+        const orderNumber = await generateNextOrderNumber(userId);
+        const note = `StoreOrderOverview:${createdOverview.id}`;
+
+        await prisma.$executeRaw`
+          INSERT INTO admin_order_transitions (
+            id,
+            "orderNumber",
+            "orderFor",
+            "partnerId",
+            "storeId",
+            price,
+            note,
+            "createdAt",
+            "updatedAt"
+          )
+          VALUES (
+            gen_random_uuid(),
+            ${orderNumber},
+            ${"store"},
+            ${userId},
+            ${store.id},
+            ${totalPrice ?? null},
+            ${note},
+            NOW(),
+            NOW()
+          )
+        `;
+
+        const old = await prisma.partner_total_amount.findFirst({
+          where: { partnerId: userId },
+          select: { id: true, totalAmount: true },
+        });
+
+        const newTotal = (old?.totalAmount ?? 0) + Number(totalPrice ?? 0);
+        if (old) {
+          await prisma.partner_total_amount.update({
+            where: { id: old.id },
+            data: { totalAmount: newTotal },
+          });
+          return;
+        }
+
+        await prisma.partner_total_amount.create({
+          data: { partnerId: userId, totalAmount: newTotal },
+        });
+      };
+
+      run().catch((e) => {
+        console.error("admin_order_transitions background job error:", e);
+      });
     });
 
     return res.status(201).json({

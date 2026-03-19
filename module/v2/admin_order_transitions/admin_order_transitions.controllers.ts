@@ -298,7 +298,10 @@ export const getAllTransitions = async (req: Request, res: Response) => {
           LOWER(COALESCE(c.vorname, '')::text) LIKE LOWER(${term}::text) OR
           LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
           LOWER(COALESCE(aot."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
-          LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${term}::text)
+          LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(s.produktname, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(s.hersteller, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(s.artikelnummer, '')::text) LIKE LOWER(${term}::text)
         )`;
       });
       if (searchConditions.length) {
@@ -329,6 +332,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         aot."custom_shafts_catagoary",
         aot."createdAt",
         aot."customerId",
+        aot."storeId",
         cs.id AS "cs_id",
         cs."orderNumber" AS "cs_orderNumber",
         cs.invoice AS "cs_invoice",
@@ -339,10 +343,14 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         cs."deliveryDate" AS "cs_deliveryDate",
         cs."createdAt" AS "cs_createdAt",
         c.vorname,
-        c.nachname
+        c.nachname,
+        s.produktname AS "store_produktname",
+        s.hersteller AS "store_hersteller",
+        s.artikelnummer AS "store_artikelnummer"
       FROM "admin_order_transitions" aot
       LEFT JOIN "customers" c ON c.id = aot."customerId"
       LEFT JOIN "custom_shafts" cs ON cs.id = aot."custom_shafts_id"
+      LEFT JOIN "stores" s ON s.id = aot."storeId"
       WHERE ${whereClause}
       ORDER BY aot."createdAt" DESC, aot.id DESC
       LIMIT ${limit + 1}
@@ -375,6 +383,14 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         note: row.note,
         custom_shafts_catagoary: row.custom_shafts_catagoary,
         customer: { vorname: row.vorname, nachname: row.nachname },
+        store: row.storeId
+          ? {
+              id: row.storeId,
+              produktname: row.store_produktname,
+              hersteller: row.store_hersteller,
+              artikelnummer: row.store_artikelnummer,
+            }
+          : null,
         createdAt: row.createdAt,
         customerId: row.customerId,
         custom_shafts,
