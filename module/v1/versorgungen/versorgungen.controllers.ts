@@ -482,8 +482,14 @@ export const getVersorgungenByDiagnosis = async (
   res: Response,
 ) => {
   try {
-    // Query: insoleType (single), diagnosis (comma-separated list), limit, cursor
-    const { limit = 10, insoleType, diagnosis: diagnosisQuery, cursor } = req.query;
+    // Query: insoleType (single), diagnosis/diagnosis_status (comma-separated list), limit, cursor
+    const {
+      limit = 10,
+      insoleType,
+      diagnosis: diagnosisQuery,
+      diagnosis_status: diagnosisStatusQuery,
+      cursor,
+    } = req.query;
     const partnerId = req.user.id;
 
     const limitNumber = parseInt(limit as string, 10);
@@ -494,10 +500,11 @@ export const getVersorgungenByDiagnosis = async (
       });
     }
 
-    // 2. diagnosis: list (e.g. ?diagnosis=diag1,diag2) — match any one
-    const diagnosisFilter = Array.isArray(diagnosisQuery)
-      ? diagnosisQuery.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0)
-      : String(diagnosisQuery ?? "")
+    // 2. diagnosis: list (e.g. ?diagnosis=diag1,diag2 or ?diagnosis_status=diag1,diag2) — match any one
+    const diagnosisSource = diagnosisQuery ?? diagnosisStatusQuery;
+    const diagnosisFilter = Array.isArray(diagnosisSource)
+      ? diagnosisSource.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0)
+      : String(diagnosisSource ?? "")
           .split(",")
           .map((v) => v.trim())
           .filter((v) => v.length > 0);
