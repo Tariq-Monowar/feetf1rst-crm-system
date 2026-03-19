@@ -57,6 +57,7 @@ router.post(
 );
 
 // Create StoreOrderOverview (requested stock) from admin-style payload
+//eta diye admin er kache order pathano jabe
 router.post(
   "/send-order-to-admin",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
