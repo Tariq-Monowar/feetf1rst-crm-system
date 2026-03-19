@@ -24,6 +24,7 @@ const DEFAULT_ORDER_SETTINGS = {
 export const getOrderSettings = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
+    const { fields } = req.query;
 
     if (!partnerId) {
       return res.status(401).json({
@@ -47,10 +48,61 @@ export const getOrderSettings = async (req: Request, res: Response) => {
       });
     }
 
+    const ALLOWED_FIELDS = [
+      "id",
+      "partnerId",
+      "autoCalcPelottePos",
+      "autoSendToProd",
+      "attachFootScans",
+      "showMeasPoints10_11",
+      "printFootScans",
+      "showMeasPoints10_11_Det",
+      "order_creation_appomnent",
+      "pickupAssignmentMode",
+      "appomnentOverlap",
+      "lookWorkTime",
+      "shipping_addresses_for_kv",
+      "isInsolePickupDateLine",
+      "insolePickupDateLine",
+      "createdAt",
+      "updatedAt",
+    ] as const;
+
+    // Optional query filtering: ?fields=autoSendToProd,attachFootScans
+    // Also supports repeated query keys: ?fields=a&fields=b
+    const fieldList = Array.isArray(fields)
+      ? fields
+          .flatMap((f) => String(f ?? "").split(","))
+          .map((f) => f.trim())
+          .filter((f) => f.length > 0)
+      : String(fields ?? "")
+          .split(",")
+          .map((f) => f.trim())
+          .filter((f) => f.length > 0);
+
+    if (fieldList.length > 0) {
+      const invalidFields = fieldList.filter((f) => !ALLOWED_FIELDS.includes(f as any));
+      if (invalidFields.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid fields: ${invalidFields.join(", ")}`,
+          allowedFields: ALLOWED_FIELDS,
+        });
+      }
+    }
+
+    const responseData =
+      fieldList.length > 0
+        ? fieldList.reduce<Record<string, unknown>>((acc, key) => {
+            acc[key] = (orderSettings as any)[key];
+            return acc;
+          }, {})
+        : orderSettings;
+
     return res.status(200).json({
       success: true,
       message: "Order settings fetched successfully",
-      data: orderSettings,
+      data: responseData,
     });
   } catch (error: any) {
     console.error("Error in getOrderSettings:", error);
