@@ -759,6 +759,7 @@ export const createOrder = async (req: Request, res: Response) => {
           id: true,
           employeeId: true,
           kvaNumber: true,
+          austria_price: true,
         },
       });
 
@@ -1006,6 +1007,7 @@ export const createOrder = async (req: Request, res: Response) => {
       supplyType: privetSupply ? "private" : "public",
       customerNumber: order.customerNumber,
       kvaNumber: order.kvaNumber,
+      austria_price: order.austria_price,
     });
   } catch (err: any) {
     if (err?.message === "NO_MATCHED_SIZE_IN_STORE")
