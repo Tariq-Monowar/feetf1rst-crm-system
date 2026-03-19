@@ -2,9 +2,7 @@ import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
 
 import {
-  createOrder,
   updateOrder,
- 
   deleteOrderInsurances,
   getAllOrders,
   getOrderById,
@@ -17,6 +15,19 @@ import upload from "../../../config/multer.config";
  
 export const router = express.Router();
 
+if (process.env.NODE_ENV !== "production") {
+  console.log("customerOrders.routes handlers types:", {
+    updateOrder: typeof updateOrder,
+    deleteOrderInsurances: typeof deleteOrderInsurances,
+    getAllOrders: typeof getAllOrders,
+    getOrderById: typeof getOrderById,
+    deleteMultipleOrders: typeof deleteMultipleOrders,
+    deleteOrder: typeof deleteOrder,
+    getOrdersByCustomerId: typeof getOrdersByCustomerId,
+    getEinlagenInProduktion: typeof getEinlagenInProduktion,
+  });
+}
+
 // _baseurl/customerOrders/einlagen-in-produktion
 router.get(
   "/einlagen-in-produktion",
@@ -24,8 +35,6 @@ router.get(
   getEinlagenInProduktion
 );
 
-// _baseurl/customerOrders/create
-router.post("/create", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
 
 // _baseurl/customerOrders/update/:id
 // JSON (application/json) or multipart/form-data (file field: kvaPdf). Multer only for multipart to avoid S3 delay on JSON-only updates.

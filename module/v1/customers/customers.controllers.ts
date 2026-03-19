@@ -49,7 +49,7 @@ const serializeMaterialField = (material: any): string => {
 // Get next customer number for a partner (starts from 1000)
 const getNextCustomerNumberForPartner = async (
   tx: any,
-  partnerId: string
+  partnerId: string,
 ): Promise<number> => {
   const maxCustomer = await tx.customers.findFirst({
     where: { partnerId },
@@ -181,11 +181,10 @@ export const createCustomers = async (req: Request, res: Response) => {
     //   });
     // }
 
-    
     const newCustomer = await prisma.$transaction(async (tx) => {
       const customerNumber = await getNextCustomerNumberForPartner(
         tx,
-        req.user.id
+        req.user.id,
       );
 
       return tx.customers.create({
@@ -517,7 +516,10 @@ export const getAllCustomers = async (req: Request, res: Response) => {
 
 export const _cursor_getAllCustomers = async (req: Request, res: Response) => {
   try {
-    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 50);
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit as string) || 10, 1),
+      50,
+    );
     const cursor = req.query.cursor as string | undefined;
     const search = (req.query.search as string) || "";
 
@@ -823,7 +825,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
 
 export const updateCustomerSpecialFields = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { id } = req.params;
@@ -917,6 +919,7 @@ export const getCustomerById = async (req: Request, res: Response) => {
       partner,
       workshopNote,
       allScreenerDates, // Get all available dates for the dropdown
+      prescription,
     ] = await Promise.all([
       prisma.customer_versorgungen.findMany({ where: { customerId: id } }),
       prisma.einlagenAnswers.findMany({
@@ -932,6 +935,21 @@ export const getCustomerById = async (req: Request, res: Response) => {
         where: { customerId: id },
         select: { createdAt: true },
         orderBy: { createdAt: "desc" },
+      }),
+      prisma.prescription.findFirst({
+        where: { customerId: id },
+        orderBy: { prescription_date: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          prescription_date: true,
+          prescription_number: true,
+          insurance_provider: true,
+          insurance_number: true,
+          medical_diagnosis: true,
+          doctor_name: true,
+          doctor_location: true,
+        },
       }),
     ]);
 
@@ -992,7 +1010,7 @@ export const getCustomerById = async (req: Request, res: Response) => {
 
     // 7. Extract full ISO date strings for dropdown (including time)
     const availableDates = allScreenerDates.map((screener) =>
-      screener.createdAt.toISOString()
+      screener.createdAt.toISOString(),
     );
 
     const customerWithImages = {
@@ -1433,7 +1451,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
             OR telefon ILIKE ${p}
             OR wohnort ILIKE ${p}
             OR CAST("customerNumber" AS TEXT) ILIKE ${p}
-          )`
+          )`,
         );
       }
     } else {
@@ -1451,11 +1469,11 @@ export const searchCustomers = async (req: Request, res: Response) => {
                 OR (vorname ILIKE ${remainingNamePart} AND nachname ILIKE ${firstNamePart})
                 OR TRIM(COALESCE(vorname, '') || ' ' || COALESCE(nachname, '')) ILIKE ${namePattern}
                 OR TRIM(COALESCE(nachname, '') || ' ' || COALESCE(vorname, '')) ILIKE ${namePattern}
-              )`
+              )`,
             );
           } else {
             whereParts.push(
-              Prisma.sql`(vorname ILIKE ${`%${nameQuery}%`} OR nachname ILIKE ${`%${nameQuery}%`})`
+              Prisma.sql`(vorname ILIKE ${`%${nameQuery}%`} OR nachname ILIKE ${`%${nameQuery}%`})`,
             );
           }
         }
@@ -1489,7 +1507,9 @@ export const searchCustomers = async (req: Request, res: Response) => {
     if (customerNumber != null && String(customerNumber).trim() !== "") {
       const raw = String(customerNumber).trim();
       const pattern = `%${raw}%`;
-      whereParts.push(Prisma.sql`CAST("customerNumber" AS TEXT) ILIKE ${pattern}`);
+      whereParts.push(
+        Prisma.sql`CAST("customerNumber" AS TEXT) ILIKE ${pattern}`,
+      );
     }
 
     const whereClause = Prisma.join(whereParts, " AND ");
@@ -1520,7 +1540,7 @@ export const searchCustomers = async (req: Request, res: Response) => {
           FROM customers
           ORDER BY vorname ASC NULLS LAST, nachname ASC NULLS LAST
           LIMIT ${limitNumber}
-        `
+        `,
     );
 
     res.status(200).json({
@@ -1887,7 +1907,7 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
     if (files?.threed_model_left?.[0]) {
       deleteOldIfNew(
         files.threed_model_left[0],
-        existingScreener.threed_model_left
+        existingScreener.threed_model_left,
       );
       updateData.threed_model_left = files.threed_model_left[0].location;
     }
@@ -1910,7 +1930,7 @@ export const updateScreenerFile = async (req: Request, res: Response) => {
     if (files?.threed_model_right?.[0]) {
       deleteOldIfNew(
         files.threed_model_right[0],
-        existingScreener.threed_model_right
+        existingScreener.threed_model_right,
       );
       updateData.threed_model_right = files.threed_model_right[0].location;
     }
@@ -2290,10 +2310,13 @@ export const getEinlagenInProduktion = async (req: Request, res: Response) => {
       data: formattedOrders,
       statistics: {
         totalActiveOrders: orders.length,
-        statusBreakdown: formattedStatusCounts.reduce((acc, item) => {
-          acc[item.orderStatus] = item._count.id;
-          return acc;
-        }, {} as Record<string, number>),
+        statusBreakdown: formattedStatusCounts.reduce(
+          (acc, item) => {
+            acc[item.orderStatus] = item._count.id;
+            return acc;
+          },
+          {} as Record<string, number>,
+        ),
       },
     });
   } catch (error: any) {
@@ -2702,7 +2725,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
     // Map customers to response data
     let responseData = customers.map((customer) => {
       const completedOrdersCount = customer.customerOrders.filter((order) =>
-        completedStatusesForCount.has(order.orderStatus)
+        completedStatusesForCount.has(order.orderStatus),
       ).length;
 
       const latestOrder = customer.customerOrders[0] || null;
@@ -2742,8 +2765,8 @@ export const filterCustomer = async (req: Request, res: Response) => {
           typeof gs === "object" && gs?.title != null
             ? gs.title
             : typeof gs === "string"
-            ? gs
-            : "";
+              ? gs
+              : "";
         return str.toLowerCase().includes(term);
       });
     }
@@ -2760,7 +2783,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
       // Customers with exactly one order that is NOT "Ausgeführt"
       responseData = responseData.filter((customer: any) => {
         const nonFinishedOrders = customer._customerOrders.filter(
-          (order: any) => order.orderStatus !== "Ausgeführt"
+          (order: any) => order.orderStatus !== "Ausgeführt",
         );
         return nonFinishedOrders.length === 1 && customer.totalOrders === 1;
       });
@@ -2833,7 +2856,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
 export const createCustomerRequirements = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const partnerId = req.user?.id;
@@ -2952,7 +2975,7 @@ export const getCustomerRequirements = async (req: Request, res: Response) => {
 
 export const getAllVersorgungenByCustomerId = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { customerId } = req.params;
@@ -3072,7 +3095,6 @@ export const getAllVersorgungenByCustomerId = async (
   }
 };
 
-
 export const getCustomerHistory = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params;
@@ -3087,7 +3109,7 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
         .json({ success: false, message: "Customer ID is required" });
     }
 
-    if(category) {
+    if (category) {
       const validCategories = [
         "Notizen",
         "Bestellungen",
@@ -3097,7 +3119,7 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
         "Emails",
         "Termin",
       ];
-      if(!validCategories.includes(category as any)) {
+      if (!validCategories.includes(category as any)) {
         return res.status(400).json({
           success: false,
           message: "Invalid category",
@@ -3148,7 +3170,6 @@ export const getCustomerHistory = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const countCustomers = async (req: Request, res: Response) => {
   try {

@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { PrismaClient } from "@prisma/client";
 import { adapter } from "../db";
 import { notificationSend } from "../utils/notification.utils";
+import { generateNextOrderNumber } from "../module/v2/admin_order_transitions/admin_order_transitions.controllers";
 
 const prisma = new PrismaClient({ adapter });
 
@@ -85,6 +86,23 @@ export const dailyReport = () => {
         return deliveredQuantity;
       };
 
+      const sumQuantityFromGroessenMengen = (value: any): number => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+          return 0;
+        }
+
+        let total = 0;
+        for (const entry of Object.values(value as Record<string, any>)) {
+          if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+            total += Number((entry as any).quantity ?? 0);
+          } else if (typeof entry === "number") {
+            total += entry;
+          }
+        }
+
+        return total;
+      };
+
       const brandSettingsModel = (prisma as any).store_brand_settings;
       const storeOrderOverviewModel = (prisma as any).storeOrderOverview;
 
@@ -158,7 +176,7 @@ export const dailyReport = () => {
           const deliveredQuantity =
             buildDeliveredQuantityData(overviewGroessenMengen);
 
-          await storeOrderOverviewModel.create({
+          const createdOverview = await storeOrderOverviewModel.create({
             data: {
               storeId: store.id,
               partnerId: store.userId,
@@ -179,6 +197,77 @@ export const dailyReport = () => {
             data: {
               groessenMengen: updatedGroessenMengen,
             },
+          });
+
+          // Create admin_order_transitions & update partner_total_amount in background
+          setImmediate(() => {
+            const run = async () => {
+              const unitPrice =
+                Number((store as any).unit_price ?? 0) ||
+                Number((store as any).purchase_price ?? 0);
+              if (!unitPrice) return;
+
+              const totalQuantity =
+                sumQuantityFromGroessenMengen(overviewGroessenMengen);
+              const totalPrice = totalQuantity * unitPrice;
+              if (!totalPrice) return;
+
+              const orderNumber = await generateNextOrderNumber(
+                String(store.userId)
+              );
+              const note = `AutoOrderCron:${createdOverview.id}`;
+
+              await prisma.$executeRaw`
+                INSERT INTO admin_order_transitions (
+                  id,
+                  "orderNumber",
+                  "orderFor",
+                  "partnerId",
+                  "storeId",
+                  price,
+                  note,
+                  "createdAt",
+                  "updatedAt"
+                )
+                VALUES (
+                  gen_random_uuid(),
+                  ${orderNumber},
+                  ${"store"},
+                  ${store.userId},
+                  ${store.id},
+                  ${totalPrice ?? null},
+                  ${note},
+                  NOW(),
+                  NOW()
+                )
+              `;
+
+              const old = await prisma.partner_total_amount.findFirst({
+                where: { partnerId: store.userId },
+                select: { id: true, totalAmount: true },
+              });
+
+              const newTotal =
+                (old?.totalAmount ?? 0) + Number(totalPrice ?? 0);
+              if (old) {
+                await prisma.partner_total_amount.update({
+                  where: { id: old.id },
+                  data: { totalAmount: newTotal },
+                });
+                return;
+              }
+
+              await prisma.partner_total_amount.create({
+                data: { partnerId: store.userId, totalAmount: newTotal },
+              });
+            };
+
+            run().catch((e) => {
+              console.error(
+                "admin_order_transitions cron background job error:",
+                e
+              );
+            });
           });
         } catch (error) {
           console.error(`Error processing store ${store.id}:`, error);
