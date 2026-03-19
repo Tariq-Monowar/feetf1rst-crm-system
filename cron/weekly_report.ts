@@ -200,6 +200,7 @@ export const appointmentReminderCron = () => {
     return appointmentDate;
   }
 
+  
   cron.schedule("* * * * *", async () => {
     console.log("++++++++++++++++");
     try {
