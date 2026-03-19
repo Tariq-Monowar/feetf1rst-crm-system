@@ -2057,6 +2057,12 @@ export const getWerkstattzettelSheetPdfData = async (
         versorgung_note: true,
         fussanalysePreis: true,
         werkstattzettel: true,
+        employee:{
+          select:{
+            employeeName: true,
+         
+          }
+        },
 
         addonPrices: true,
         discount: true,
@@ -2177,6 +2183,7 @@ export const getWerkstattzettelSheetPdfData = async (
           austria_price: order?.austria_price,
         },
         überzug: order?.überzug,
+        employee: order?.employee,
       },
     });
   } catch (error) {
