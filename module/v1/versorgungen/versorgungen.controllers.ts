@@ -482,51 +482,55 @@ export const getVersorgungenByDiagnosis = async (
   res: Response,
 ) => {
   try {
-    const { diagnosis_status } = req.params;
-    const { page = 1, limit = 10, status } = req.query;
+    // Query: insoleType (single), diagnosis (comma-separated list), limit, cursor
+    const { limit = 10, insoleType, diagnosis: diagnosisQuery, cursor } = req.query;
     const partnerId = req.user.id;
 
-    const pageNumber = parseInt(page as string, 10);
     const limitNumber = parseInt(limit as string, 10);
-
-    if (isNaN(pageNumber) || isNaN(limitNumber)) {
+    if (isNaN(limitNumber) || limitNumber <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid type page or limit",
+        message: "Invalid limit value",
       });
     }
 
-    // Build the filter query - only public; this API is not for private
-    const whereClause: Prisma.VersorgungenWhereInput = {
-      partnerId,
-      supplyType: "public",
-    };
+    // 2. diagnosis: list (e.g. ?diagnosis=diag1,diag2) — match any one
+    const diagnosisFilter = Array.isArray(diagnosisQuery)
+      ? diagnosisQuery.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0)
+      : String(diagnosisQuery ?? "")
+          .split(",")
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
 
-    // If diagnosis_status filter is provided, check if array contains the value
-    if (diagnosis_status) {
-      whereClause.diagnosis_status = { has: diagnosis_status };
+    const cursorId =
+      typeof cursor === "string" && cursor.trim().length > 0
+        ? cursor.trim()
+        : undefined;
+
+    // Build where: partner + public, AND (diagnosis match any one), AND (insoleType if provided)
+    const andConditions: Prisma.VersorgungenWhereInput[] = [
+      { partnerId, supplyType: "public" },
+    ];
+    if (diagnosisFilter.length > 0) {
+      andConditions.push({
+        OR: diagnosisFilter.map((d) => ({ diagnosis_status: { has: d } })),
+      });
     }
-
-    // If status filter is provided, filter by supplyStatus name
-    if (status) {
-      whereClause.supplyStatus = {
-        name: status as string,
-      };
+    if (insoleType) {
+      andConditions.push({
+        supplyStatus: { name: String(insoleType).trim() },
+      });
     }
+    const whereClause: Prisma.VersorgungenWhereInput =
+      andConditions.length === 1 ? andConditions[0]! : { AND: andConditions };
 
-    // Get total count
-    const totalCount = await prisma.versorgungen.count({
-      where: whereClause,
-    });
-
-    // Get paginated results with related data
+    // Cursor pagination: fetch one extra item to determine hasMore.
     const versorgungenList = await prisma.versorgungen.findMany({
       where: whereClause,
-      skip: (pageNumber - 1) * limitNumber,
-      take: limitNumber,
-      orderBy: {
-        createdAt: "desc",
-      },
+      take: limitNumber + 1,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      // Stable ordering for consistent cursor pagination.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       include: {
         supplyStatus: {
           select: {
@@ -540,53 +544,57 @@ export const getVersorgungenByDiagnosis = async (
           select: {
             id: true,
             produktname: true,
-            groessenMengen: true,
             type: true,
           },
         },
       },
     });
 
-    // Format the response to include image URLs and consistent structure
-    const formattedVersorgungenList = versorgungenList.map((versorgung) => ({
+    const hasMore = versorgungenList.length > limitNumber;
+    const pageItems = hasMore
+      ? versorgungenList.slice(0, limitNumber)
+      : versorgungenList;
+
+    const data = pageItems.map((versorgung) => ({
       id: versorgung.id,
-      name: versorgung.name,
-      rohlingHersteller: versorgung.rohlingHersteller,
-      artikelHersteller: versorgung.artikelHersteller,
-      versorgung: versorgung.versorgung,
-      material: versorgung.material,
-      diagnosis_status: versorgung.diagnosis_status,
+      name: versorgung.name ?? null,
+      rohlingHersteller: versorgung.rohlingHersteller ?? null,
+      artikelHersteller: versorgung.artikelHersteller ?? null,
+      versorgung: versorgung.versorgung ?? null,
+      material: Array.isArray(versorgung.material) ? versorgung.material : null,
+      diagnosis_status: Array.isArray(versorgung.diagnosis_status)
+        ? versorgung.diagnosis_status
+        : [],
       createdAt: versorgung.createdAt,
       updatedAt: versorgung.updatedAt,
       supplyStatus: versorgung.supplyStatus
         ? {
-            ...versorgung.supplyStatus,
-            image: versorgung.supplyStatus.image || null,
+            id: versorgung.supplyStatus.id,
+            name: versorgung.supplyStatus.name ?? null,
+            price: versorgung.supplyStatus.price ?? null,
+            image: versorgung.supplyStatus.image ?? null,
           }
         : null,
       store: versorgung.store
         ? {
             id: versorgung.store.id,
-            name: versorgung.store.produktname,
-            groessenMengen: versorgung.store.groessenMengen,
+            name: versorgung.store.produktname ?? null,
           }
         : null,
-      type: versorgung.store?.type || null,
+      type: versorgung.store?.type ?? null,
     }));
 
-    const totalPages = Math.ceil(totalCount / limitNumber);
+    const lastId = data.length > 0 ? data[data.length - 1]?.id : null;
 
     res.status(200).json({
       success: true,
-      message: `Versorgungen for ${diagnosis_status} fetched successfully`,
-      data: formattedVersorgungenList,
+      message: "Versorgungen fetched successfully",
+      data,
       pagination: {
-        totalItems: totalCount,
-        totalPages,
-        currentPage: pageNumber,
-        itemsPerPage: limitNumber,
+        limit: limitNumber,
+        nextCursor: hasMore && lastId ? lastId : null,
+        hasMore,
       },
-      diagnosis_status: diagnosis_status,
     });
   } catch (error) {
     console.error("Get Versorgungen by Diagnosis error:", error);
@@ -616,8 +624,9 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
         },
         store: {
           select: {
-            groessenMengen: true,
-            type: true,
+            id: true,
+            // groessenMengen: true,
+            // type: true,
           },
         },
       },
@@ -637,8 +646,8 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
             image: versorgungen.supplyStatus.image || null,
           }
         : null,
-      store: versorgungen.store ? versorgungen.store.groessenMengen : null,
-      type: versorgungen.store?.type || null,
+      // store: versorgungen.store ? versorgungen.store.groessenMengen : null,
+      // type: versorgungen.store?.type || null,
     };
     res.status(200).json({
       success: true,
@@ -658,35 +667,26 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
 //-------------------------------- Supply Status --------------------------------
 
 export const getSupplyStatus = async (req: Request, res: Response) => {
-  console.log("getSupplyStatus");
   try {
     const partnerId = req.user.id;
-
-    const { page = 1, limit = 10 } = req.query;
-    const pageNumber = parseInt(page as string, 10);
+    const { limit = 10, cursor } = req.query;
     const limitNumber = parseInt(limit as string, 10);
 
-    if (isNaN(pageNumber) || isNaN(limitNumber)) {
+    if (isNaN(limitNumber) || limitNumber <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid type page or limit",
+        message: "Invalid limit value",
       });
     }
 
-    const totalCount = await prisma.supplyStatus.count({
-      where: {
-        partnerId: partnerId,
-      },
-    });
+    const cursorId =
+      typeof cursor === "string" && cursor.trim().length > 0 ? cursor.trim() : undefined;
 
-    const totalPages = Math.ceil(totalCount / limitNumber);
-
-    const supplyStatus = await prisma.supplyStatus.findMany({
-      where: {
-        partnerId: partnerId,
-      },
-      skip: (pageNumber - 1) * limitNumber,
-      take: limitNumber,
+    const raw = await prisma.supplyStatus.findMany({
+      where: { partnerId },
+      take: limitNumber + 1,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      orderBy: [{ name: "asc" }, { id: "asc" }],
       select: {
         id: true,
         name: true,
@@ -698,15 +698,11 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
       },
     });
 
-    const allStatusNames = await prisma.supplyStatus.findMany({
-      where: { partnerId },
-      select: { name: true },
-      orderBy: { name: "asc" }, // optional
-    });
+    const hasMore = raw.length > limitNumber;
+    const pageItems = hasMore ? raw.slice(0, limitNumber) : raw;
+    const nextCursor = hasMore ? pageItems[pageItems.length - 1]?.id : null;
 
-    const statusList = allStatusNames.map((s) => s.name);
-
-    const formattedSupplyStatus = supplyStatus.map((item) => ({
+    const data = pageItems.map((item) => ({
       ...item,
       image: item.image || null,
     }));
@@ -714,15 +710,11 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       message: "Supply status fetched successfully",
-      data: formattedSupplyStatus,
-      status: statusList,
+      data,
       pagination: {
-        totalItems: totalCount,
-        totalPages,
-        currentPage: pageNumber,
-        itemsPerPage: limitNumber,
-        hasNextPage: pageNumber < totalPages,
-        hasPrevPage: pageNumber > 1,
+        limit: limitNumber,
+        hasMore,
+        ...(nextCursor && { nextCursor }),
       },
     });
   } catch (error) {

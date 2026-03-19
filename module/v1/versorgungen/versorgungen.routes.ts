@@ -19,7 +19,8 @@ import upload from "../../../config/multer.config";
 const router = express.Router();
 
 router.get("/", verifyUser("PARTNER", "EMPLOYEE"), getAllVersorgungen);
-router.get("/diagnosis/:diagnosis_status", verifyUser("PARTNER", "EMPLOYEE"), getVersorgungenByDiagnosis);
+router.get("/diagnosis", verifyUser("PARTNER", "EMPLOYEE"), getVersorgungenByDiagnosis);
+// router.get("/diagnosis/:diagnosis_status", verifyUser("PARTNER", "EMPLOYEE"), getVersorgungenByDiagnosis);
 // get single versorgungen
 router.get("/single/:id", verifyUser("PARTNER", "EMPLOYEE"), getSingleVersorgungen);
 router.post("/", verifyUser("PARTNER", "EMPLOYEE"), createVersorgungen);
