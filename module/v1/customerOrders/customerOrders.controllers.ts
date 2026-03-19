@@ -260,10 +260,12 @@ export const createOrder = async (req: Request, res: Response) => {
     const requiredBase = privetSupply
       ? ["customerId", "geschaeftsstandort"]
       : ["customerId", "versorgungId", "geschaeftsstandort"];
-    const required = isHalbprobe
-      ? requiredBase
-      : [...requiredBase, "bezahlt", "totalPrice"];
-    for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
+    // For halbprobe we skip payment-related required fields entirely.
+    // For normal orders, require bezahlt but allow totalPrice to be null/0 (validated separately).
+    const required = isHalbprobe ? requiredBase : [...requiredBase, "bezahlt"];
+    for (const f of required) {
+      if (!body[f]) return bad(400, `${f} is required`);
+    }
     const okStatus = [
       "Privat_Bezahlt",
       "Privat_offen",
@@ -276,9 +278,12 @@ export const createOrder = async (req: Request, res: Response) => {
       if (!okStatus.includes(bezahlt))
         return bad(400, "Invalid payment status", { validStatuses: okStatus });
 
-      const tp = Number(totalPriceFromClient);
-      if (Number.isNaN(tp))
-        return bad(400, "totalPrice must be a valid number");
+      // totalPrice can be null or 0. Only validate when a non-empty value is provided.
+      if (totalPriceFromClient !== undefined && totalPriceFromClient !== null && totalPriceFromClient !== "") {
+        const tp = Number(totalPriceFromClient);
+        if (Number.isNaN(tp))
+          return bad(400, "totalPrice must be a valid number");
+      }
     }
 
     const totalPrice = isHalbprobe ? 0 : Number(totalPriceFromClient);
