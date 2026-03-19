@@ -29,6 +29,16 @@ import {
   setSizeQuantity,
 } from "./create_order.utils";
 
+// Next KVA sequence (1, 2, 3...) per partner; only used when kva is true
+const getNextKvaNumberForPartner = async (tx: any, partnerId: string) => {
+  const max = await tx.customerOrders.findFirst({
+    where: { partnerId, kva: true, kvaNumber: { not: null } },
+    orderBy: { kvaNumber: "desc" },
+    select: { kvaNumber: true },
+  });
+  return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
+};
+
 export const createOrder = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
@@ -103,6 +113,8 @@ export const createOrder = async (req: Request, res: Response) => {
       werkstattzettel,
       kva,
       halbprobe,
+      diagnosisList,
+      prescriptionId: prescriptionIdFromBody,
     } = body;
     const isHalbprobe = toBool(halbprobe);
     // Accept both snake_case and camelCase for Austria price
@@ -110,6 +122,12 @@ export const createOrder = async (req: Request, res: Response) => {
       austriaPriceFromBody != null
         ? austriaPriceFromBody
         : (body as any)?.austriaPrice;
+
+    const prescriptionId =
+      prescriptionIdFromBody != null &&
+      String(prescriptionIdFromBody).trim() !== ""
+        ? String(prescriptionIdFromBody).trim()
+        : null;
 
     /*--------------------------
              VALIDATE REQUIRED FIELDS AND PAYMENT
@@ -264,14 +282,23 @@ export const createOrder = async (req: Request, res: Response) => {
             where: { id: versorgungId },
             select: VERSORGUNG_SELECT,
           }),
-      prisma.prescription.findFirst({
-        where: {
-          customerId,
-          prescription_date: { gte: fourWeeksAgo, not: null },
-        },
-        orderBy: { prescription_date: "desc" },
-        select: { id: true },
-      }),
+      prescriptionId
+        ? prisma.prescription.findFirst({
+            where: {
+              id: prescriptionId,
+              customerId,
+              prescription_date: { gte: fourWeeksAgo, not: null },
+            },
+            select: { id: true },
+          })
+        : prisma.prescription.findFirst({
+            where: {
+              customerId,
+              prescription_date: { gte: fourWeeksAgo, not: null },
+            },
+            orderBy: { prescription_date: "desc" },
+            select: { id: true },
+          }),
       needPartnerVat
         ? prisma.user.findUnique({
             where: { id: partnerId },
@@ -288,6 +315,11 @@ export const createOrder = async (req: Request, res: Response) => {
     ----------------------------*/
     if (screenerId && !screenerFile) return bad(404, "Screener file not found");
     if (!customer) return bad(404, "Customer not found");
+    if (prescriptionId && !validPrescription)
+      return bad(
+        404,
+        "Prescription not found (or not valid within last 4 weeks) for this customer",
+      );
 
     let vat_country: string | undefined;
     if (needPartnerVat) {
@@ -509,6 +541,10 @@ export const createOrder = async (req: Request, res: Response) => {
         fußanalyse: null,
         einlagenversorgung: null,
         totalPrice,
+        diagnosisList:
+          Array.isArray(diagnosisList) && diagnosisList.length > 0
+            ? diagnosisList.map((d: any) => String(d))
+            : [],
         product: { connect: { id: customerProduct.id } },
         customer: { connect: { id: customerId } },
         partner: { connect: { id: partnerId } },
@@ -593,6 +629,10 @@ export const createOrder = async (req: Request, res: Response) => {
           insoleStandards: { create: normalizedInsoleStandards },
         }),
       };
+
+      if (toBool(kva)) {
+        orderData.kvaNumber = await getNextKvaNumberForPartner(tx, partnerId);
+      }
 
       const newOrder = await tx.customerOrders.create({
         data: orderData,
