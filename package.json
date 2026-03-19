@@ -46,7 +46,8 @@
     "update:StoreOrderOverview": "ts-node scripts/update-store-order-overview.ts",
     "u_orderType": "ts-node scripts/update-u-order-type.ts",
     "adjest:delivered_quantity": "ts-node scripts/adjest-delivered-quantity.ts",
-    "prise:adjectment": "ts-node scripts/prise-adjectment.ts"
+    "prise:adjectment": "ts-node scripts/prise-adjectment.ts",
+    "adject:admin:store:id": "ts-node scripts/adject-admin-store-id.ts"
   },
   "keywords": [],
   "author": "",
