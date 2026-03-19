@@ -669,8 +669,11 @@ export const getSingleVersorgungen = async (req: Request, res: Response) => {
 export const getSupplyStatus = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
-    const { limit = 10, cursor } = req.query;
-    const limitNumber = parseInt(limit as string, 10);
+    const { limit, cursor } = req.query;
+
+    // Default limit is 10 when client doesn't send limit
+    const parsedLimit = Number(limit);
+    const limitNumber = limit == null || limit === "" ? 10 : Math.trunc(parsedLimit);
 
     if (isNaN(limitNumber) || limitNumber <= 0) {
       return res.status(400).json({
@@ -686,7 +689,8 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
       where: { partnerId },
       take: limitNumber + 1,
       ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
-      orderBy: [{ name: "asc" }, { id: "asc" }],
+      // Keep ordering aligned with cursor key (id) for stable pagination
+      orderBy: { id: "asc" },
       select: {
         id: true,
         name: true,
@@ -700,7 +704,7 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
 
     const hasMore = raw.length > limitNumber;
     const pageItems = hasMore ? raw.slice(0, limitNumber) : raw;
-    const nextCursor = hasMore ? pageItems[pageItems.length - 1]?.id : null;
+    // const nextCursor = hasMore ? pageItems[pageItems.length - 1]?.id : null;
 
     const data = pageItems.map((item) => ({
       ...item,
@@ -714,7 +718,7 @@ export const getSupplyStatus = async (req: Request, res: Response) => {
       pagination: {
         limit: limitNumber,
         hasMore,
-        ...(nextCursor && { nextCursor }),
+        // ...(nextCursor && { nextCursor }),
       },
     });
   } catch (error) {
