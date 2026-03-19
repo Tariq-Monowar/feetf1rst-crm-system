@@ -988,7 +988,7 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
         const totalPrice = totalQuantity * unitPrice;
 
         const orderNumber = await generateNextOrderNumber(userId);
-        const note = `StoreOrderOverview:${createdOverview.id}`;
+        const note = `Stock`;
 
         await prisma.$executeRaw`
           INSERT INTO admin_order_transitions (
@@ -2196,6 +2196,72 @@ export const getAllMyStoreOverview = async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+
+export const deleteStoreOverview = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must be a non-empty array",
+      });
+    }
+
+    const cleanedIds = ids
+      .map((v) => String(v ?? "").trim())
+      .filter((v) => v.length > 0);
+
+    if (cleanedIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must contain at least one valid id",
+      });
+    }
+
+    // Ensure the overviews belong to this partner before deleting
+    const existing = await prisma.storeOrderOverview.findMany({
+      where: {
+        id: { in: cleanedIds },
+        partnerId: userId,
+      },
+      select: { id: true },
+    });
+
+    const existingIds = existing.map((o) => o.id);
+
+    if (existingIds.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No matching store overviews found for this user",
+      });
+    }
+
+    const result = await prisma.storeOrderOverview.deleteMany({
+      where: {
+        id: { in: existingIds },
+        partnerId: userId,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${result.count} store overview(s) successfully`,
+      data: {
+        deletedCount: result.count,
+        deletedIds: existingIds,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
       success: false,
       message: "Something went wrong",
       error: error instanceof Error ? error.message : "Unknown error",

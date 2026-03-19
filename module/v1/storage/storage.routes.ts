@@ -16,12 +16,18 @@ import {
   updateOverview,
   getStoreOverviewById,
   getAllMyStoreOverview,
+  deleteStoreOverview,
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
 
 const router = express.Router();
 
+// Base URL for this router (from v1/index.ts):
+//   _baseurl/store
+
+// POST _baseurl/store/create
+//  - Create a store item with image upload
 /*
  * এই রাউট আগে ব্যাবহার হতো কিন্তু বর্তমান সিষ্টেমে এটা আর ব্যাবহার হয় না।
  * কারন পার্টনার নিজে নিজে কোন Storage create করতে পারে না।
@@ -36,11 +42,15 @@ router.post(
   createStorage,
 );
 
+// POST _baseurl/store/buy
+//  - Partner buys a model from admin (creates store from admin_store)
 /*
  * /create এর পরিবর্তে এখন /buy ব্যবহার হয়
  */
 router.post("/buy", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), buyStorage);
 
+// POST _baseurl/store/add-storage
+//  - Add stock from admin_store definition without price
 // এখনে পার্টনার স্টক অ্যাাড কতে পারবে কিনা ছাড়া
 router.post(
   "/add-storage",
@@ -48,7 +58,8 @@ router.post(
   addStorage,
 );
 
-// Add quantity from admin store to existing partner store (by_admin only); creates tracking
+// POST _baseurl/store/add-storage-from-admin
+//  - Add quantity from admin store to existing partner store (by_admin only); creates tracking
 //admin er tai kinche
 router.post(
   "/add-storage-from-admin",
@@ -56,7 +67,8 @@ router.post(
   addStorageFromAdmin,
 );
 
-// Create StoreOrderOverview (requested stock) from admin-style payload
+// POST _baseurl/store/send-order-to-admin
+//  - Create StoreOrderOverview (requested stock) from admin-style payload
 //eta diye admin er kache order pathano jabe
 
 /*
@@ -68,41 +80,57 @@ router.post(
   addStorageFromAdminToOverview,
 );
 
+// GET _baseurl/store/my/get
+//  - Get all my stores with overview data
 router.get(
   "/my/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllMyStorage,
 );
+// GET _baseurl/store/get/:id
+//  - Get single store by id (must belong to user)
 router.get(
   "/get/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getSingleStorage,
 );
+// PATCH _baseurl/store/update/:id
+//  - Update store fields
 router.patch(
   "/update/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateStorage,
 );
+// DELETE _baseurl/store/delete/:id
+//  - Delete single store by id
 router.delete(
   "/delete/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteStorage,
 );
+// GET _baseurl/store/chart-data
+//  - Inventory value chart data
 router.get(
   "/chart-data",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStorageChartData,
 );
+// GET _baseurl/store/history/:id
+//  - Stock movement history for a single store
 router.get(
   "/history/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStorageHistory,
 );
+// GET _baseurl/store/performer
+//  - Top/low performer models
 router.get(
   "/performer",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStoragePerformer,
 );
+// GET _baseurl/store/store-overview
+//  - Admin: paginated list of all storeOrderOverview
 //store overviwe
 router.get(
   "/store-overview",
@@ -110,22 +138,37 @@ router.get(
   getStoreOverviews,
 );
 
+// PATCH _baseurl/store/update-overview/:id
+//  - Update status or delivered_quantity of a storeOrderOverview
 router.patch(
   "/update-overview/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateOverview,
 );
+// GET _baseurl/store/get-store-overview-by-id/:id
+//  - Get single storeOrderOverview by id
 router.get(
   "/get-store-overview-by-id/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStoreOverviewById,
 );
 
+// GET _baseurl/store/get-all-my-store-overview
+//  - Partner: list my own storeOrderOverview
 //get all my store overview
 router.get(
   "/get-all-my-store-overview",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllMyStoreOverview,
+);
+
+// DELETE _baseurl/store/delete-store-overview
+//  - Partner: delete list of own storeOrderOverview by ids (in body)
+//delete store overview
+router.delete(
+  "/delete-store-overview",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  deleteStoreOverview,
 );
 
 export default router;

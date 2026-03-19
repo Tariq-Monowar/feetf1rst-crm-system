@@ -215,7 +215,7 @@ export const dailyReport = () => {
               const orderNumber = await generateNextOrderNumber(
                 String(store.userId)
               );
-              const note = `AutoOrderCron:${createdOverview.id}`;
+              const note = `Stock`;
 
               await prisma.$executeRaw`
                 INSERT INTO admin_order_transitions (
