@@ -252,6 +252,9 @@ export const createOrder = async (req: Request, res: Response) => {
     } = body;
     const privetSupply = key;
     const isHalbprobe = toBool(halbprobe);
+    // Accept both snake_case and camelCase from clients
+    const austriaPriceInput =
+      austriaPriceFromBody != null ? austriaPriceFromBody : (body as any)?.austriaPrice;
 
     // --- 1. Required fields ---
     const requiredBase = privetSupply
@@ -280,9 +283,9 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const totalPrice = isHalbprobe ? 0 : Number(totalPriceFromClient);
     if (
-      austriaPriceFromBody != null &&
-      austriaPriceFromBody !== "" &&
-      Number.isNaN(Number(austriaPriceFromBody))
+      austriaPriceInput != null &&
+      austriaPriceInput !== "" &&
+      Number.isNaN(Number(austriaPriceInput))
     ) {
       return bad(400, "austria_price must be a valid number");
     }
@@ -730,11 +733,11 @@ export const createOrder = async (req: Request, res: Response) => {
       if (einlagenversorgungPreis != null)
         orderData.einlagenversorgungPreis = Number(einlagenversorgungPreis);
       if (
-        austriaPriceFromBody != null &&
-        austriaPriceFromBody !== "" &&
-        !Number.isNaN(Number(austriaPriceFromBody))
+        austriaPriceInput != null &&
+        austriaPriceInput !== "" &&
+        !Number.isNaN(Number(austriaPriceInput))
       ) {
-        orderData.austria_price = Number(austriaPriceFromBody);
+        orderData.austria_price = Number(austriaPriceInput);
       }
       if (discount != null) orderData.discount = discountPercent;
       orderData.werkstattzettel =
