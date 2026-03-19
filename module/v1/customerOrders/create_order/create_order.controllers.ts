@@ -32,6 +32,7 @@ import {
 export const createOrder = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
+  const toBool = (v: unknown) => v === true || v === "true";
 
   /** Fields we need from Versorgungen when loading or creating one. */
   const VERSORGUNG_SELECT = {
@@ -98,32 +99,61 @@ export const createOrder = async (req: Request, res: Response) => {
       privatePrice: privatePriceFromBody,
       totalPrice: totalPriceFromClient,
       vat_rate,
+      austria_price: austriaPriceFromBody,
+      werkstattzettel,
+      kva,
+      halbprobe,
     } = body;
+    const isHalbprobe = toBool(halbprobe);
+    // Accept both snake_case and camelCase for Austria price
+    const austriaPriceInput =
+      austriaPriceFromBody != null
+        ? austriaPriceFromBody
+        : (body as any)?.austriaPrice;
 
     /*--------------------------
              VALIDATE REQUIRED FIELDS AND PAYMENT
              Required fields differ: with private supply we don't need versorgungId.
-             Then: check bezahlt, totalPrice, and for insurance orders require
-             insurances array. payment_type = insurance | private | broth (mixed).
+             For halbprobe orders we skip payment-related required fields and validation.
+             For normal orders we require bezahlt, and validate totalPrice only when provided.
+             payment_type = insurance | private | broth (mixed).
     ----------------------------*/
-    const required = privetSupply
-      ? ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"]
-      : [
-          "customerId",
-          "versorgungId",
-          "bezahlt",
-          "geschaeftsstandort",
-          "totalPrice",
-        ];
-    for (const f of required) if (!body[f]) return bad(400, `${f} is required`);
-    if (!PAYMENT_STATUSES.includes(bezahlt))
-      return bad(400, "Invalid payment status", {
-        validStatuses: PAYMENT_STATUSES,
-      });
+    const requiredBase = privetSupply
+      ? ["customerId", "geschaeftsstandort"]
+      : ["customerId", "versorgungId", "geschaeftsstandort"];
+    const required = isHalbprobe ? requiredBase : [...requiredBase, "bezahlt"];
+    for (const f of required) {
+      if (!body[f]) return bad(400, `${f} is required`);
+    }
 
-    const totalPrice = Number(totalPriceFromClient);
-    if (Number.isNaN(totalPrice))
-      return bad(400, "totalPrice must be a valid number");
+    if (!isHalbprobe) {
+      if (!PAYMENT_STATUSES.includes(bezahlt))
+        return bad(400, "Invalid payment status", {
+          validStatuses: PAYMENT_STATUSES,
+        });
+
+      // totalPrice can be null or 0. Only validate when a non-empty value is provided.
+      if (
+        totalPriceFromClient !== undefined &&
+        totalPriceFromClient !== null &&
+        totalPriceFromClient !== ""
+      ) {
+        const parsedTotal = Number(totalPriceFromClient);
+        if (Number.isNaN(parsedTotal))
+          return bad(400, "totalPrice must be a valid number");
+      }
+
+      // austria_price must be a valid number when provided
+      if (
+        austriaPriceInput != null &&
+        austriaPriceInput !== "" &&
+        Number.isNaN(Number(austriaPriceInput))
+      ) {
+        return bad(400, "austria_price must be a valid number");
+      }
+    }
+
+    const totalPrice = isHalbprobe ? 0 : Number(totalPriceFromClient);
 
     const isNum = (v: unknown) =>
       v != null && v !== "" && !Number.isNaN(Number(v));
@@ -518,6 +548,15 @@ export const createOrder = async (req: Request, res: Response) => {
             ? Number(insuranceTotalPrice) || 0
             : 0,
         paymnentType: payment_type,
+        kva: toBool(kva),
+        halbprobe: toBool(halbprobe),
+        werkstattzettel:
+          werkstattzettel !== false && werkstattzettel !== "false",
+        ...(austriaPriceInput != null &&
+          austriaPriceInput !== "" &&
+          !Number.isNaN(Number(austriaPriceInput)) && {
+            austria_price: Number(austriaPriceInput),
+          }),
         type: store?.type ?? "rady_insole",
         u_orderType:
           body.orderCategory === "sonstiges"
