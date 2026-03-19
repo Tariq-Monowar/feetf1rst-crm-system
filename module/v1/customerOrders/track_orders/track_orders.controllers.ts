@@ -2441,6 +2441,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         quantity: true,
         orderNumber: true,
         austria_price: true,
+        überzug: true,
         partner: {
           select: {
             name: true,
@@ -2529,6 +2530,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         },
         quantity: order?.quantity,
         orderNumber: order?.orderNumber,
+        überzug: order?.überzug,
       },
     });
   } catch (error: any) {
