@@ -3,6 +3,7 @@ import { verifyUser } from "../../../../middleware/verifyUsers";
 import {
   createInventorySupplier,
   getInventorySupplierList,
+  getInventorySupplierDetails,
   getInventorySupplierById,
   updateInventorySupplier,
   deleteInventorySupplier,
@@ -17,6 +18,9 @@ router.post("/create", verifyUser("EMPLOYEE", "PARTNER"), createInventorySupplie
 
 // GET _baseurl/v2/inventory-supplier/list
 router.get("/list", verifyUser("EMPLOYEE", "PARTNER"), getInventorySupplierList);
+
+// GET _baseurl/v2/inventory-supplier/details/:id
+router.get("/details/:id", verifyUser("EMPLOYEE", "PARTNER"), getInventorySupplierDetails);
 
 // GET _baseurl/v2/inventory-supplier/details/:id
 router.get(

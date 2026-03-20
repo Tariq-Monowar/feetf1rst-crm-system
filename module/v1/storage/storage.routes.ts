@@ -17,6 +17,7 @@ import {
   getStoreOverviewById,
   getAllMyStoreOverview,
   deleteStoreOverview,
+  getStorePrice,
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -82,6 +83,13 @@ router.post(
   "/send-order-to-admin",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   addStorageFromAdminToOverview,
+);
+
+// GET _baseurl/store/get-store-price/:storeId
+router.get(
+  "/get-store-price/:storeId",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getStorePrice,
 );
 
 // GET _baseurl/store/my/get

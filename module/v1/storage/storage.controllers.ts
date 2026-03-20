@@ -1042,6 +1042,89 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
   }
 };
 
+export const getStorePrice = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+
+    const rawStoreId = req.params.storeId;
+    // `req.query.storeId` can be string | ParsedQs | (string | ParsedQs)[]
+    const storeId =
+      typeof rawStoreId === "string"
+        ? rawStoreId
+        : Array.isArray(rawStoreId)
+          ? String(rawStoreId[0] ?? "")
+          : typeof rawStoreId === "undefined"
+            ? ""
+            : String((rawStoreId as any)?.toString?.() ?? "");
+
+    if (!storeId) {
+      return res.status(400).json({
+        success: false,
+        message: "storeId is required",
+      });
+    }
+
+    // Select only: transition price + main store id.
+    const store = await prisma.storeOrderOverview.findFirst({
+      where: { id: storeId, partnerId },
+      select: {
+        delivered_quantity: true,
+        id: true,
+        store: {
+          select: {
+            id: true,
+            produktname: true,
+            image: true,
+            hersteller: true,
+          },
+        }, // main store
+        adminOrderTransition: {
+          select: { price: true },
+        },
+        partner: {
+          select: {
+            storeLocations: {
+              where: { isPrimary: true },
+              take: 1,
+              orderBy: { createdAt: "desc" },
+              select: {
+                address: true,
+                description: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Store price fetched successfully",
+      data: {
+        storeOrderOverviewId: store.id,
+        groessenMengen: store.delivered_quantity,
+        mainStore: store.store,
+        price: store.adminOrderTransition?.price ?? null,
+        primaryStoreLocation: store.partner?.storeLocations?.[0] ?? null,
+      },
+    });
+  } catch (error: any) {
+    console.error("getStorePrice error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? "Unknown error",
+    });
+  }
+};
+
 export const getAllMyStorage = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;

@@ -25,16 +25,29 @@ export const createInventorySupplier = async (req: Request, res: Response) => {
       });
     }
 
-    const contactName = parseStringOrNull(req.body?.contactName ?? req.body?.ansprechpartner);
+    const contactName = parseStringOrNull(
+      req.body?.contactName ?? req.body?.ansprechpartner,
+    );
     const email = parseStringOrNull(req.body?.email);
     const phone = parseStringOrNull(req.body?.phone ?? req.body?.telefon);
-    const street = parseStringOrNull(req.body?.street ?? req.body?.strasse ?? req.body?.straße);
+    const street = parseStringOrNull(
+      req.body?.street ?? req.body?.strasse ?? req.body?.straße,
+    );
     const postalCode = parseStringOrNull(req.body?.postalCode ?? req.body?.plz);
     const city = parseStringOrNull(req.body?.city ?? req.body?.ort);
     const country = parseStringOrNull(req.body?.country ?? req.body?.land);
-    const vatIdNumber = parseStringOrNull(req.body?.vatIdNumber ?? req.body?.ustIdNr ?? req.body?.ustIdNR ?? req.body?.ustIdNr);
+    const vatIdNumber = parseStringOrNull(
+      req.body?.vatIdNumber ??
+        req.body?.ustIdNr ??
+        req.body?.ustIdNR ??
+        req.body?.ustIdNr,
+    );
     const paymentTargetDays = parseIntOrNull(
-      req.body?.paymentTargetDays ?? req.body?.zahlungzielTage ?? req.body?.zahlungziel ?? req.body?.zahlungzielTage ?? req.body?.days,
+      req.body?.paymentTargetDays ??
+        req.body?.zahlungzielTage ??
+        req.body?.zahlungziel ??
+        req.body?.zahlungzielTage ??
+        req.body?.days,
     );
     const notes = parseStringOrNull(req.body?.notes ?? req.body?.notizen);
 
@@ -123,6 +136,46 @@ export const getInventorySupplierList = async (req: Request, res: Response) => {
   }
 };
 
+export const getInventorySupplierDetails = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    const partnerId = String(req.user.id);
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "id is required",
+      });
+    }
+
+    const supplier = await (prisma as any).inventory_supplier.findUnique({
+      where: { id, partnerId },
+    });
+
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Inventory supplier not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Inventory supplier details fetched successfully",
+      data: supplier,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? "Unknown error",
+    });
+  }
+};
+
 export const updateInventorySupplier = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -160,28 +213,42 @@ export const updateInventorySupplier = async (req: Request, res: Response) => {
       const v = String(req.body?.name ?? "").trim();
       updateData.name = v || null;
     }
-    if (req.body?.contactName !== undefined || req.body?.ansprechpartner !== undefined) {
+    if (
+      req.body?.contactName !== undefined ||
+      req.body?.ansprechpartner !== undefined
+    ) {
       updateData.contactName = parseStringOrNull(
         req.body?.contactName ?? req.body?.ansprechpartner,
       );
     }
-    if (req.body?.email !== undefined) updateData.email = parseStringOrNull(req.body?.email);
+    if (req.body?.email !== undefined)
+      updateData.email = parseStringOrNull(req.body?.email);
     if (req.body?.phone !== undefined || req.body?.telefon !== undefined) {
-      updateData.phone = parseStringOrNull(req.body?.phone ?? req.body?.telefon);
+      updateData.phone = parseStringOrNull(
+        req.body?.phone ?? req.body?.telefon,
+      );
     }
-    if (req.body?.street !== undefined || req.body?.strasse !== undefined || req.body?.straße !== undefined) {
+    if (
+      req.body?.street !== undefined ||
+      req.body?.strasse !== undefined ||
+      req.body?.straße !== undefined
+    ) {
       updateData.street = parseStringOrNull(
         req.body?.street ?? req.body?.strasse ?? req.body?.straße,
       );
     }
     if (req.body?.postalCode !== undefined || req.body?.plz !== undefined) {
-      updateData.postalCode = parseStringOrNull(req.body?.postalCode ?? req.body?.plz);
+      updateData.postalCode = parseStringOrNull(
+        req.body?.postalCode ?? req.body?.plz,
+      );
     }
     if (req.body?.city !== undefined || req.body?.ort !== undefined) {
       updateData.city = parseStringOrNull(req.body?.city ?? req.body?.ort);
     }
     if (req.body?.country !== undefined || req.body?.land !== undefined) {
-      updateData.country = parseStringOrNull(req.body?.country ?? req.body?.land);
+      updateData.country = parseStringOrNull(
+        req.body?.country ?? req.body?.land,
+      );
     }
     if (
       req.body?.vatIdNumber !== undefined ||
@@ -204,7 +271,9 @@ export const updateInventorySupplier = async (req: Request, res: Response) => {
       );
     }
     if (req.body?.notes !== undefined || req.body?.notizen !== undefined) {
-      updateData.notes = parseStringOrNull(req.body?.notes ?? req.body?.notizen);
+      updateData.notes = parseStringOrNull(
+        req.body?.notes ?? req.body?.notizen,
+      );
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -317,7 +386,10 @@ export const deleteInventorySupplier = async (req: Request, res: Response) => {
   }
 };
 
-export const getInventorySupplierNameAndId = async (req: Request, res: Response) => {
+export const getInventorySupplierNameAndId = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const partnerId = String(req.user.id);
 

@@ -942,10 +942,11 @@ export const getCustomerById = async (req: Request, res: Response) => {
         take: 1,
         select: {
           id: true,
+          insurance_number: true,
           prescription_date: true,
           prescription_number: true,
           insurance_provider: true,
-          insurance_number: true,
+      
           medical_diagnosis: true,
           doctor_name: true,
           doctor_location: true,
