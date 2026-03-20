@@ -9,6 +9,11 @@ import {
   deleteInventory,
   getDashboardKpis,
 } from "./inventory_management.controllers";
+import {
+  addInventoryPositions,
+  deleteInventoryPosition,
+  updateInventoryPosition,
+} from "./inventory_positions/inventory_positions.controllers";
 
 const router = express.Router();
 
@@ -42,6 +47,27 @@ router.get("/dashboard-kpis", verifyUser("EMPLOYEE", "PARTNER"), getDashboardKpi
 
 // POST _baseurl/v2/inventory-management/create-inventory
 router.post("/create-inventory", verifyUser("EMPLOYEE", "PARTNER"), handleDelevearyNoteUpload, createInventory);
+
+// POST _baseurl/v2/inventory-management/inventory-positions/add
+router.post(
+  "/inventory-positions/add",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  addInventoryPositions,
+);
+
+// PATCH _baseurl/v2/inventory-management/inventory-positions/update/:id
+router.patch(
+  "/inventory-positions/update/:id",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  updateInventoryPosition,
+);
+
+// DELETE _baseurl/v2/inventory-management/inventory-positions/delete/:id
+router.delete(
+  "/inventory-positions/delete/:id",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  deleteInventoryPosition,
+);
 
 // GET _baseurl/v2/inventory-management/get-all-inventory
 router.get("/get-all-inventory", verifyUser("EMPLOYEE", "PARTNER"), getAllInventories);
