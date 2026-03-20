@@ -2527,6 +2527,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             name: true,
             busnessName: true,
             image: true,
+            
             storeLocations: {
               where: { isPrimary: true },
               take: 1,
@@ -2562,6 +2563,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             picture_24: true,
           },
         },
+         
       },
     });
 
