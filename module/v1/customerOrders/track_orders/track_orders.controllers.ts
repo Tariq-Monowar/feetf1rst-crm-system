@@ -366,14 +366,12 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
           select: {
             id: true,
             employeeName: true,
-            email: true,
           },
         },
         partner: {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
       },
@@ -395,14 +393,12 @@ export const getOrdersHistory = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
         employee: {
           select: {
             id: true,
             employeeName: true,
-            email: true,
           },
         },
       },
@@ -747,6 +743,36 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
     return status.replace(/_/g, " ");
   };
 
+  const humanizePaymentFlagsChangedNote = (note: string): string => {
+    // Example: "Payment flags changed: insurance_payed false -> false, private_payed false -> true"
+    if (!note.includes("Payment flags changed")) return note;
+
+    const parseFlag = (flag: string) => {
+      const re = new RegExp(
+        `${flag}\\s+(true|false)\\s*->\\s*(true|false)`,
+        "i",
+      );
+      const m = note.match(re);
+      if (!m) return null;
+      const from = m[1].toLowerCase() === "true";
+      const to = m[2].toLowerCase() === "true";
+      return { from, to };
+    };
+
+    const insurance = parseFlag("insurance_payed");
+    const priv = parseFlag("private_payed");
+
+    const parts: string[] = [];
+    if (insurance && insurance.to !== insurance.from) {
+      parts.push(insurance.to ? "Versicherung: bezahlt" : "Versicherung: offen");
+    }
+    if (priv && priv.to !== priv.from) {
+      parts.push(priv.to ? "Privat: bezahlt" : "Privat: offen");
+    }
+
+    return parts.length > 0 ? parts.join(", ") : "Zahlungsstatus geändert";
+  };
+
   const translateLogType = (
     type:
       | "status_change"
@@ -860,7 +886,6 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           select: {
             id: true,
             employeeName: true,
-            email: true,
           },
         },
         screenerFile: {
@@ -873,7 +898,6 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
       },
@@ -886,34 +910,64 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       });
     }
 
-    // Get ALL order history (status + payment changes)
-    const allHistory = await prisma.customerOrdersHistory.findMany({
-      where: { orderId },
-      orderBy: { createdAt: "asc" },
-      include: {
-        partner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+    // Performance: split history.
+    // - status history is needed to compute timeline/durations
+    // - payment history can be very large; cap it to keep endpoint fast
+    const PAYMENT_HISTORY_TAKE = 500;
+
+    const [statusHistory, paymentHistory] = await Promise.all([
+      prisma.customerOrdersHistory.findMany({
+        where: { orderId, isPrementChange: false },
+        orderBy: { createdAt: "asc" },
+        include: {
+          partner: { select: { id: true, name: true } },
+          employee: { select: { id: true, employeeName: true } },
         },
-        employee: {
-          select: {
-            id: true,
-            employeeName: true,
-            email: true,
-          },
+      }),
+      prisma.customerOrdersHistory.findMany({
+        where: { orderId, isPrementChange: true },
+        orderBy: { createdAt: "asc" },
+        take: PAYMENT_HISTORY_TAKE,
+        include: {
+          partner: { select: { id: true, name: true } },
+          employee: { select: { id: true, employeeName: true } },
         },
-      },
-    });
+      }),
+    ]);
+
+    // Merge asc by createdAt (both arrays are already sorted asc)
+    const allHistory: typeof statusHistory = [];
+    let i = 0;
+    let j = 0;
+    while (i < statusHistory.length || j < paymentHistory.length) {
+      const a = statusHistory[i];
+      const b = paymentHistory[j];
+
+      if (!b) {
+        allHistory.push(a);
+        i++;
+        continue;
+      }
+      if (!a) {
+        allHistory.push(b);
+        j++;
+        continue;
+      }
+
+      if (a.createdAt.getTime() <= b.createdAt.getTime()) {
+        allHistory.push(a);
+        i++;
+      } else {
+        allHistory.push(b);
+        j++;
+      }
+    }
 
     // ✅ STEP 1: Calculate the 2 required durations for "Step Duration Overview"
 
     // Filter only status changes (not payment changes)
-    const statusChanges = allHistory
-      .filter((record) => !record.isPrementChange)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    // We already queried statusHistory (isPrementChange=false), so reuse it directly.
+    const statusChanges = statusHistory;
 
     // Build a timeline of status periods
     const timeline: Array<{
@@ -1110,10 +1164,8 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       },
     });
 
-    // Process all history entries in chronological order
-    const sortedHistory = [...allHistory].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-    );
+    // `allHistory` is already chronological (createdAt asc), so we can reuse it directly.
+    const sortedHistory = allHistory;
 
     for (const record of sortedHistory) {
       const userName =
@@ -1123,7 +1175,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
         // Payment change: show note when it describes insurance/private flags (broth); else use paymentFrom → paymentTo
         const noteText =
           record.note && record.note.trim() !== ""
-            ? record.note
+            ? humanizePaymentFlagsChangedNote(record.note)
             : record.paymentFrom != null || record.paymentTo != null
               ? `${formatPaymentStatus(record.paymentFrom)} → ${formatPaymentStatus(record.paymentTo)}`
               : "Zahlungsstatus geändert";
@@ -1148,7 +1200,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
             id: record.id,
             date: record.createdAt,
             user: userName,
-            action: `${userName} Status geändert: ${formatStatusName(
+            action: `Status geändert: ${formatStatusName(
               record.statusFrom,
             )} → ${formatStatusName(record.statusTo)}`,
             note: `${formatStatusName(record.statusFrom)} → ${formatStatusName(
@@ -1197,10 +1249,9 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
       });
     }
 
-    // Sort by date descending (newest first for UI, matching the image)
-    changeLog.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
+    // `changeLog` is built in chronological order (initial first, then history asc),
+    // so reverse for newest-first UI. (Avoid O(n log n) sort.)
+    changeLog.reverse();
 
     // ✅ STEP 3: Build response matching UI requirements
     res.status(200).json({
@@ -1247,9 +1298,10 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
         })),
 
         // SECTION 3: Payment Status History (payment changes only; for broth, note has insurance/private flag changes)
-        paymentStatusHistory: allHistory
-          .filter((record) => record.isPrementChange)
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        paymentStatusHistory: paymentHistory
+          // paymentHistory is asc; reverse to get newest-first.
+          .slice()
+          .reverse()
           .map((record) => ({
             id: record.id,
             date: formatDate(record.createdAt),
@@ -1314,9 +1366,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           currentStatus: formatStatusName(order.orderStatus),
           currentPaymentStatus: getPaymentStatusDisplay(order),
           totalEvents: changeLog.length,
-          totalPaymentChanges: allHistory.filter(
-            (record) => record.isPrementChange,
-          ).length,
+          totalPaymentChanges: paymentHistory.length,
           hasBarcodeScan: hasBarcodeLabel || hasBarcodeCreatedAt,
         },
         scannerInfo: {
