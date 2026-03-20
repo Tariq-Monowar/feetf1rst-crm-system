@@ -12,6 +12,9 @@ import {
 
 const router = express.Router();
 
+// Base URL (from module/v2/index.ts):
+// _baseurl/v2/inventory-management
+
 /* Wrapper to catch multer/S3 upload errors (same pattern as news) */
 const handleDelevearyNoteUpload = (req: Request, res: Response, next: NextFunction) => {
   upload.single("deleveary_note")(req, res, (err: any) => {
@@ -34,11 +37,22 @@ const handleDelevearyNoteUpload = (req: Request, res: Response, next: NextFuncti
  * - Response: { success, message, data?, hasMore? }
  */
 
+// GET _baseurl/v2/inventory-management/dashboard-kpis
 router.get("/dashboard-kpis", verifyUser("EMPLOYEE", "PARTNER"), getDashboardKpis);
+
+// POST _baseurl/v2/inventory-management/create-inventory
 router.post("/create-inventory", verifyUser("EMPLOYEE", "PARTNER"), handleDelevearyNoteUpload, createInventory);
+
+// GET _baseurl/v2/inventory-management/get-all-inventory
 router.get("/get-all-inventory", verifyUser("EMPLOYEE", "PARTNER"), getAllInventories);
+
+// GET _baseurl/v2/inventory-management/get-single-inventory/:id
 router.get("/get-single-inventory/:id", verifyUser("EMPLOYEE", "PARTNER"), getInventoryById);
+
+// PATCH _baseurl/v2/inventory-management/update-inventory/:id
 router.patch("/update-inventory/:id", verifyUser("EMPLOYEE", "PARTNER"), handleDelevearyNoteUpload, updateInventory);
+
+// DELETE _baseurl/v2/inventory-management/delete-inventory/:id
 router.delete("/delete-inventory/:id", verifyUser("EMPLOYEE", "PARTNER"), deleteInventory);
 
 export default router;

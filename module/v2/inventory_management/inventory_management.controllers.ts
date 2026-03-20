@@ -192,11 +192,12 @@ export const getInventoryById = async (req: Request, res: Response) => {
 
 export const createInventory = async (req: Request, res: Response) => {
   const file = req.file as { location?: string } | undefined;
+
   const cleanupFiles = () => {
     if (file?.location) deleteFileFromS3(file.location);
   };
+
   try {
-    /* multipart/form-data: all fields come as strings from req.body; file from req.file */
     const {
       inventory_type,
       supplier,
@@ -206,11 +207,71 @@ export const createInventory = async (req: Request, res: Response) => {
       payment_status,
       payment_date,
       we_linked,
+      inventory_positions, // <-- full JSON array expected
     } = req.body;
 
     const partnerId = req.user.id;
 
-    // ✅ Validation
+    // --- Helpers ---
+    const parseNumberOrNull = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const parseIntOrNull = (v: unknown) => {
+      const n = parseInt(String(v), 10);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    // --- Validate inventory_positions ---
+    const parsePositionsInput = (raw: unknown): any[] => {
+      if (raw === undefined || raw === null) return [];
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === "string") {
+        const s = raw.trim();
+        if (!s) return [];
+        try {
+          const parsed = JSON.parse(s);
+          return Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          return [];
+        }
+      }
+      return [raw];
+    };
+
+    const positionsRaw = parsePositionsInput(inventory_positions);
+    const positionsFieldProvided = inventory_positions !== undefined;
+
+    if (positionsFieldProvided && positionsRaw.length === 0) {
+      cleanupFiles();
+      return res.status(400).json({
+        success: false,
+        message: "`inventory_positions` must be a JSON array",
+      });
+    }
+
+    const positionsData = positionsRaw
+      .filter((p) => p && typeof p === "object")
+      .map((p: any) => ({
+        article: p.article ?? p.name ?? null,
+        category: p.category ?? p.cat ?? null,
+        quantity: parseIntOrNull(p.quantity),
+        unit: parseNumberOrNull(p.unit),
+        unit_price: parseNumberOrNull(p.unit_price ?? p.unitPrice),
+        total_price: parseNumberOrNull(p.total_price ?? p.totalPrice),
+      }))
+      .filter(
+        (p) =>
+          p.article ||
+          p.category ||
+          p.quantity != null ||
+          p.unit != null ||
+          p.unit_price != null ||
+          p.total_price != null
+      );
+
+    // --- Validate other fields ---
     if (!VALID_INVENTORY_TYPES.includes(inventory_type)) {
       cleanupFiles();
       return res.status(400).json({
@@ -219,6 +280,7 @@ export const createInventory = async (req: Request, res: Response) => {
         validInventoryTypes: VALID_INVENTORY_TYPES,
       });
     }
+
     if (!VALID_STATUSES.includes(status)) {
       cleanupFiles();
       return res.status(400).json({
@@ -227,6 +289,7 @@ export const createInventory = async (req: Request, res: Response) => {
         validStatuses: VALID_STATUSES,
       });
     }
+
     if (!VALID_PAYMENT_STATUSES.includes(payment_status)) {
       cleanupFiles();
       return res.status(400).json({
@@ -236,74 +299,80 @@ export const createInventory = async (req: Request, res: Response) => {
       });
     }
 
-    // ✅ Convert to boolean
     const we_linked_boolean = Boolean(we_linked);
 
-    // ✅ Generate Number
-    let number = "";
-
-    if (inventory_type === "Orders") {
-      const year = new Date().getFullYear();
-
-      const lastOrder = await prisma.inventory_management.findFirst({
-        where: { inventory_type: "Orders" },
-        orderBy: { id: "desc" },
-      });
-
-      let next = 1;
-
-      if (lastOrder?.number) {
-        const parts = lastOrder.number.split("-");
-        next = parseInt(parts[2]) + 1;
+    // --- Generate inventory number ---
+    const generateInventoryNumber = async () => {
+      if (inventory_type === "Orders") {
+        const year = new Date().getFullYear();
+        const lastOrder = await prisma.inventory_management.findFirst({
+          where: { inventory_type: "Orders" },
+          orderBy: { createdAt: "desc" },
+        });
+        const next = lastOrder?.number
+          ? parseInt(lastOrder.number.split("-")[2]) + 1
+          : 1;
+        return `B-${year}-${String(next).padStart(3, "0")}`;
       }
 
-      number = `B-${year}-${String(next).padStart(3, "0")}`;
-    }
-
-    if (inventory_type === "Invoices") {
-      const lastInvoice = await prisma.inventory_management.findFirst({
-        where: { inventory_type: "Invoices" },
-        orderBy: { id: "desc" },
-      });
-
-      let next = 48290;
-
-      if (lastInvoice?.number) {
-        const num = lastInvoice.number.replace("RE-", "");
-        next = parseInt(num) + 1;
+      if (inventory_type === "Invoices") {
+        const lastInvoice = await prisma.inventory_management.findFirst({
+          where: { inventory_type: "Invoices" },
+          orderBy: { createdAt: "desc" },
+        });
+        const next = lastInvoice?.number
+          ? parseInt(lastInvoice.number.replace("RE-", "")) + 1
+          : 48290;
+        return `RE-${next}`;
       }
 
-      number = `RE-${next}`;
-    }
+      return "";
+    };
 
-    // ✅ Parse amount (multipart sends string; Prisma expects Float?)
-    const amountNum =
-      amount != null && amount !== "" ? (() => {
-        const n = Number(amount);
-        return Number.isNaN(n) ? null : n;
-      })() : null;
+    const number = await generateInventoryNumber();
 
-    // ✅ Create Inventory (date + payment_date must be Date for Prisma DateTime)
-    const inventory = await prisma.inventory_management.create({
-      data: {
-        number,
-        inventory_type,
-        supplier,
-        date: date != null && date !== "" ? new Date(date) : null,
-        amount: amountNum,
-        status,
-        payment_status,
-        payment_date: payment_date != null && payment_date !== "" ? new Date(payment_date) : null,
-        we_linked: we_linked_boolean,
-        deleveary_note: file?.location ?? null,
-        partnerId,
-      },
+    // --- Parse amount ---
+    const amountNum = amount != null && amount !== "" ? parseNumberOrNull(amount) : null;
+
+    // --- Create inventory ---
+    const inventory = await prisma.$transaction(async (tx) => {
+      const inv = await tx.inventory_management.create({
+        data: {
+          number,
+          inventory_type,
+          supplier,
+          date: date ? new Date(date) : null,
+          amount: amountNum,
+          status,
+          payment_status,
+          payment_date: payment_date ? new Date(payment_date) : null,
+          we_linked: we_linked_boolean,
+          deleveary_note: file?.location ?? null,
+          partnerId,
+        },
+      });
+
+      if (positionsData.length > 0) {
+        await (tx as any).inventory_positions.createMany({
+          data: positionsData.map((p) => ({
+            inventory_management_id: inv.id,
+            ...p,
+          })),
+        });
+      }
+
+      return inv;
     });
 
     return res.status(201).json({
       success: true,
       message: INVENTORY_RESPONSE_MESSAGES.create,
-      data: inventory,
+      // Avoid extra DB round-trip. Client already sent inventory_positions;
+      // we return them back so response stays useful and faster.
+      data: {
+        ...(inventory as any),
+        inventoryPositions: positionsData,
+      },
     });
   } catch (error: any) {
     cleanupFiles();

@@ -98,6 +98,7 @@ model User {
   appomnentRooms              appomnent_room[]
   appomnentBookingRules       appomnent_booking_rules[]
   documentsAndClaims          documents_and_claims[]
+  inventorySuppliers          inventory_supplier[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -2396,6 +2397,14 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2419,6 +2428,14 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3504,6 +3521,17 @@ enum inventory_status {
   Partially
 }
 
+model inventory_supplier {
+  id String @id @default(cuid())
+
+  name String?
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
 model inventory_management {
   id             String          @id @default(cuid())
   number         String?
@@ -3538,8 +3566,9 @@ model inventory_management {
 
   deleveary_note String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  inventoryPositions inventory_positions[]
 }
 
 model documents_and_claims {
@@ -3572,4 +3601,21 @@ enum document_type {
   cost_estimate // KV-2024-0078
   invoices //	RE-2024-1201
   delivery_notes //LS-2024-0898	
+}
+
+model inventory_positions {
+  id String @id @default(cuid())
+
+  inventory_management_id String?
+  inventory_management    inventory_management? @relation(fields: [inventory_management_id], references: [id], onDelete: Cascade)
+
+  article     String?
+  category    String?
+  quantity    Int?
+  unit        Float?
+  unit_price  Float?
+  total_price Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
