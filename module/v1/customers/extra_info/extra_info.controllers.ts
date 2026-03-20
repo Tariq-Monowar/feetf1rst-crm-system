@@ -432,11 +432,7 @@ export const addKvaPdf = async (req: Request, res: Response) => {
       });
     }
 
-    // Replace existing PDFs for this customer (single latest file approach)
-    await (prisma as any).customer_kva_pdf.deleteMany({
-      where: { customerId },
-    });
-
+    // Allow multiple uploads: do NOT delete existing PDFs here.
     const created = await (prisma as any).customer_kva_pdf.create({
       data: {
         customerId,
@@ -552,22 +548,60 @@ export const getKvaPdf = async (req: Request, res: Response) => {
       });
     }
 
-    const kvaPdf = await (prisma as any).customer_kva_pdf.findFirst({
-      where: { customerId },
-      select: { pdf: true },
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit as string, 10) || 10),
+    );
+
+    let whereCondition: any = { customerId };
+    let cursorRow: { id: string; createdAt: Date } | null = null;
+
+    if (cursor) {
+      cursorRow = await (prisma as any).customer_kva_pdf.findFirst({
+        where: { id: cursor, customerId },
+        select: { id: true, createdAt: true },
+      });
+
+      if (cursorRow) {
+        // Keyset pagination for (createdAt DESC, id DESC)
+        whereCondition = {
+          customerId,
+          OR: [
+            { createdAt: { lt: cursorRow.createdAt } },
+            {
+              createdAt: cursorRow.createdAt,
+              id: { lt: cursorRow.id },
+            },
+          ],
+        };
+      }
+    }
+
+    const itemsPlusOne = await (prisma as any).customer_kva_pdf.findMany({
+      where: whereCondition,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      select: { id: true, pdf: true, createdAt: true },
     });
 
-    if (!kvaPdf) {
-      return res.status(404).json({
-        success: false,
-        message: "KVA PDF not found",
+    if (!itemsPlusOne || itemsPlusOne.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "KVA PDFs fetched successfully",
+        data: [],
+        hasMore: false,
       });
     }
+
+    const hasMore = itemsPlusOne.length > limit;
+    const kvaPdfs = hasMore ? itemsPlusOne.slice(0, limit) : itemsPlusOne;
 
     return res.status(200).json({
       success: true,
       message: "KVA PDF fetched successfully",
-      data: kvaPdf,
+      data: kvaPdfs,
+      hasMore,
     });
   } catch (error: any) {
     return res.status(500).json({
