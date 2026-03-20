@@ -59,45 +59,73 @@ export const createEmployeeAvailability = async (
       });
     }
 
-    //dayOfWeek should be unique for the employee
-    const existingAvailability = await prisma.employee_availability.findFirst({
-      where: {
-        employeeId,
-        dayOfWeek,
-      },
-      select: {
-        dayOfWeek: true,
-      },
+    /**
+     * NOTE: Your Prisma schema has `dayOfWeek Int @unique`.
+     * That means there is only ONE employee_availability row per dayOfWeek (globally),
+     * not "per employee".
+     *
+     * So we upsert by dayOfWeek:
+     * - update employeeId/partnerId/isActive
+     * - replace availability_time slots (delete + recreate) when provided
+     */
+    const existing = await prisma.employee_availability.findUnique({
+      where: { dayOfWeek },
+      select: { id: true },
     });
-    if (existingAvailability) {
-      return res.status(400).json({
-        success: false,
-        message: "Availability for this day already exists",
-        dayOfWeek,
-      });
-    }
 
-    // Create employee availability (optionally with time slots)
-    const employeeAvailability = await prisma.employee_availability.create({
-      data: {
-        employeeId,
-        partnerId,
-        dayOfWeek,
-        isActive: true,
-        ...(timeSlots.length > 0 && {
-          availability_time: {
-            create: timeSlots.map((slot: any) => ({
+    const employeeAvailability = await prisma.$transaction(async (tx) => {
+      if (existing) {
+        if (timeSlots.length > 0) {
+          await tx.availability_time.deleteMany({
+            where: { employeeAvailabilityId: existing.id },
+          });
+
+          await tx.availability_time.createMany({
+            data: timeSlots.map((slot: any) => ({
+              employeeAvailabilityId: existing.id,
               title: slot.title,
               startTime: slot.startTime,
               endTime: slot.endTime,
               isActive: slot.isActive ?? true,
             })),
+          });
+        }
+
+        return tx.employee_availability.update({
+          where: { id: existing.id },
+          data: {
+            employeeId,
+            partnerId,
+            dayOfWeek,
+            isActive: true,
           },
-        }),
-      },
-      include: {
-        availability_time: true,
-      },
+          include: {
+            availability_time: true,
+          },
+        });
+      }
+
+      return tx.employee_availability.create({
+        data: {
+          employeeId,
+          partnerId,
+          dayOfWeek,
+          isActive: true,
+          ...(timeSlots.length > 0 && {
+            availability_time: {
+              create: timeSlots.map((slot: any) => ({
+                title: slot.title,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                isActive: slot.isActive ?? true,
+              })),
+            },
+          }),
+        },
+        include: {
+          availability_time: true,
+        },
+      });
     });
 
     res.status(201).json({
