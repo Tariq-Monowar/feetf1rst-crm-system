@@ -201,6 +201,7 @@ export const createInventory = async (req: Request, res: Response) => {
     const {
       inventory_type,
       supplier,
+      supplierId,
       date,
       amount,
       status,
@@ -340,7 +341,12 @@ export const createInventory = async (req: Request, res: Response) => {
         data: {
           number,
           inventory_type,
-          supplier,
+          supplier:
+            supplier != null && supplier !== "" ? String(supplier) : null,
+          supplierId:
+            supplierId != null && supplierId !== ""
+              ? String(supplierId)
+              : null,
           date: date ? new Date(date) : null,
           amount: amountNum,
           status,
@@ -411,6 +417,7 @@ export const updateInventory = async (req: Request, res: Response) => {
     const {
       inventory_type,
       supplier,
+      supplierId,
       date,
       amount,
       status,
@@ -446,7 +453,10 @@ export const updateInventory = async (req: Request, res: Response) => {
 
     const data: any = {};
     if (inventory_type != null) data.inventory_type = inventory_type;
-    if (supplier !== undefined) data.supplier = supplier ?? null;
+    if (supplier !== undefined)
+      data.supplier = supplier != null && supplier !== "" ? String(supplier) : null;
+    if (supplierId !== undefined)
+      data.supplierId = supplierId != null && supplierId !== "" ? String(supplierId) : null;
     if (date !== undefined) data.date = date != null && date !== "" ? new Date(date) : null;
     if (amount !== undefined) data.amount = amount != null && amount !== "" ? Number(amount) : null;
     if (status != null) data.status = status;

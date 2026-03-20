@@ -2405,6 +2405,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2428,6 +2429,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -3524,12 +3526,23 @@ enum inventory_status {
 model inventory_supplier {
   id String @id @default(cuid())
 
-  name String?
+  name              String?
+  contactName       String?
+  email             String?
+  phone             String?
+  street            String?
+  postalCode        String?
+  city              String?
+  country           String?
+  vatIdNumber       String?
+  paymentTargetDays Int?
+  notes             String?
 
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
+  createdAt            DateTime               @default(now())
+  inventoryManagements inventory_management[]
 }
 
 model inventory_management {
@@ -3563,6 +3576,9 @@ model inventory_management {
 
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  supplierId String?
+  suppliers   inventory_supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   deleveary_note String?
 
