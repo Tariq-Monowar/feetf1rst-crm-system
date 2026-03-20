@@ -677,7 +677,7 @@ model store_location {
 }
 
 model customers {
-  id             String  @id @default(uuid())
+  id             String  @id @default(cuid())
   customerNumber Int // Unique per partnerId, not globally
   vorname        String?
   nachname       String?
@@ -749,6 +749,7 @@ model customers {
   shoeOrders               shoe_order[]
   prescriptions            prescription[]
   customersSigns           customers_sign[]
+  customerKvaPdfs          customer_kva_pdf[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
@@ -763,6 +764,18 @@ model customers {
   @@index([id, email])
   @@index([createdAt])
   @@index([partnerId])
+}
+
+model customer_kva_pdf {
+  id String @id @default(cuid())
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  pdf String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model customers_sign {
@@ -2406,6 +2419,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2429,6 +2444,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2969,7 +2986,7 @@ model employee_feature_access {
 /// Nested route tree per partner. Use parentId for nesting (e.g. Einstellungen -> Grundeinstellungen).
 /// featureKey links to FeatureAccess field name for access control.
 model Route {
-  id         String  @id @default(uuid())
+  id         String  @id @default(cuid())
   title      String
   path       String
   action     Boolean @default(true)
@@ -2992,7 +3009,7 @@ model Route {
 }
 
 model notification {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   type notificationType?
 
@@ -3038,7 +3055,7 @@ model software_version {
 //--------------------------------------------------------
 
 model partners_settings {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -3112,7 +3129,7 @@ model order_settings {
 //--------------------------------------------------------
 
 model partner_conversation {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   name             String?
   image            String?
@@ -3137,7 +3154,7 @@ enum conversationType {
 }
 
 model partner_conversation_members {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   conversationId String
   conversation   partner_conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -3171,7 +3188,7 @@ enum memberRole {
 }
 
 model partner_conversation_message {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   conversationId String
   conversation   partner_conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -3221,7 +3238,7 @@ enum messageType {
  * image, title, subtitle, short description full subscription
  */
 model news {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   image            String
   title            String
@@ -3243,7 +3260,7 @@ model news {
 }
 
 model news_read {
-  id     String @id @default(uuid())
+  id     String @id @default(cuid())
   userId String
   newsId String
   news   news   @relation(fields: [newsId], references: [id], onDelete: Cascade)
@@ -3256,7 +3273,7 @@ model news_read {
 }
 
 model feetf1rst_shop {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   category      String?
   title         String?
@@ -3277,7 +3294,7 @@ model feetf1rst_shop {
 }
 
 model feetf1rst_shop_interests {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   question String?
 
@@ -3578,7 +3595,7 @@ model inventory_management {
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   supplierId String?
-  suppliers   inventory_supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  suppliers  inventory_supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   deleveary_note String?
 

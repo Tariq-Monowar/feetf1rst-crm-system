@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { prisma } from "../../../../db";
 import { Prisma } from "@prisma/client";
 import redis from "../../../../config/redis.config";
-
+import { deleteFileFromS3 } from "../../../../utils/s3utils";
 
 export const customerOrderStatus = async (req: Request, res: Response) => {
   const MAX_ORDERS_PER_TYPE = 20;
@@ -69,7 +69,6 @@ export const customerOrderStatus = async (req: Request, res: Response) => {
   }
 };
 
-
 export const addLatestActivityDate = async (req: Request, res: Response) => {
   try {
     const { customerId } = req.params as { customerId?: string };
@@ -82,10 +81,15 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
       });
     }
 
-    const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+    const withTimeout = async <T>(
+      promise: Promise<T>,
+      ms: number,
+    ): Promise<T> => {
       return await Promise.race([
         promise,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), ms),
+        ),
       ]);
     };
 
@@ -181,7 +185,7 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
               WHERE "customerId" = ${customerIdTrimmed}
             ) t
           ) AS "latestActivityDate"
-      `
+      `,
     );
 
     const customerExists = rows?.[0]?.customerExists ?? false;
@@ -202,7 +206,10 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
 
     if (redis.status === "ready") {
       try {
-        await withTimeout(redis.set(cacheKey, JSON.stringify(payload), "EX", 60 * 10), 80);
+        await withTimeout(
+          redis.set(cacheKey, JSON.stringify(payload), "EX", 60 * 10),
+          80,
+        );
       } catch {
         // ignore cache write/timeout errors
       }
@@ -216,4 +223,357 @@ export const addLatestActivityDate = async (req: Request, res: Response) => {
       error: error?.message ?? String(error),
     });
   }
-}
+};
+
+export const getKvaData = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+
+    const partnerId = req.user?.id;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer ID is required",
+      });
+    }
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    // KVA form should be created from customerId only (no order join).
+    const customer = await prisma.customers.findUnique({
+      where: { id: customerId },
+      select: {
+        partnerId: true,
+        vorname: true,
+        nachname: true,
+        wohnort: true,
+        telefon: true,
+        email: true,
+        geburtsdatum: true,
+        partner: {
+          select: {
+            image: true,
+            busnessName: true,
+            name: true,
+            phone: true,
+            email: true,
+            accountInfos: {
+              select: {
+                vat_number: true,
+                bankInfo: true,
+              },
+            },
+            orderSettings: {
+              select: {
+                shipping_addresses_for_kv: true,
+              },
+            },
+          },
+        },
+        prescriptions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            doctor_name: true,
+            doctor_location: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    if (String(customer.partnerId) !== String(partnerId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    const latestPrescription = customer.prescriptions?.[0] ?? null;
+
+    // KVI number is stored on customerOrders (pattern: KV-{year}-{kvaNumber padded to 4})
+    const latestCustomerOrderWithKva = await prisma.customerOrders.findFirst({
+      where: { customerId, partnerId, kvaNumber: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { kvaNumber: true, createdAt: true },
+    });
+
+    const yearForKva =
+      latestCustomerOrderWithKva?.createdAt instanceof Date
+        ? latestCustomerOrderWithKva.createdAt.getFullYear()
+        : new Date().getFullYear();
+
+    let formattedKviNumber: string | null = null;
+
+    if (latestCustomerOrderWithKva?.kvaNumber != null) {
+      formattedKviNumber = `KV-${yearForKva}-${String(
+        latestCustomerOrderWithKva.kvaNumber,
+      ).padStart(4, "0")}`;
+    } else {
+      // Suggest next KVI number for this partner in the current year
+      const start = new Date(yearForKva, 0, 1);
+      const end = new Date(yearForKva + 1, 0, 1);
+
+      const lastPartnerOrderInYear = await prisma.customerOrders.findFirst({
+        where: {
+          partnerId,
+          createdAt: { gte: start, lt: end },
+          kvaNumber: { not: null },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { kvaNumber: true },
+      });
+
+      const next = (lastPartnerOrderInYear?.kvaNumber ?? 0) + 1;
+      formattedKviNumber = `KV-${yearForKva}-${String(next).padStart(4, "0")}`;
+    }
+    const cutoffDate = new Date(Date.now() - 28 * 24 * 60 * 60 * 1000); // ~4 weeks
+    const freshPrescription =
+      latestPrescription?.createdAt != null &&
+      latestPrescription.createdAt >= cutoffDate
+        ? latestPrescription
+        : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Kva data fetched successfully",
+      data: {
+        logo: customer?.partner?.image,
+        partnerInfo: {
+          name: customer?.partner?.name,
+          busnessName: customer?.partner?.busnessName,
+          phone: customer?.partner?.phone,
+          email: customer?.partner?.email,
+          vat_number: customer?.partner?.accountInfos?.[0]?.vat_number,
+          // order-dependent fields are not available without `customerOrders`
+          orderLocation: null,
+          bankInfo: customer?.partner?.accountInfos?.[0]?.bankInfo,
+        },
+        kviNumber: formattedKviNumber,
+        customerInfo: {
+          firstName: customer?.vorname,
+          lastName: customer?.nachname,
+          birthDate: customer?.geburtsdatum,
+          address: customer?.wohnort,
+          phone: customer?.telefon,
+          email: customer?.email,
+        },
+        shippingAddressesForKv:
+          customer?.partner?.orderSettings?.shipping_addresses_for_kv,
+        prescriptionInfo: freshPrescription
+          ? {
+              doctorName: freshPrescription?.doctor_name,
+              doctorLocation: freshPrescription?.doctor_location,
+            }
+          : {},
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error?.message ?? String(error),
+    });
+  }
+};
+
+export const addKvaPdf = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    const file = req.file as { location?: string } | undefined;
+    const pdfUrl = file?.location;
+
+    if (!pdfUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "kvaPdf file is required",
+      });
+    }
+
+    // Ensure customer belongs to this partner
+    const customer = await prisma.customers.findFirst({
+      where: { id: customerId, partnerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // Replace existing PDFs for this customer (single latest file approach)
+    await (prisma as any).customer_kva_pdf.deleteMany({
+      where: { customerId },
+    });
+
+    const created = await (prisma as any).customer_kva_pdf.create({
+      data: {
+        customerId,
+        pdf: pdfUrl,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "KVA PDF uploaded successfully",
+      data: created,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? String(error),
+    });
+  }
+};
+
+export const deleteKvaPdf = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params; // this is customer_kva_pdf.id
+    const partnerId = req.user?.id;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "id is required",
+      });
+    }
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    const record = await (prisma as any).customer_kva_pdf.findUnique({
+      where: { id },
+      select: { id: true, customerId: true, pdf: true },
+    });
+
+    if (!record || !record.customerId) {
+      return res.status(404).json({
+        success: false,
+        message: "KVA PDF not found",
+      });
+    }
+
+    const customer = await prisma.customers.findFirst({
+      where: { id: record.customerId, partnerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    await (prisma as any).customer_kva_pdf.delete({ where: { id } });
+
+    if (record?.pdf) {
+      deleteFileFromS3(record.pdf);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "KVA PDF deleted successfully",
+      data: { id },
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? String(error),
+    });
+  }
+};
+
+export const getKvaPdf = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!customerId) {
+      return res.status(400).json({
+        success: false,
+        message: "customerId is required",
+      });
+    }
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden",
+      });
+    }
+
+    const customer = await prisma.customers.findFirst({
+      where: { id: customerId, partnerId },
+      select: { id: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    const kvaPdf = await (prisma as any).customer_kva_pdf.findFirst({
+      where: { customerId },
+      select: { pdf: true },
+    });
+
+    if (!kvaPdf) {
+      return res.status(404).json({
+        success: false,
+        message: "KVA PDF not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "KVA PDF fetched successfully",
+      data: kvaPdf,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message ?? String(error),
+    });
+  }
+};

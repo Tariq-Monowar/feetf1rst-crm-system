@@ -355,6 +355,11 @@ export const getCustomerFiles = async (req, res) => {
       sign: string | null;
       pdf: string | null;
     }> = [];
+    let customerKvaPdfRows: Array<{
+      id: string;
+      createdAt: Date;
+      pdf: string | null;
+    }> = [];
     let barcodeRows = [];
     let invoiceRows = [];
 
@@ -424,6 +429,19 @@ export const getCustomerFiles = async (req, res) => {
          ORDER BY "createdAt" DESC`,
         customerId,
       );
+    }
+
+    // KVA PDF (customer_kva_pdf)
+    if (table === "all" || table === "customer_kva_pdf" || table === "kva_pdf" || table === "kva") {
+      customerKvaPdfRows = await prisma.customer_kva_pdf.findMany({
+        where: { customerId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          createdAt: true,
+          pdf: true,
+        },
+      });
     }
 
     if (table === "all" || table === "barcode") {
@@ -546,6 +564,20 @@ export const getCustomerFiles = async (req, res) => {
         allEntries.push({
           fieldName: "pdf",
           table: "customers_sign",
+          url: row.pdf,
+          id: row.id,
+          fileType: getFileType(row.pdf),
+          createdAt: row.createdAt,
+        });
+      }
+    }
+
+    // Customer KVA PDF
+    for (const row of customerKvaPdfRows) {
+      if (row.pdf) {
+        allEntries.push({
+          fieldName: "kvaPdf",
+          table: "customer_kva_pdf",
           url: row.pdf,
           id: row.id,
           fileType: getFileType(row.pdf),
