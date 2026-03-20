@@ -2195,6 +2195,7 @@ export const getAllMyStoreOverview = async (req: Request, res: Response) => {
 export const deleteStoreOverview = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
+    const userRole = String(req.user?.role || "");
     const { ids } = req.body;
 
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -2215,12 +2216,36 @@ export const deleteStoreOverview = async (req: Request, res: Response) => {
       });
     }
 
-    // Ensure the overviews belong to this partner before deleting
+    // Resolve partner scope by role:
+    // - ADMIN: can delete any ids
+    // - PARTNER: only own partnerId
+    // - EMPLOYEE: partnerId from employee.partnerId (fallback to token id)
+    let scopedPartnerId: string | null = null;
+    if (userRole === "PARTNER") {
+      scopedPartnerId = String(userId);
+    } else if (userRole === "EMPLOYEE") {
+      const employeeId =
+        req.user?.employeeId != null
+          ? String(req.user.employeeId)
+          : String(userId);
+
+      const employee = await prisma.employees.findUnique({
+        where: { id: employeeId },
+        select: { partnerId: true },
+      });
+
+      // If employeeId is not present in token (legacy login), token id can be partner user id.
+      scopedPartnerId = String(employee?.partnerId ?? userId);
+    }
+
+    const scopedWhere: any = {
+      id: { in: cleanedIds },
+      ...(scopedPartnerId ? { partnerId: scopedPartnerId } : {}),
+    };
+
+    // Ensure the overviews are visible in the current scope before deleting
     const existing = await prisma.storeOrderOverview.findMany({
-      where: {
-        id: { in: cleanedIds },
-        partnerId: userId,
-      },
+      where: scopedWhere,
       select: { id: true },
     });
 
@@ -2229,14 +2254,14 @@ export const deleteStoreOverview = async (req: Request, res: Response) => {
     if (existingIds.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No matching store overviews found for this user",
+        message: "No matching store overviews found in your scope",
       });
     }
 
     const result = await prisma.storeOrderOverview.deleteMany({
       where: {
         id: { in: existingIds },
-        partnerId: userId,
+        ...(scopedPartnerId ? { partnerId: scopedPartnerId } : {}),
       },
     });
 
