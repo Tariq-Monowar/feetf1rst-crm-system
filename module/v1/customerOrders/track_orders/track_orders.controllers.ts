@@ -764,7 +764,9 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
 
     const parts: string[] = [];
     if (insurance && insurance.to !== insurance.from) {
-      parts.push(insurance.to ? "Versicherung: bezahlt" : "Versicherung: offen");
+      parts.push(
+        insurance.to ? "Versicherung: bezahlt" : "Versicherung: offen",
+      );
     }
     if (priv && priv.to !== priv.from) {
       parts.push(priv.to ? "Privat: bezahlt" : "Privat: offen");
@@ -2129,11 +2131,10 @@ export const getWerkstattzettelSheetPdfData = async (
         versorgung_note: true,
         fussanalysePreis: true,
         werkstattzettel: true,
-        employee:{
-          select:{
+        employee: {
+          select: {
             employeeName: true,
-         
-          }
+          },
         },
 
         addonPrices: true,
@@ -2414,7 +2415,6 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
         ausführliche_diagnose: true,
         versorgung_laut_arzt: true,
 
-
         diagnosis: true,
         customer: {
           select: {
@@ -2527,7 +2527,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             name: true,
             busnessName: true,
             image: true,
-            
+
             storeLocations: {
               where: { isPrimary: true },
               take: 1,
@@ -2545,9 +2545,9 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         customer: {
           select: {
             id: true,
+            customerNumber: true,
             fusslange1: true,
             fusslange2: true,
-
             vorname: true,
             nachname: true,
             wohnort: true,
@@ -2563,7 +2563,6 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             picture_24: true,
           },
         },
-         
       },
     });
 
@@ -2587,6 +2586,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         partnerInfo: order?.partner,
         customerInfo: {
           id: order?.customer?.id,
+          customerNumber: order?.customer?.customerNumber,
           firstName: order?.customer?.vorname,
           lastName: order?.customer?.nachname,
           birthDate: order?.customer?.geburtsdatum,
