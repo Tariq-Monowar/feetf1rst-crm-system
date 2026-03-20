@@ -747,6 +747,28 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
     return status.replace(/_/g, " ");
   };
 
+  const translateLogType = (
+    type:
+      | "status_change"
+      | "payment_change"
+      | "scan_event"
+      | "order_creation"
+      | "other",
+  ): string => {
+    switch (type) {
+      case "status_change":
+        return "Statusänderung";
+      case "payment_change":
+        return "Zahlungsänderung";
+      case "scan_event":
+        return "Scan";
+      case "order_creation":
+        return "Auftragserstellung";
+      default:
+        return "Sonstiges";
+    }
+  };
+
   // Format duration like "1T 7h 42m" or "20m" or "2s" (German format from UI)
   const formatDuration = (milliseconds: number): string => {
     const seconds = Math.floor(milliseconds / 1000);
@@ -1220,7 +1242,7 @@ export const getNewOrderHistory = async (req: Request, res: Response) => {
           user: entry.user,
           action: entry.action,
           description: entry.note,
-          type: entry.type,
+          type: translateLogType(entry.type),
           details: entry.details,
         })),
 
