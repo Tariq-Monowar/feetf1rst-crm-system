@@ -476,6 +476,7 @@ export const createOrder = async (req: Request, res: Response) => {
     ----------------------------*/
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
+      let matchedSizeValue: number | null = null;
       /** Sent to background job to decrement store stock after we respond. */
       let storeUpdatePayload: {
         storeId: string;
@@ -692,6 +693,17 @@ export const createOrder = async (req: Request, res: Response) => {
           throw err;
         }
         matchedSizeKey = sizeKey;
+        // Persist matched size into customerOrders.foorSize.
+        // Use the matched store "length" if available (same source as tolerance check),
+        // otherwise fall back to numeric sizeKey.
+        const matchedLengthMm = extractLengthValue(sizes[sizeKey]);
+        matchedSizeValue =
+          matchedLengthMm != null && Number.isFinite(matchedLengthMm)
+            ? Number(matchedLengthMm)
+            : (() => {
+                const n = parseFloat(String(sizeKey));
+                return Number.isFinite(n) ? n : null;
+              })();
         storeUpdatePayload = {
           storeId: store.id,
           sizeKey,
@@ -748,6 +760,13 @@ export const createOrder = async (req: Request, res: Response) => {
           }),
         ),
       ]);
+
+      if (matchedSizeValue != null) {
+        await tx.customerOrders.update({
+          where: { id: newOrder.id },
+          data: { foorSize: matchedSizeValue },
+        });
+      }
 
       return { ...newOrder, matchedSizeKey, storeUpdatePayload };
     });
