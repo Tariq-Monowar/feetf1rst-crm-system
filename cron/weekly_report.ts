@@ -141,6 +141,24 @@ export const dailyReport = () => {
 
       const inactiveBrandsByPartner = getInactiveBrandsByPartner(brandSettings);
 
+      // Avoid 1 DB query per store for orderNumber generation.
+      // Cache next orderNumber per partner for this cron run.
+      const nextOrderNumberCache = new Map<string, number>();
+      const getNextOrderNumberForPartnerCached = async (partnerId: string) => {
+        const cached = nextOrderNumberCache.get(partnerId);
+        if (cached != null) {
+          nextOrderNumberCache.set(partnerId, cached + 1);
+          return String(cached);
+        }
+
+        const next = await generateNextOrderNumber(partnerId);
+        const nextNum = Number(next);
+        const safeNext = Number.isFinite(nextNum) ? nextNum : 10000;
+        // cache holds the NEXT value to return
+        nextOrderNumberCache.set(partnerId, safeNext + 1);
+        return String(safeNext);
+      };
+
       for (const store of stores) {
         const inactiveBrands = inactiveBrandsByPartner.get(String(store.userId));
         const brandCandidates = [
@@ -176,20 +194,72 @@ export const dailyReport = () => {
           const deliveredQuantity =
             buildDeliveredQuantityData(overviewGroessenMengen);
 
-          const createdOverview = await storeOrderOverviewModel.create({
-            data: {
-              storeId: store.id,
-              partnerId: store.userId,
-              artikelnummer: store.artikelnummer,
-              produktname: store.produktname,
-              hersteller: store.hersteller,
-              groessenMengen: overviewGroessenMengen,
-              delivered_quantity: deliveredQuantity,
-              type: store.type ?? "rady_insole",
-              status: "In_bearbeitung",
-            },
-          });
-           
+          const unitPrice =
+            Number((store as any).unit_price ?? 0) ||
+            Number((store as any).purchase_price ?? 0);
+
+          const totalQuantity = sumQuantityFromGroessenMengen(
+            overviewGroessenMengen,
+          );
+          const totalPrice = unitPrice * totalQuantity;
+
+          let createdOverview: any;
+
+          // Create transition + set FK only when unitPrice & totalPrice exist.
+          if (unitPrice && totalPrice) {
+            const orderNumber = await getNextOrderNumberForPartnerCached(
+              String(store.userId),
+            );
+
+            const transition = await (prisma as any).admin_order_transitions.create(
+              {
+                data: {
+                  orderNumber,
+                  orderFor: "store",
+                  storeId: store.id,
+                  partnerId: store.userId,
+                  price: totalPrice,
+                  note: "Stock",
+                },
+              },
+            );
+
+            createdOverview = await storeOrderOverviewModel.create({
+              data: {
+                storeId: store.id,
+                partnerId: store.userId,
+                artikelnummer: store.artikelnummer,
+                produktname: store.produktname,
+                hersteller: store.hersteller,
+                groessenMengen: overviewGroessenMengen,
+                delivered_quantity: deliveredQuantity,
+                type: store.type ?? "rady_insole",
+                status: "In_bearbeitung",
+                adminOrderTransitionId: transition.id,
+              },
+            });
+
+            await (prisma as any).partner_total_amount.upsert({
+              where: { partnerId: store.userId },
+              update: { totalAmount: { increment: totalPrice } },
+              create: { partnerId: store.userId, totalAmount: totalPrice },
+            });
+          } else {
+            createdOverview = await storeOrderOverviewModel.create({
+              data: {
+                storeId: store.id,
+                partnerId: store.userId,
+                artikelnummer: store.artikelnummer,
+                produktname: store.produktname,
+                hersteller: store.hersteller,
+                groessenMengen: overviewGroessenMengen,
+                delivered_quantity: deliveredQuantity,
+                type: store.type ?? "rady_insole",
+                status: "In_bearbeitung",
+              },
+            });
+          }
+
           console.log(`Created overview for store ${store.id}`);
 
           await prisma.stores.update({
@@ -197,77 +267,6 @@ export const dailyReport = () => {
             data: {
               groessenMengen: updatedGroessenMengen,
             },
-          });
-
-          // Create admin_order_transitions & update partner_total_amount in background
-          setImmediate(() => {
-            const run = async () => {
-              const unitPrice =
-                Number((store as any).unit_price ?? 0) ||
-                Number((store as any).purchase_price ?? 0);
-              if (!unitPrice) return;
-
-              const totalQuantity =
-                sumQuantityFromGroessenMengen(overviewGroessenMengen);
-              const totalPrice = totalQuantity * unitPrice;
-              if (!totalPrice) return;
-
-              const orderNumber = await generateNextOrderNumber(
-                String(store.userId)
-              );
-              const note = `Stock`;
-
-              await prisma.$executeRaw`
-                INSERT INTO admin_order_transitions (
-                  id,
-                  "orderNumber",
-                  "orderFor",
-                  "partnerId",
-                  "storeId",
-                  price,
-                  note,
-                  "createdAt",
-                  "updatedAt"
-                )
-                VALUES (
-                  gen_random_uuid(),
-                  ${orderNumber},
-                  ${"store"},
-                  ${store.userId},
-                  ${store.id},
-                  ${totalPrice ?? null},
-                  ${note},
-                  NOW(),
-                  NOW()
-                )
-              `;
-
-              const old = await prisma.partner_total_amount.findFirst({
-                where: { partnerId: store.userId },
-                select: { id: true, totalAmount: true },
-              });
-
-              const newTotal =
-                (old?.totalAmount ?? 0) + Number(totalPrice ?? 0);
-              if (old) {
-                await prisma.partner_total_amount.update({
-                  where: { id: old.id },
-                  data: { totalAmount: newTotal },
-                });
-                return;
-              }
-
-              await prisma.partner_total_amount.create({
-                data: { partnerId: store.userId, totalAmount: newTotal },
-              });
-            };
-
-            run().catch((e) => {
-              console.error(
-                "admin_order_transitions cron background job error:",
-                e
-              );
-            });
           });
         } catch (error) {
           console.error(`Error processing store ${store.id}:`, error);

@@ -881,9 +881,7 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
     const missingField = ["storeId", "groessenMengen"].find((field) => {
       const val = req.body[field];
       if (field === "groessenMengen") {
-        return (
-          val == null || typeof val !== "object" || Array.isArray(val)
-        );
+        return val == null || typeof val !== "object" || Array.isArray(val);
       }
       return val == null || val === "";
     });
@@ -945,20 +943,6 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       };
     }
 
-    const createdOverview = await prisma.storeOrderOverview.create({
-      data: {
-        storeId: store.id,
-        partnerId: userId,
-        artikelnummer: store.artikelnummer,
-        produktname: store.produktname,
-        hersteller: store.hersteller,
-        groessenMengen: overviewGroessenMengen,
-        delivered_quantity,
-        type: storeType,
-        status: "In_bearbeitung",
-      },
-    });
-
     const sumQuantityFromGroessenMengen = (value: any): number => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
 
@@ -972,72 +956,76 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       }
       return total;
     };
+    let createdOverview: any = null;
 
-    setImmediate(() => {
-      const run = async () => {
-        if (!admin_store_id) return;
+    if (admin_store_id) {
+      const admin = await prisma.admin_store.findUnique({
+        where: { id: admin_store_id },
+        select: { price: true },
+      });
 
-        const admin = await prisma.admin_store.findUnique({
-          where: { id: admin_store_id },
-          select: { price: true },
-        });
-        const unitPrice = Number(admin?.price ?? 0);
-        if (!unitPrice) return;
-
-        const totalQuantity = sumQuantityFromGroessenMengen(overviewGroessenMengen);
+      const unitPrice = Number(admin?.price ?? 0);
+      if (unitPrice) {
+        const totalQuantity = sumQuantityFromGroessenMengen(
+          overviewGroessenMengen,
+        );
         const totalPrice = totalQuantity * unitPrice;
 
-        const orderNumber = await generateNextOrderNumber(userId);
-        const note = `Stock`;
+        if (totalPrice) {
+          const orderNumber = await generateNextOrderNumber(userId);
 
-        await prisma.$executeRaw`
-          INSERT INTO admin_order_transitions (
-            id,
-            "orderNumber",
-            "orderFor",
-            "partnerId",
-            "storeId",
-            price,
-            note,
-            "createdAt",
-            "updatedAt"
-          )
-          VALUES (
-            gen_random_uuid(),
-            ${orderNumber},
-            ${"store"},
-            ${userId},
-            ${store.id},
-            ${totalPrice ?? null},
-            ${note},
-            NOW(),
-            NOW()
-          )
-        `;
-
-        const old = await prisma.partner_total_amount.findFirst({
-          where: { partnerId: userId },
-          select: { id: true, totalAmount: true },
-        });
-
-        const newTotal = (old?.totalAmount ?? 0) + Number(totalPrice ?? 0);
-        if (old) {
-          await prisma.partner_total_amount.update({
-            where: { id: old.id },
-            data: { totalAmount: newTotal },
+          // Create transition first, then create overview with FK already set
+          const transition = await prisma.admin_order_transitions.create({
+            data: {
+              orderNumber,
+              orderFor: "store",
+              partnerId: userId,
+              storeId: store.id,
+              price: totalPrice,
+              note: "Stock",
+            },
           });
-          return;
+
+          await prisma.partner_total_amount.upsert({
+            where: { partnerId: userId },
+            update: { totalAmount: { increment: totalPrice } },
+            create: { partnerId: userId, totalAmount: totalPrice },
+          });
+
+          createdOverview = await (prisma as any).storeOrderOverview.create({
+            data: {
+              storeId: store.id,
+              partnerId: userId,
+              artikelnummer: store.artikelnummer,
+              produktname: store.produktname,
+              hersteller: store.hersteller,
+              groessenMengen: overviewGroessenMengen,
+              delivered_quantity,
+              type: storeType,
+              status: "In_bearbeitung",
+              adminOrderTransitionId: transition.id,
+            },
+          });
         }
+      }
+    }
 
-        await prisma.partner_total_amount.create({
-          data: { partnerId: userId, totalAmount: newTotal },
-        });
-      };
-
-      run().catch((e) => {
-        console.error("admin_order_transitions background job error:", e);
+    // If we didn't create transition (no price), still create the overview row.
+    if (!createdOverview) {
+      createdOverview = await (prisma as any).storeOrderOverview.create({
+        data: {
+          storeId: store.id,
+          partnerId: userId,
+          artikelnummer: store.artikelnummer,
+          produktname: store.produktname,
+          hersteller: store.hersteller,
+          groessenMengen: overviewGroessenMengen,
+          delivered_quantity,
+          type: storeType,
+          status: "In_bearbeitung",
+        },
       });
-    });
+    }
 
     return res.status(201).json({
       success: true,
@@ -1865,6 +1853,7 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
         type: true,
         status: true,
         createdAt: true,
+        adminOrderTransitionId: true,
 
         partner: {
           select: {
@@ -2202,7 +2191,6 @@ export const getAllMyStoreOverview = async (req: Request, res: Response) => {
     });
   }
 };
-
 
 export const deleteStoreOverview = async (req: Request, res: Response) => {
   try {

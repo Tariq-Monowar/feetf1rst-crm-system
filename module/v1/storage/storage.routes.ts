@@ -69,7 +69,11 @@ router.post(
 
 // POST _baseurl/store/send-order-to-admin
 //  - Create StoreOrderOverview (requested stock) from admin-style payload
-//eta diye admin er kache order pathano jabe
+// Body:
+//  - `storeId` (string)
+//  - `groessenMengen` (object with sizes + quantities)
+//  - `admin_store_id` (string) [needed to calculate transition price + link adminOrderTransitionId]
+// eta diye admin er kache order pathano jabe
 
 /*
    ETA NAKI????___________--

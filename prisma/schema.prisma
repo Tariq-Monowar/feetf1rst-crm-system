@@ -1157,8 +1157,6 @@ model customerOrders {
   kvaNumber Int? //it's start form 1
   kvaPdf    String?
 
-
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1612,6 +1610,10 @@ model StoreOrderOverview {
   partnerId String
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
+  //admin order transition id
+  adminOrderTransitionId String?
+  adminOrderTransition   admin_order_transitions? @relation(fields: [adminOrderTransitionId], references: [id], onDelete: SetNull)
+
   //airticle number
   artikelnummer String?
   /// Product name
@@ -1631,6 +1633,9 @@ model StoreOrderOverview {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([adminOrderTransitionId])
+  @@index([partnerId, createdAt(sort: Desc)])
 }
 
 enum StoreOrderOverviewStatus {
@@ -2388,6 +2393,9 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2411,6 +2419,9 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2712,8 +2723,9 @@ model admin_order_transitions {
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  storeOrderOverviews StoreOrderOverview[]
 
   @@index([custom_shafts_id])
   @@index([storeId])
