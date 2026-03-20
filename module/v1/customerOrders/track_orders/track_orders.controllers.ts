@@ -2131,6 +2131,7 @@ export const getWerkstattzettelSheetPdfData = async (
         versorgung_note: true,
         fussanalysePreis: true,
         werkstattzettel: true,
+        foorSize: true,
         employee: {
           select: {
             employeeName: true,
@@ -2257,6 +2258,7 @@ export const getWerkstattzettelSheetPdfData = async (
         },
         überzug: order?.überzug,
         employee: order?.employee,
+        foorSize: order?.foorSize,
       },
     });
   } catch (error) {
@@ -2522,6 +2524,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         orderNumber: true,
         austria_price: true,
         überzug: true,
+        foorSize: true,
         partner: {
           select: {
             name: true,
@@ -2613,6 +2616,7 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         quantity: order?.quantity,
         orderNumber: order?.orderNumber,
         uberzug: order?.überzug,
+        foorSize: order?.foorSize,
       },
     });
   } catch (error: any) {
