@@ -54,6 +54,7 @@ router.get(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getNewOrderHistory,
 );
+
 router.get(
   "/supply-info/:orderId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),

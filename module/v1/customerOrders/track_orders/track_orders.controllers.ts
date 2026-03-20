@@ -1935,7 +1935,7 @@ export const getPriceDetails = async (req: Request, res: Response) => {
         insurance_payed: true,
         private_payed: true,
         privatePrice: true,
-
+        foorSize: true,
         paymnentType: true,
         vatRate: true,
         bezahlt: true,
@@ -2291,7 +2291,7 @@ export const getKvaData = async (req: Request, res: Response) => {
         geschaeftsstandort: true,
         kvaNumber: true,
         createdAt: true,
-
+        foorSize: true,
         partner: {
           select: {
             image: true,
@@ -2352,6 +2352,7 @@ export const getKvaData = async (req: Request, res: Response) => {
       success: true,
       message: "Kva data fetched successfully",
       data: {
+        foorSize: order?.foorSize,
         logo: order?.partner?.image,
         partnerInfo: {
           name: order?.partner?.name,
@@ -2416,7 +2417,7 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
         diagnosisList: true,
         ausführliche_diagnose: true,
         versorgung_laut_arzt: true,
-
+        foorSize: true,
         diagnosis: true,
         customer: {
           select: {
@@ -2467,6 +2468,7 @@ export const getHalbprobeData = async (req: Request, res: Response) => {
       success: true,
       message: "Halbprobe data fetched successfully",
       data: {
+        foorSize: order?.foorSize,
         customerInfo: {
           gender: order?.customer?.gender,
           firstName: order?.customer?.vorname,
