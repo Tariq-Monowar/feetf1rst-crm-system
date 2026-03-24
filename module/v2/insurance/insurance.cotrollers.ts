@@ -1,6 +1,623 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
 import * as XLSX from "xlsx";
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
+
+const getActiveInsuranceOrders = async (partnerId: string) => {
+  const [insole, shoe] = await Promise.all([
+    prisma.customerOrders.findMany({
+      where: {
+        partnerId,
+        insurance_payed: false,
+        paymnentType: { in: ["insurance", "broth"] },
+        insuranceTotalPrice: { not: null },
+        prescription: { isNot: null },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        paymnentType: true,
+        totalPrice: true,
+        insuranceTotalPrice: true,
+        private_payed: true,
+        insurance_status: true,
+        createdAt: true,
+        vatRate: true,
+        prescription: true,
+        customer: {
+          select: {
+            id: true,
+            vorname: true,
+            nachname: true,
+            telefon: true,
+          },
+        },
+      },
+    }),
+    prisma.shoe_order.findMany({
+      where: {
+        partnerId,
+        insurance_payed: false,
+        payment_type: { in: ["insurance", "broth"] },
+        insurance_price: { not: null },
+        prescription: { isNot: null },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        payment_type: true,
+        total_price: true,
+        insurance_price: true,
+        private_payed: true,
+        insurance_status: true,
+        vat_rate: true,
+        createdAt: true,
+        updatedAt: true,
+        prescription: true,
+        customer: {
+          select: {
+            id: true,
+            vorname: true,
+            nachname: true,
+            telefon: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const insoleData = insole.map((order) => ({
+    ...order,
+    insuranceType: "insole" as const,
+  }));
+
+  const shoeData = shoe.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    paymnentType: order.payment_type,
+    totalPrice: order.total_price,
+    insuranceTotalPrice: order.insurance_price,
+    private_payed: order.private_payed,
+    insurance_status: order.insurance_status,
+    vatRate: order.vat_rate,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    prescription: order.prescription,
+    customer: order.customer,
+    insuranceType: "shoes" as const,
+  }));
+
+  return [...insoleData, ...shoeData].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+};
+
+const normalizeText = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^(abrechnung|korrektur)\s*-\s*/i, "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ");
+
+const toNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const extractNameFromRow = (row: Record<string, unknown>) => {
+  const direct =
+    row.Patient ??
+    row.Versicherter ??
+    row["Versicherter Name"] ??
+    row["Vers Zuname"] ??
+    null;
+  const first = row["Vers Vorname"];
+  if (row["Vers Zuname"] || first) {
+    return normalizeText(`${row["Vers Zuname"] ?? ""} ${first ?? ""}`.trim());
+  }
+  return normalizeText(direct);
+};
+
+const extractInsuranceFromRow = (row: Record<string, unknown>) =>
+  normalizeText(
+    row.Meldung ??
+      row["Korr.-Beschreibung"] ??
+      row.Kostentraeger ??
+      row.Kostenträger ??
+      row.insurance_provider,
+  );
+
+const isIgnoredSheetField = (normalizedKey: string) =>
+  ["abgerechnet", "akzeptiert"].some((x) => normalizedKey.includes(x));
+
+const toDbProblemFieldName = (excelFieldName: string) => {
+  const key = normalizeText(excelFieldName);
+
+  if (
+    [
+      "betrag",
+      "gesamt brutto",
+      "gesamt netto",
+      "tarif netto",
+      "basis 20%",
+      "basis 10%",
+      "amount",
+      "total",
+      "gross",
+      "net",
+      "price",
+      "sum",
+      "value",
+      "charge",
+      "cost",
+      "fee",
+      "vat",
+      "mwst",
+      "ust",
+    ].some((x) => key.includes(x))
+  ) {
+    return "insuranceTotalPrice";
+  }
+
+  if (
+    ["meldung", "insurance", "kostentrager", "kostentraeger", "korr", "provider"].some(
+      (x) => key.includes(x),
+    )
+  ) {
+    return "prescription.insurance_provider";
+  }
+
+  if (
+    [
+      "patient",
+      "versicherter",
+      "name",
+      "vers zuname",
+      "vers vorname",
+      "vorname",
+      "nachname",
+    ].some((x) => key.includes(x))
+  ) {
+    return "customer.name";
+  }
+
+  return "unknown";
+};
+
+const pickFieldName = (
+  row: Record<string, unknown>,
+  matcher: (normalizedKey: string) => boolean,
+  fallback: string,
+) => {
+  const entry = Object.keys(row).find((k) => {
+    const nk = normalizeText(k);
+    if (isIgnoredSheetField(nk)) return false;
+    return matcher(nk);
+  });
+  return entry ?? fallback;
+};
+
+const getAmountFieldName = (row: Record<string, unknown>) =>
+  pickFieldName(
+    row,
+    (k) =>
+      [
+        "betrag",
+        "gesamt brutto",
+        "gesamt netto",
+        "tarif netto",
+        "basis 20%",
+        "basis 10%",
+        "amount",
+        "total",
+        "gross",
+        "net",
+        "price",
+        "sum",
+        "value",
+        "charge",
+        "cost",
+        "fee",
+        "vat",
+        "mwst",
+        "ust",
+      ].some((x) => k.includes(x)),
+    "amount",
+  );
+
+const getInsuranceFieldName = (row: Record<string, unknown>) =>
+  pickFieldName(
+    row,
+    (k) =>
+      ["meldung", "insurance", "kostentrager", "kostentraeger", "korr", "provider"].some(
+        (x) => k.includes(x),
+      ),
+    "insurance",
+  );
+
+const getNameFieldName = (row: Record<string, unknown>) =>
+  pickFieldName(
+    row,
+    (k) =>
+      [
+        "patient",
+        "versicherter",
+        "name",
+        "vers zuname",
+        "vers vorname",
+        "vorname",
+        "nachname",
+      ].some((x) => k.includes(x)),
+    "name",
+  );
+
+const extractAmountFromRow = (row: Record<string, unknown>) => {
+  const preferredKeys = [
+    "betrag",
+    "gesamt brutto",
+    "gesamt netto",
+    "tarif netto",
+    "basis 20%",
+    "basis 10%",
+    "amount",
+    "total",
+    "gross",
+    "net",
+    "price",
+    "sum",
+    "value",
+    "charge",
+    "cost",
+    "fee",
+    "vat",
+    "mwst",
+    "ust",
+  ];
+
+  const rowEntries = Object.entries(row);
+  let raw: number | null = null;
+
+  for (const [key, value] of rowEntries) {
+    const n = toNumber(value);
+    if (n === null) continue;
+    const nk = normalizeText(key);
+    if (isIgnoredSheetField(nk)) continue;
+    if (preferredKeys.some((k) => nk.includes(k))) {
+      raw = n;
+      break;
+    }
+  }
+
+  if (raw === null) {
+    const fallback = rowEntries
+      .map(([key, value]) => ({ key: normalizeText(key), value: toNumber(value) }))
+      .filter(
+        (x) =>
+          x.value !== null &&
+          !isIgnoredSheetField(x.key) &&
+          !/(^| )(id|nr|num|number|code|datum|date|year|month|vo|penr)( |$)/.test(
+            x.key,
+          ),
+      )
+      .sort((a, b) => Math.abs((b.value as number)) - Math.abs((a.value as number)));
+
+    raw = fallback[0]?.value ?? null;
+  }
+
+  return raw === null ? null : Math.abs(raw);
+};
+
+const buildPartialMatches = (
+  unmatchedExcelRows: Record<string, unknown>[],
+  activeOrders: any[],
+  aiRejectedPartials: Array<{
+    orderId: string;
+    problemFields: string[];
+  }> = [],
+) => {
+  const orderProblems = new Map<string, Set<string>>();
+
+  const markProblem = (orderId: string, fields: string[]) => {
+    const set = orderProblems.get(orderId) ?? new Set<string>();
+    fields
+      .map(toDbProblemFieldName)
+      .filter((f) => f !== "unknown")
+      .forEach((f) => set.add(f));
+    orderProblems.set(orderId, set);
+  };
+
+  aiRejectedPartials.forEach((p) => markProblem(p.orderId, p.problemFields));
+
+  unmatchedExcelRows.forEach((row) => {
+      const excelInsurance = extractInsuranceFromRow(row);
+      const excelName = extractNameFromRow(row);
+      const excelAmount = extractAmountFromRow(row);
+
+      const bestCandidate = activeOrders
+        .filter((order) => {
+          const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
+          const orderName = normalizeText(
+            `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+          );
+          const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+          const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+          const insuranceSignal =
+            !!excelInsurance &&
+            !!orderInsurance &&
+            (excelInsurance.includes(orderInsurance) ||
+              orderInsurance.includes(excelInsurance));
+          const nameSignal =
+            !!excelName &&
+            !!orderName &&
+            (excelName.includes(orderName) || orderName.includes(excelName));
+          const amountSignal =
+            excelAmount !== null &&
+            orderAmount !== null &&
+            Math.abs(excelAmount - orderAmount) <= 1;
+
+          return (
+            insuranceSignal || nameSignal || amountSignal
+          );
+        })
+        .map((order) => {
+          const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
+          const orderName = normalizeText(
+            `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+          );
+          const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+          const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+          const nameMatch =
+            !!excelName &&
+            !!orderName &&
+            (excelName.includes(orderName) || orderName.includes(excelName));
+          const insuranceMatch =
+            !!excelInsurance &&
+            !!orderInsurance &&
+            (excelInsurance.includes(orderInsurance) ||
+              orderInsurance.includes(excelInsurance));
+          const amountMatch =
+            excelAmount !== null &&
+            orderAmount !== null &&
+            Math.abs(excelAmount - orderAmount) <= 1;
+
+          let signalScore = 0;
+          if (insuranceMatch) signalScore += 3;
+          if (nameMatch) signalScore += 2;
+          if (amountMatch) signalScore += 2;
+
+          const issues: string[] = [];
+          if (!nameMatch) issues.push(getNameFieldName(row));
+          if (!amountMatch) issues.push(getAmountFieldName(row));
+          if (!insuranceMatch) issues.push(getInsuranceFieldName(row));
+
+          return {
+            orderId: order.id as string,
+            signalScore,
+            issues,
+          };
+        })
+        .sort((a, b) => b.signalScore - a.signalScore)[0];
+
+      if (!bestCandidate) return;
+      markProblem(bestCandidate.orderId, bestCandidate.issues);
+  });
+
+  return activeOrders
+    .filter((order) => orderProblems.has(order.id))
+    .map((order) => ({
+      ...order,
+      problemFields: Array.from(orderProblems.get(order.id) ?? []),
+    }));
+};
+
+const matchExcelWithOrdersDeterministic = (
+  excelRows: Record<string, unknown>[],
+  activeOrders: any[],
+) => {
+  const usedOrderIds = new Set<string>();
+  const matchedOrderMap = new Map<string, Record<string, unknown>[]>();
+  const unmatchedExcelRows: Record<string, unknown>[] = [];
+
+  for (const row of excelRows) {
+    const excelName = extractNameFromRow(row);
+    const excelInsurance = normalizeText(
+      row.Meldung ?? row["Korr.-Beschreibung"] ?? row.Kostentraeger ?? row.Kostenträger,
+    );
+    const excelAmountRaw = toNumber(row.Betrag ?? row["Gesamt Netto"] ?? row["Tarif Netto"]);
+    const excelAmount = excelAmountRaw === null ? null : Math.abs(excelAmountRaw);
+
+    let bestOrder: any = null;
+    let bestScore = -1;
+
+    for (const order of activeOrders) {
+      if (usedOrderIds.has(order.id)) continue;
+
+      const orderName = normalizeText(
+        `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+      );
+      const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
+      const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+      const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+      const nameMatch =
+        !!excelName &&
+        !!orderName &&
+        (excelName.includes(orderName) || orderName.includes(excelName));
+      const insuranceMatch =
+        !!excelInsurance &&
+        !!orderInsurance &&
+        (excelInsurance.includes(orderInsurance) ||
+          orderInsurance.includes(excelInsurance));
+      const amountMatch =
+        excelAmount !== null &&
+        orderAmount !== null &&
+        Math.abs(excelAmount - orderAmount) <= 1;
+
+      let score = 0;
+      if (amountMatch) score += 2;
+      if (nameMatch) score += 2;
+      if (insuranceMatch) score += 1;
+
+      if (score > bestScore && amountMatch && (nameMatch || insuranceMatch)) {
+        bestScore = score;
+        bestOrder = order;
+      }
+    }
+
+    if (!bestOrder) {
+      unmatchedExcelRows.push(row);
+      continue;
+    }
+
+    usedOrderIds.add(bestOrder.id);
+    const prev = matchedOrderMap.get(bestOrder.id) ?? [];
+    prev.push(row);
+    matchedOrderMap.set(bestOrder.id, prev);
+  }
+
+  const matched = activeOrders
+    .filter((order) => matchedOrderMap.has(order.id))
+    .map((order) => ({ ...order }));
+
+  return { matched, unmatchedExcelRows };
+};
+
+const parseJsonFromModelText = (text: string) => {
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (_e) {
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw new Error("Invalid JSON from model");
+  }
+};
+
+const matchExcelWithOrdersAI = async (
+  excelRows: Record<string, unknown>[],
+  activeOrders: any[],
+) => {
+  const ordersForAi = activeOrders.map((o) => ({
+    id: o.id,
+    orderNumber: o.orderNumber,
+    customerName: `${o?.customer?.vorname ?? ""} ${o?.customer?.nachname ?? ""}`.trim(),
+    insuranceProvider: o?.prescription?.insurance_provider ?? null,
+    amount: o?.insuranceTotalPrice ?? null,
+  }));
+
+  const prompt = `
+You match random-structure Excel rows to insurance orders.
+
+Input:
+- excelRows: arbitrary column names / structure
+- orders: known active orders
+
+Rules:
+1) Infer best columns dynamically for person name, insurance provider and amount.
+2) Match by strongest combined signal (name, insurance, amount).
+3) Amount match tolerance: +/- 1.
+4) If uncertain, do not match.
+
+Return ONLY a JSON array with this shape:
+[
+  {
+    "excelIndex": 0,
+    "orderId": "uuid-or-null",
+    "confidence": 0
+  }
+]
+
+Constraints:
+- orderId must be null when no reliable match.
+- Use each orderId at most once.
+
+excelRows:
+${JSON.stringify(excelRows)}
+
+orders:
+${JSON.stringify(ordersForAi)}
+`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: prompt,
+  });
+
+  const raw = response.text ?? "[]";
+  const aiMatches = parseJsonFromModelText(raw) as Array<{
+    excelIndex?: number;
+    orderId?: string | null;
+    confidence?: number;
+  }>;
+  console.log("aiMatches ====================", aiMatches);
+
+  const usedOrderIds = new Set<string>();
+  const matchedOrderMap = new Map<string, number>();
+  const unmatchedExcelRows: Record<string, unknown>[] = [];
+  const aiRejectedPartials: Array<{
+    orderId: string;
+    problemFields: string[];
+  }> = [];
+
+  excelRows.forEach((row, idx) => {
+    const item = aiMatches.find((m) => m?.excelIndex === idx);
+    const orderId = item?.orderId;
+    if (!orderId || usedOrderIds.has(orderId)) {
+      unmatchedExcelRows.push(row);
+      return;
+    }
+
+    const pickedOrder = activeOrders.find((o) => o.id === orderId);
+    if (!pickedOrder) {
+      unmatchedExcelRows.push(row);
+      return;
+    }
+
+    // Strict guard: AI can infer structure, but final match must satisfy amount tolerance.
+    // If amount differs (e.g. Excel Gesamt Brutto 50 vs order 52), move to partial flow.
+    const excelAmount = extractAmountFromRow(row);
+    const orderAmountRaw = toNumber(pickedOrder.insuranceTotalPrice);
+    const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+    const amountMismatch =
+      excelAmount !== null &&
+      orderAmount !== null &&
+      Math.abs(excelAmount - orderAmount) > 1;
+
+    if (amountMismatch) {
+      unmatchedExcelRows.push(row);
+      aiRejectedPartials.push({
+        orderId: pickedOrder.id,
+        problemFields: [getAmountFieldName(row)],
+      });
+      return;
+    }
+
+    usedOrderIds.add(orderId);
+    matchedOrderMap.set(orderId, (matchedOrderMap.get(orderId) ?? 0) + 1);
+  });
+
+  const matched = activeOrders
+    .filter((order) => matchedOrderMap.has(order.id))
+    .map((order) => ({ ...order }));
+
+  return { matched, unmatchedExcelRows, aiRejectedPartials };
+};
 
 //---------------------------------insurance list---------------------------------
 export const getInsuranceList = async (req: Request, res: Response) => {
@@ -260,6 +877,14 @@ export const getInsuranceList = async (req: Request, res: Response) => {
 export const managePrescription = async (req: Request, res: Response) => {
   try {
     const { orderId, prescriptionId, type } = req.body;
+    const partnerId = req.user?.id;
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
 
     if (!orderId || !prescriptionId || !type) {
       return res.status(400).json({
@@ -325,6 +950,7 @@ export const managePrescription = async (req: Request, res: Response) => {
       type,
       orderId,
       prescriptionId,
+      activeOrders: await getActiveInsuranceOrders(partnerId),
     });
   } catch (error: any) {
     res.status(500).json({
@@ -334,672 +960,6 @@ export const managePrescription = async (req: Request, res: Response) => {
     });
   }
 };
-
-//---------------------------------manage prescription---------------------------------
-
-// /** Tolerance for price comparison (Excel vs DB) */
-// const PRICE_TOLERANCE = 0.01;
-
-// /** Possible Excel header names (case-insensitive) for order number. Prefer actual order # (Auftragsnummer) over VoNr/ReNr/PeNr. */
-// const ORDER_NUMBER_HEADERS = [
-//   "auftragsnummer",
-//   "ordernumber",
-//   "order_number",
-//   "nr",
-//   "nr.",
-//   "order no",
-//   "order no.",
-//   "vonr",
-//   "vorgangsnummer",
-//   "fallnr",
-//   "fallnummer",
-//   "renrod",
-//   "rechnungsnummer",
-//   "renr",
-//   "penr",
-// ];
-// const TYPE_HEADERS = ["type", "art", "typ", "order type"];
-// const PRICE_HEADERS = [
-//   "price",
-//   "preis",
-//   "betrag",
-//   "amount",
-//   "insurance_price",
-//   "insurancetotalprice",
-//   "insurance_total_price",
-//   "summe",
-//   "abgerechnet",
-// ];
-// /** Excel: Meldung → prescription.insurance_provider */
-// const MELDUNG_HEADERS = ["meldung", "insurance_provider", "krankenkasse", "kk"];
-// /** Excel: Korr.-Beschreibung fallback for insurance provider (e.g. "aok bayern") */
-// const INSURANCE_PROVIDER_HEADERS = [
-//   "korrbeschreibung",
-//   "beschreibung",
-// ];
-// /** Excel: Patient (e.g. "3344556677 Mustermann, Max") → strip number, match customer vorname/nachname */
-// const PATIENT_HEADERS = ["patient", "patientname", "name", "kunde", "customer"];
-// /** Excel: MwSt 20% → customerOrders.vatRate / shoe_order.vat_rate */
-// const MWST_HEADERS = ["mwst", "mwst.", "vat", "ust", "steuersatz"];
-
-// /** Normalize Excel header key for matching */
-// function excelHeaderKey(str: string): string {
-//   return String(str || "")
-//     .trim()
-//     .toLowerCase()
-//     .replace(/\s+/g, "_")
-//     .replace(/[^\w]/g, "");
-// }
-
-// /**
-//  * Parse Excel Patient / Meldung cell.
-//  * Formats: "3344556677 Mustermann, Max" (id + "Nachname, Vorname") or "23232432, test vorname, test nachname" (id, vorname, nachname).
-//  */
-// function parsePatientName(patientRaw: string | number | undefined): {
-//   nachname: string;
-//   vorname: string;
-// } | null {
-//   const s = String(patientRaw ?? "").trim();
-//   if (!s) return null;
-//   const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
-//   // "23232432, test vorname, test nachname" → id, vorname, nachname
-//   if (parts.length >= 3) {
-//     return { vorname: parts[1], nachname: parts[2] };
-//   }
-//   // "3344556677 Mustermann, Max" or "Mustermann, Max" → strip leading digits, then Nachname, Vorname
-//   const withoutLeadingNumber = s.replace(/^\d[\d\s]*/, "").trim();
-//   const namePart = withoutLeadingNumber || s;
-//   const commaIdx = namePart.indexOf(",");
-//   if (commaIdx >= 0) {
-//     const nachname = namePart.slice(0, commaIdx).trim();
-//     const vorname = namePart.slice(commaIdx + 1).trim();
-//     return { nachname, vorname };
-//   }
-//   const spaceParts = namePart.split(/\s+/).filter(Boolean);
-//   if (spaceParts.length >= 2) {
-//     return { nachname: spaceParts[0], vorname: spaceParts.slice(1).join(" ") };
-//   }
-//   if (spaceParts.length === 1) return { nachname: spaceParts[0], vorname: "" };
-//   return null;
-// }
-
-// /** Normalize for name comparison (lowercase, collapse spaces). */
-// function normalizeName(s: string | null | undefined): string {
-//   return String(s ?? "")
-//     .trim()
-//     .toLowerCase()
-//     .replace(/\s+/g, " ");
-// }
-
-// /** Parse MwSt from Excel e.g. "20%", "20", "0.2" → 20 (percentage) or 0.2 (decimal). */
-// function parseMwStValue(mwstRaw: string | number | undefined): number | null {
-//   if (mwstRaw === undefined || mwstRaw === null) return null;
-//   const s = String(mwstRaw).replace(/,/g, ".").replace(/%/g, "").trim();
-//   const n = parseFloat(s);
-//   if (Number.isNaN(n)) return null;
-//   return n;
-// }
-
-// /** Get value from row by trying possible header names */
-// function getExcelValue(
-//   row: Record<string, unknown>,
-//   possibleKeys: string[],
-// ): string | number | undefined {
-//   const keys = Object.keys(row).map((k) => excelHeaderKey(k));
-//   for (const want of possibleKeys) {
-//     const idx = keys.indexOf(want);
-//     if (idx === -1) continue;
-//     const raw = Object.values(row)[idx];
-//     if (raw !== undefined && raw !== null && raw !== "")
-//       return raw as string | number;
-//   }
-//   return undefined;
-// }
-
-// /** Parse Excel sheet: use row containing "Betrag"/"PeNr" as header row so keys are PeNr, ReNrOD, Betrag, etc. */
-// function parseChangelogSheet(
-//   worksheet: XLSX.WorkSheet,
-// ): Record<string, unknown>[] {
-//   const raw = XLSX.utils.sheet_to_json(worksheet, {
-//     header: 1,
-//     defval: "",
-//   }) as unknown[][];
-//   if (!raw.length) return [];
-
-//   const headerCandidates = [
-//     "betrag",
-//     "penr",
-//     "renrod",
-//     "vonr",
-//     "filiale",
-//     "meldung",
-//     "patient",
-//     "mwst",
-//     "korrbeschreibung",
-//   ];
-//   let headerRowIndex = 0;
-//   for (let r = 0; r < Math.min(3, raw.length); r++) {
-//     const row = raw[r] as unknown[];
-//     const cells = row.map((c) => excelHeaderKey(String(c || "")));
-//     if (headerCandidates.some((h) => cells.includes(h))) {
-//       headerRowIndex = r;
-//       break;
-//     }
-//   }
-
-//   const headerRow = (raw[headerRowIndex] as unknown[]).map(
-//     (c) => String(c ?? "").trim() || undefined,
-//   );
-//   const dataRows = raw.slice(headerRowIndex + 1).filter((row) => {
-//     const arr = row as unknown[];
-//     return arr.some((c) => c !== undefined && c !== null && c !== "");
-//   }) as unknown[][];
-
-//   return dataRows.map((row) => {
-//     const obj: Record<string, unknown> = {};
-//     headerRow.forEach((h, i) => {
-//       const key = h || `__COL_${i}`;
-//       obj[key] = (row as unknown[])[i];
-//     });
-//     return obj;
-//   });
-// }
-
-// /** Shared select for insole order (changelog response shape) */
-// const INSURANCE_INSOLE_SELECT = {
-//   id: true,
-//   orderNumber: true,
-//   paymnentType: true,
-//   totalPrice: true,
-//   insuranceTotalPrice: true,
-//   vatRate: true,
-//   private_payed: true,
-//   insurance_status: true,
-//   createdAt: true,
-//   prescription: {
-//     select: {
-//       id: true,
-//       insurance_provider: true,
-//       prescription_number: true,
-//       proved_number: true,
-//       referencen_number: true,
-//       doctor_name: true,
-//       doctor_location: true,
-//       prescription_date: true,
-//       validity_weeks: true,
-//       establishment_number: true,
-//       aid_code: true,
-//     },
-//   },
-//   customer: {
-//     select: {
-//       id: true,
-//       vorname: true,
-//       nachname: true,
-//       telefon: true,
-//     },
-//   },
-// } as const;
-
-// /** Shared select for shoe order (changelog response shape) */
-// const INSURANCE_SHOE_SELECT = {
-//   id: true,
-//   orderNumber: true,
-//   payment_type: true,
-//   total_price: true,
-//   insurance_price: true,
-//   vat_rate: true,
-//   private_payed: true,
-//   insurance_status: true,
-//   createdAt: true,
-//   updatedAt: true,
-//   prescription: {
-//     select: {
-//       id: true,
-//       insurance_provider: true,
-//       prescription_number: true,
-//       proved_number: true,
-//       referencen_number: true,
-//       doctor_name: true,
-//       doctor_location: true,
-//       prescription_date: true,
-//       validity_weeks: true,
-//       establishment_number: true,
-//       aid_code: true,
-//     },
-//   },
-//   customer: {
-//     select: {
-//       id: true,
-//       vorname: true,
-//       nachname: true,
-//       telefon: true,
-//     },
-//   },
-// } as const;
-
-// /** Normalize shoe order to same shape as insole for API response */
-// function toInsuranceOrderShape(shoe: any) {
-//   return {
-//     id: shoe.id,
-//     orderNumber: shoe.orderNumber,
-//     paymnentType: shoe.payment_type,
-//     totalPrice: shoe.total_price,
-//     insuranceTotalPrice: shoe.insurance_price,
-//     vatRate: shoe.vat_rate,
-//     private_payed: shoe.private_payed,
-//     insurance_status: shoe.insurance_status,
-//     createdAt: shoe.createdAt,
-//     updatedAt: shoe.updatedAt,
-//     prescription: shoe.prescription,
-//     customer: shoe.customer,
-//     insuranceType: "shoes" as const,
-//   };
-// }
-
-// type ChangelogOrderShape = {
-//   id: string;
-//   orderNumber: number | null;
-//   paymnentType: string | null;
-//   totalPrice: number | null;
-//   insuranceTotalPrice: number | null;
-//   vatRate: number | null;
-//   private_payed: boolean | null;
-//   insurance_status: string | null;
-//   createdAt: Date;
-//   updatedAt?: Date;
-//   prescription: any;
-//   customer: any;
-//   insuranceType: "insole" | "shoes";
-// };
-
-// /**
-//  * Validate insurance change-log Excel (Änderungsprotokoll).
-//  * Does NOT update DB. Returns approved/rejected with same order shape as getInsuranceList
-//  * so frontend can display and later use for add/update.
-//  */
-// // export const validateInsuranceChangelog = async (
-// //   req: Request,
-// //   res: Response,
-// // ) => {
-// //   try {
-// //     if (!req.file?.buffer) {
-// //       return res.status(400).json({
-// //         success: false,
-// //         message:
-// //           "No file uploaded. Use multipart field 'file' with an xlsx file.",
-// //       });
-// //     }
-
-// //     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-// //     const sheetName = workbook.SheetNames[0];
-// //     const worksheet = workbook.Sheets[sheetName];
-// //     const rows = parseChangelogSheet(worksheet);
-
-// //     if (!rows.length) {
-// //       return res.status(200).json({
-// //         success: true,
-// //         message: "No data rows in Excel.",
-// //         approved: [],
-// //         rejected: [],
-// //         summary: { total: 0, approved: 0, rejected: 0 },
-// //       });
-// //     }
-
-// //     // Optional partnerId from query/body (for ADMIN/EMPLOYEE selecting a partner); else use current user's partner/id
-// //     const partnerIdFromRequest =
-// //       (req.query.partnerId as string) ||
-// //       (req.body?.partnerId as string) ||
-// //       undefined;
-// //     const partnerId = (partnerIdFromRequest?.trim() || req.user?.partnerId) as
-// //       | string
-// //       | undefined;
-// //     const userId = req.user?.id;
-
-// //     type ApprovedItem = {
-// //       rowIndex: number;
-// //       excelPrice: number;
-// //       order: ChangelogOrderShape;
-// //     };
-// //     type RejectedItem = {
-// //       rowIndex: number;
-// //       orderNumber: number | null;
-// //       type: "insole" | "shoes" | null;
-// //       reason:
-// //         | "ORDER_NOT_FOUND"
-// //         | "PRICE_MISMATCH"
-// //         | "MELDUNG_MISMATCH"
-// //         | "PATIENT_MISMATCH"
-// //         | "MWST_MISMATCH"
-// //         | "NOT_INSURANCE_ORDER"
-// //         | "INVALID_ROW";
-// //       message: string;
-// //       excelPrice?: number;
-// //       dbPrice?: number;
-// //       order?: ChangelogOrderShape;
-// //       excelData?: { orderNumber: number | null; betrag: number | null };
-// //     };
-
-// //     const approved: ApprovedItem[] = [];
-// //     const rejected: RejectedItem[] = [];
-
-// //     for (let i = 0; i < rows.length; i++) {
-// //       const row = rows[i];
-// //       const orderNumberRaw = getExcelValue(row, ORDER_NUMBER_HEADERS);
-// //       const typeRaw = getExcelValue(row, TYPE_HEADERS);
-// //       const priceRaw = getExcelValue(row, PRICE_HEADERS);
-// //       const meldungRaw = getExcelValue(row, MELDUNG_HEADERS);
-// //       const insuranceProviderRaw = getExcelValue(row, INSURANCE_PROVIDER_HEADERS);
-// //       const patientRaw = getExcelValue(row, PATIENT_HEADERS);
-// //       const mwstRaw = getExcelValue(row, MWST_HEADERS);
-
-// //       const orderNumber =
-// //         typeof orderNumberRaw === "number"
-// //           ? orderNumberRaw
-// //           : typeof orderNumberRaw === "string"
-// //             ? parseInt(orderNumberRaw.replace(/\D/g, ""), 10)
-// //             : NaN;
-// //       const excelPrice =
-// //         typeof priceRaw === "number"
-// //           ? priceRaw
-// //           : typeof priceRaw === "string"
-// //             ? parseFloat(String(priceRaw).replace(/,/g, ".").replace(/\s/g, ""))
-// //             : NaN;
-
-// //       const cleanExcelData = () => ({
-// //         orderNumber: Number.isNaN(orderNumber) ? null : orderNumber,
-// //         betrag: Number.isNaN(excelPrice) ? null : excelPrice,
-// //       });
-
-// //       // Match by price (Betrag) only. Betrag must be valid and > 0 (we do not match zero-price orders).
-// //       if (Number.isNaN(excelPrice) || excelPrice <= 0) {
-// //         rejected.push({
-// //           rowIndex: i + 1,
-// //           orderNumber: Number.isNaN(orderNumber) ? null : orderNumber,
-// //           type: null,
-// //           reason: "INVALID_ROW",
-// //           message: "Betrag (price) missing, zero, or invalid in Excel; cannot match.",
-// //           excelData: cleanExcelData(),
-// //         });
-// //         continue;
-// //       }
-
-// //       const typeStr = String(typeRaw || "").toLowerCase();
-// //       let wantInsole =
-// //         typeStr.includes("insole") ||
-// //         typeStr.includes("einlage") ||
-// //         typeStr === "insole";
-// //       let wantShoe =
-// //         typeStr.includes("shoe") ||
-// //         typeStr.includes("schuh") ||
-// //         typeStr === "shoes";
-// //       if (!wantInsole && !wantShoe) {
-// //         wantInsole = true;
-// //         wantShoe = true;
-// //       }
-
-// //       const priceMin = excelPrice - PRICE_TOLERANCE;
-// //       const priceMax = excelPrice + PRICE_TOLERANCE;
-// //       // Only match orders with real insurance amount (Betrag); exclude 0.
-// //       const insoleWhere: any = {
-// //         paymnentType: { in: ["broth", "insurance"] },
-// //         insuranceTotalPrice: { gt: 0, gte: priceMin, lte: priceMax },
-// //       };
-// //       const shoeWhere: any = {
-// //         payment_type: { in: ["insurance", "broth"] },
-// //         insurance_price: { gt: 0, gte: priceMin, lte: priceMax },
-// //       };
-// //       if (partnerId) {
-// //         insoleWhere.partnerId = partnerId;
-// //         shoeWhere.partnerId = partnerId;
-// //       } else if (userId) {
-// //         insoleWhere.partnerId = userId;
-// //         shoeWhere.partnerId = userId;
-// //       }
-
-// //       let matched: {
-// //         id: string;
-// //         orderNumber: number;
-// //         type: "insole" | "shoes";
-// //         dbPrice: number;
-// //       } | null = null;
-
-// //       if (wantInsole) {
-// //         const insoleOrder = await prisma.customerOrders.findFirst({
-// //           where: insoleWhere,
-// //           select: { id: true, orderNumber: true, insuranceTotalPrice: true },
-// //         });
-// //         if (insoleOrder && insoleOrder.insuranceTotalPrice != null) {
-// //           matched = {
-// //             id: insoleOrder.id,
-// //             orderNumber: insoleOrder.orderNumber,
-// //             type: "insole",
-// //             dbPrice: insoleOrder.insuranceTotalPrice,
-// //           };
-// //         }
-// //       }
-// //       if (!matched && wantShoe) {
-// //         const shoeOrder = await prisma.shoe_order.findFirst({
-// //           where: shoeWhere,
-// //           select: { id: true, orderNumber: true, insurance_price: true },
-// //         });
-// //         if (shoeOrder && shoeOrder.insurance_price != null) {
-// //           matched = {
-// //             id: shoeOrder.id,
-// //             orderNumber: shoeOrder.orderNumber ?? 0,
-// //             type: "shoes",
-// //             dbPrice: shoeOrder.insurance_price,
-// //           };
-// //         }
-// //       }
-
-// //       // If no match and we filtered by partner, try again without partner (search all partners)
-// //       if (
-// //         !matched &&
-// //         (insoleWhere.partnerId || shoeWhere.partnerId)
-// //       ) {
-// //         const insoleWhereAny: any = {
-// //           paymnentType: { in: ["broth", "insurance"] },
-// //           insuranceTotalPrice: { gt: 0, gte: priceMin, lte: priceMax },
-// //         };
-// //         const shoeWhereAny: any = {
-// //           payment_type: { in: ["insurance", "broth"] },
-// //           insurance_price: { gt: 0, gte: priceMin, lte: priceMax },
-// //         };
-// //         if (wantInsole) {
-// //           const insoleOrder = await prisma.customerOrders.findFirst({
-// //             where: insoleWhereAny,
-// //             select: { id: true, orderNumber: true, insuranceTotalPrice: true },
-// //           });
-// //           if (insoleOrder && insoleOrder.insuranceTotalPrice != null) {
-// //             matched = {
-// //               id: insoleOrder.id,
-// //               orderNumber: insoleOrder.orderNumber,
-// //               type: "insole",
-// //               dbPrice: insoleOrder.insuranceTotalPrice,
-// //             };
-// //           }
-// //         }
-// //         if (!matched && wantShoe) {
-// //           const shoeOrder = await prisma.shoe_order.findFirst({
-// //             where: shoeWhereAny,
-// //             select: { id: true, orderNumber: true, insurance_price: true },
-// //           });
-// //           if (shoeOrder && shoeOrder.insurance_price != null) {
-// //             matched = {
-// //               id: shoeOrder.id,
-// //               orderNumber: shoeOrder.orderNumber ?? 0,
-// //               type: "shoes",
-// //               dbPrice: shoeOrder.insurance_price,
-// //             };
-// //           }
-// //         }
-// //       }
-
-// //       if (!matched) {
-// //         const scopeMsg =
-// //           partnerId || userId
-// //             ? " for your partner"
-// //             : " (searched all partners)";
-// //         rejected.push({
-// //           rowIndex: i + 1,
-// //           orderNumber: Number.isNaN(orderNumber) ? null : orderNumber,
-// //           type: wantInsole && wantShoe ? null : wantInsole ? "insole" : "shoes",
-// //           reason: "ORDER_NOT_FOUND",
-// //           message: `No insurance order found with Betrag ${excelPrice}${scopeMsg}. Match is by price only.`,
-// //           excelPrice,
-// //           excelData: cleanExcelData(),
-// //         });
-// //         continue;
-// //       }
-
-// //       // Matched by price (Betrag). Fetch full order and run Meldung/Patient/MwSt checks.
-// //       const fullOrder = await fetchFullOrderForChangelog(
-// //         matched.id,
-// //         matched.type,
-// //       );
-// //       if (!fullOrder) continue;
-
-// //       // 1. Meldung → prescription.insurance_provider (or Korr.-Beschreibung as fallback)
-// //       const excelMeldung =
-// //         meldungRaw !== undefined &&
-// //         meldungRaw !== null &&
-// //         String(meldungRaw).trim() !== ""
-// //           ? normalizeName(String(meldungRaw))
-// //           : insuranceProviderRaw !== undefined &&
-// //               insuranceProviderRaw !== null &&
-// //               String(insuranceProviderRaw).trim() !== ""
-// //             ? normalizeName(String(insuranceProviderRaw))
-// //             : null;
-// //       if (excelMeldung) {
-// //         const dbProvider = normalizeName(
-// //           fullOrder.prescription?.insurance_provider,
-// //         );
-// //         if (
-// //           !dbProvider ||
-// //           (!dbProvider.includes(excelMeldung) && !excelMeldung.includes(dbProvider))
-// //         ) {
-// //           rejected.push({
-// //             rowIndex: i + 1,
-// //             orderNumber: matched.orderNumber,
-// //             type: matched.type,
-// //             reason: "MELDUNG_MISMATCH",
-// //             message: `Excel Meldung does not match prescription.insurance_provider (DB: ${fullOrder.prescription?.insurance_provider ?? "—"})`,
-// //             excelPrice,
-// //             dbPrice: matched.dbPrice,
-// //             order: fullOrder,
-// //             excelData: cleanExcelData(),
-// //           });
-// //           continue;
-// //         }
-// //       }
-
-// //       // 2. Patient (e.g. "3344556677 Mustermann, Max") → strip number, match customer vorname/nachname
-// //       const excelPatient = parsePatientName(patientRaw);
-// //       if (excelPatient && (excelPatient.nachname || excelPatient.vorname)) {
-// //         const dbNachname = normalizeName(fullOrder.customer?.nachname);
-// //         const dbVorname = normalizeName(fullOrder.customer?.vorname);
-// //         const wantNachname = normalizeName(excelPatient.nachname);
-// //         const wantVorname = normalizeName(excelPatient.vorname);
-// //         const nachnameMatch =
-// //           !wantNachname || dbNachname === wantNachname || dbNachname.includes(wantNachname) || wantNachname.includes(dbNachname);
-// //         const vornameMatch =
-// //           !wantVorname || dbVorname === wantVorname || dbVorname.includes(wantVorname) || wantVorname.includes(dbVorname);
-// //         if (!nachnameMatch || !vornameMatch) {
-// //           rejected.push({
-// //             rowIndex: i + 1,
-// //             orderNumber: matched.orderNumber,
-// //             type: matched.type,
-// //             reason: "PATIENT_MISMATCH",
-// //             message: `Excel Patient does not match customer (DB: ${fullOrder.customer?.nachname ?? ""}, ${fullOrder.customer?.vorname ?? ""})`,
-// //             excelPrice,
-// //             dbPrice: matched.dbPrice,
-// //             order: fullOrder,
-// //             excelData: cleanExcelData(),
-// //           });
-// //           continue;
-// //         }
-// //       }
-
-// //       // 3. MwSt 20% = customerOrders.vatRate | shoe_order.vat_rate
-// //       const excelMwst = parseMwStValue(mwstRaw);
-// //       if (excelMwst !== null) {
-// //         const dbVat = (fullOrder as any).vatRate;
-// //         const dbVatNum =
-// //           typeof dbVat === "number" ? dbVat : parseFloat(String(dbVat ?? ""));
-// //         const dbVatPct = !Number.isNaN(dbVatNum)
-// //           ? dbVatNum <= 1
-// //             ? dbVatNum * 100
-// //             : dbVatNum
-// //           : null;
-// //         const excelPct = excelMwst <= 1 ? excelMwst * 100 : excelMwst;
-// //         if (
-// //           dbVatPct === null ||
-// //           Math.abs(dbVatPct - excelPct) > 0.5
-// //         ) {
-// //           rejected.push({
-// //             rowIndex: i + 1,
-// //             orderNumber: matched.orderNumber,
-// //             type: matched.type,
-// //             reason: "MWST_MISMATCH",
-// //             message: `Excel MwSt (${excelMwst}%) does not match order vat (DB: ${dbVat ?? "—"})`,
-// //             excelPrice,
-// //             dbPrice: matched.dbPrice,
-// //             order: fullOrder,
-// //             excelData: cleanExcelData(),
-// //           });
-// //           continue;
-// //         }
-// //       }
-
-// //       approved.push({
-// //         rowIndex: i + 1,
-// //         excelPrice,
-// //         order: fullOrder,
-// //       });
-// //     }
-
-// //     return res.status(200).json({
-// //       success: true,
-// //       message:
-// //         "Validation complete. No database changes made. approved = orders matching Excel (data + price). rejected = with reason. order shape is same as get-insurance-list for display/update.",
-// //       approved,
-// //       rejected,
-// //       summary: {
-// //         total: rows.length,
-// //         approved: approved.length,
-// //         rejected: rejected.length,
-// //       },
-// //     });
-// //   } catch (error: any) {
-// //     console.error("Validate insurance changelog error:", error);
-// //     res.status(500).json({
-// //       success: false,
-// //       message: "Something went wrong",
-// //       error: error.message,
-// //     });
-// //   }
-// // };
-
-// // async function fetchFullOrderForChangelog(
-// //   orderId: string,
-// //   type: "insole" | "shoes",
-// // ): Promise<ChangelogOrderShape | null> {
-// //   if (type === "insole") {
-// //     const order = await prisma.customerOrders.findUnique({
-// //       where: { id: orderId },
-// //       select: INSURANCE_INSOLE_SELECT,
-// //     });
-// //     if (!order) return null;
-// //     return { ...order, insuranceType: "insole" as const };
-// //   }
-// //   const order = await prisma.shoe_order.findUnique({
-// //     where: { id: orderId },
-// //     select: INSURANCE_SHOE_SELECT,
-// //   });
-// //   if (!order) return null;
-// //   return toInsuranceOrderShape(order);
-// // }
 
 //---------------------------------validate insurance changelog---------------------------------
 
@@ -1022,357 +982,110 @@ export const managePrescription = async (req: Request, res: Response) => {
 */
 
 export const validateInsuranceChangelog = async (req, res) => {
-  const partnerId = req.user?.id;
-  if (!partnerId) {
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized",
-    });
-  }
-
-  const columnMap = {
-    customer: ["Patient", "Versicherter"],
-    insurance_provider: ["meldung", "message"],
-    insurance_price: ["Betrag"],
-    vat_rate: ["mwst 20%"],
-  };
-
-  const aliasToStandardKey = Object.fromEntries(
-    Object.entries(columnMap).flatMap(([stdKey, aliases]) =>
-      aliases.map((alias) => [String(alias).toLowerCase().trim(), stdKey]),
-    ),
-  );
-
-  const toNumberOrNull = (v) => {
-    if (v == null || v === "") return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const normalizeText = (v) =>
-    String(v ?? "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const normalizeProvider = (v) =>
-    normalizeText(v)
-      .replace(/^(korrektur|abrechnung)\s*-\s*/i, "")
-      .replace(/\([^)]*\)/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const parseCustomerNameCandidates = (v) => {
-    // Example input: "5566773344 test vorname, test nachname"
-    // 1) remove leading numeric id
-    // 2) split by comma into vorname / nachname
-    // 3) fallback for unexpected format
-    const raw = String(v ?? "")
-      .trim()
-      // support both:
-      // "4455667733 test vorname, test nachname"
-      // "4455667733, test vorname, test nachname"
-      .replace(/^\d+\s*,?\s*/, "");
-    const parts = raw
-      .split(",")
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    if (parts.length >= 2) {
-      const a = normalizeText(parts[0]);
-      const b = normalizeText(parts[1]);
-      const candidates = [
-        { vorname: a, nachname: b },
-        { vorname: b, nachname: a },
-      ];
-      return candidates.filter(
-        (c, i, arr) =>
-          arr.findIndex(
-            (x) => x.vorname === c.vorname && x.nachname === c.nachname,
-          ) === i,
-      );
-    }
-
-    const words = normalizeText(raw).split(" ").filter(Boolean);
-    if (words.length <= 1) {
-      const parsed = {
-        vorname: words[0] ?? "",
-        nachname: "",
-      };
-      return [parsed];
-    }
-
-    const parsed = {
-      vorname: words.slice(0, -1).join(" "),
-      nachname: words[words.length - 1],
-    };
-    return [parsed];
-  };
-
-  const normalizeRow = (row) => {
-    const normalized = {};
-    for (const key in row) {
-      const normalizedKey = String(key).toLowerCase().trim();
-      const stdKey = aliasToStandardKey[normalizedKey];
-      if (stdKey) normalized[stdKey] = row[key];
-    }
-    return normalized;
-  };
-
   try {
-    const fileBuffer = (req as any)?.file?.buffer;
-    if (!fileBuffer) {
-      return res.status(400).json({
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
         success: false,
-        message: "Excel file is required (field: file)",
+        message: "Unauthorized",
       });
     }
 
-    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rawData = XLSX.utils.sheet_to_json(sheet, { range: 1 });
 
-    const cleanData: any[] = (rawData as any[])
-      .map(normalizeRow)
-      .filter(
-        (row: any) =>
-          row.customer &&
-          row.insurance_provider &&
-          row.insurance_price !== undefined &&
-          row.vat_rate !== undefined,
-      );
+    // Parse to arrays first, so we can detect which template we have.
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1, // array-of-arrays
+      defval: null,
+    }) as unknown[][];
 
-    const excelMatchInputs = cleanData.flatMap((row: any) => {
-      const provider = normalizeProvider(row.insurance_provider);
-      const insurancePrice = toNumberOrNull(row.insurance_price);
-      const vatRate = toNumberOrNull(row.vat_rate);
-      return parseCustomerNameCandidates(row.customer).map((customerName) => ({
-        vorname: customerName.vorname,
-        nachname: customerName.nachname,
-        provider,
-        insurancePrice,
-        vatRate,
-      }));
+    const hasValue = (v: unknown) =>
+      v !== null &&
+      v !== undefined &&
+      !(typeof v === "string" && v.trim() === "");
+
+    // Dynamic header detection:
+    // pick the first non-empty row where most values are text-like.
+    const headerRowIdx = rows.findIndex((r = []) => {
+      const nonEmpty = r.filter(hasValue);
+      if (nonEmpty.length === 0) return false;
+      const stringCount = nonEmpty.filter((v) => typeof v === "string").length;
+      return stringCount / nonEmpty.length >= 0.6;
     });
 
-    const uniqueInsurancePrices = Array.from(
-      new Set(
-        excelMatchInputs
-          .map((x) => x.insurancePrice)
-          .filter((v) => v !== null && v !== undefined),
-      ),
-    );
-    const uniqueVatRates = Array.from(
-      new Set(
-        excelMatchInputs
-          .map((x) => x.vatRate)
-          .filter((v) => v !== null && v !== undefined),
-      ),
-    );
+    const maxColumns = rows.reduce((max, r = []) => Math.max(max, r.length), 0);
+    const headerSource =
+      headerRowIdx !== -1
+        ? (rows[headerRowIdx] ?? [])
+        : Array.from({ length: maxColumns }, (_, i) => `column_${i + 1}`);
 
-    const customerNameOr = excelMatchInputs
-      .filter((x) => x.vorname && x.nachname)
-      .map((x) => ({
-        customer: {
-          is: {
-            vorname: { equals: x.vorname, mode: "insensitive" as const },
-            nachname: { equals: x.nachname, mode: "insensitive" as const },
-          },
-        },
-      }));
+    const headers = headerSource.map((h, i) => {
+      const header = h === null || h === undefined ? "" : String(h).trim();
+      return header || `column_${i + 1}`;
+    });
 
-    const insurancePriceFilter =
-      uniqueInsurancePrices.length > 0
-        ? { insuranceTotalPrice: { in: uniqueInsurancePrices as number[] } }
-        : {};
+    const dataRows = headerRowIdx !== -1 ? rows.slice(headerRowIdx + 1) : rows;
 
-    const shoeInsurancePriceFilter =
-      uniqueInsurancePrices.length > 0
-        ? { insurance_price: { in: uniqueInsurancePrices as number[] } }
-        : {};
+    const mappedRows = dataRows
+      .map((r = []) => {
+        const obj: Record<string, unknown> = {};
+        for (let i = 0; i < headers.length; i++) {
+          obj[headers[i]] = r[i] ?? null;
+        }
+        const values = Object.values(obj);
+        const hasAny = values.some(hasValue);
+        return hasAny ? obj : null;
+      })
+      .filter((x): x is Record<string, unknown> => x !== null);
 
-    const vatRateFilter =
-      uniqueVatRates.length > 0
-        ? { vatRate: { in: uniqueVatRates as number[] } }
-        : {};
+    const activeOrders = await getActiveInsuranceOrders(partnerId);
+    let matched: any[] = [];
+    let unmatchedExcelRows: Record<string, unknown>[] = [];
+    let aiRejectedPartials: Array<{
+      orderId: string;
+      problemFields: string[];
+    }> = [];
 
-    const shoeVatRateFilter =
-      uniqueVatRates.length > 0
-        ? { vat_rate: { in: uniqueVatRates as number[] } }
-        : {};
-
-    const [insole, shoe] = await Promise.all([
-      prisma.customerOrders.findMany({
-        where: {
-          partnerId,
-          insurance_payed: false,
-          insurance_status: "pending",
-          paymnentType: { in: ["insurance", "broth"] },
-          insuranceTotalPrice: { not: null },
-          prescription: { isNot: null },
-          ...(customerNameOr.length > 0 ? { OR: customerNameOr } : {}),
-          ...insurancePriceFilter,
-          ...vatRateFilter,
-        },
-        select: {
-          id: true,
-          orderNumber: true,
-          insuranceTotalPrice: true,
-          vatRate: true,
-          customer: { select: { vorname: true, nachname: true } },
-          prescription: { select: { insurance_provider: true } },
-        },
-      }),
-      prisma.shoe_order.findMany({
-        where: {
-          partnerId,
-          insurance_payed: false,
-          insurance_status: "pending",
-          payment_type: { in: ["insurance", "broth"] },
-          insurance_price: { not: null },
-          prescription: { isNot: null },
-          ...(customerNameOr.length > 0 ? { OR: customerNameOr } : {}),
-          ...shoeInsurancePriceFilter,
-          ...shoeVatRateFilter,
-        },
-        select: {
-          id: true,
-          orderNumber: true,
-          insurance_price: true,
-          vat_rate: true,
-          customer: { select: { vorname: true, nachname: true } },
-          prescription: { select: { insurance_provider: true } },
-        },
-      }),
-    ]);
-
-    const activeOrders = [
-      ...insole.map((o) => ({
-        orderId: o.id,
-        orderType: "insole" as const,
-        orderNumber: o.orderNumber,
-        vorname: normalizeText(o.customer?.vorname),
-        nachname: normalizeText(o.customer?.nachname),
-        provider: normalizeProvider(o.prescription?.insurance_provider),
-        insurancePrice: toNumberOrNull(o.insuranceTotalPrice),
-        vatRate: toNumberOrNull(o.vatRate),
-      })),
-      ...shoe.map((o) => ({
-        orderId: o.id,
-        orderType: "shoes" as const,
-        orderNumber: o.orderNumber,
-        vorname: normalizeText(o.customer?.vorname),
-        nachname: normalizeText(o.customer?.nachname),
-        provider: normalizeProvider(o.prescription?.insurance_provider),
-        insurancePrice: toNumberOrNull(o.insurance_price),
-        vatRate: toNumberOrNull(o.vat_rate),
-      })),
-    ];
-
-    // O(1) matching map instead of scanning all active orders per row.
-    const toMatchKey = (
-      vorname: string,
-      nachname: string,
-      provider: string,
-      insurancePrice: number | null,
-      vatRate: number | null,
-    ) =>
-      `${vorname}||${nachname}||${provider}||${insurancePrice ?? "null"}||${vatRate ?? "null"}`;
-    const toFallbackKey = (
-      vorname: string,
-      nachname: string,
-      insurancePrice: number | null,
-      vatRate: number | null,
-    ) =>
-      `${vorname}||${nachname}||${insurancePrice ?? "null"}||${vatRate ?? "null"}`;
-
-    const activeOrderByKey = new Map<string, (typeof activeOrders)[number]>();
-    const activeOrderByFallbackKey = new Map<
-      string,
-      (typeof activeOrders)[number]
-    >();
-    for (const order of activeOrders) {
-      const key = toMatchKey(
-        order.vorname,
-        order.nachname,
-        order.provider,
-        order.insurancePrice,
-        order.vatRate,
-      );
-      if (!activeOrderByKey.has(key)) activeOrderByKey.set(key, order);
-      const fallbackKey = toFallbackKey(
-        order.vorname,
-        order.nachname,
-        order.insurancePrice,
-        order.vatRate,
-      );
-      if (!activeOrderByFallbackKey.has(fallbackKey)) {
-        activeOrderByFallbackKey.set(fallbackKey, order);
-      }
+    try {
+      const aiResult = await matchExcelWithOrdersAI(mappedRows, activeOrders);
+      matched = aiResult.matched;
+      unmatchedExcelRows = aiResult.unmatchedExcelRows;
+      aiRejectedPartials = aiResult.aiRejectedPartials;
+    } catch (aiError) {
+      console.error("AI matching failed, fallback deterministic:", aiError);
+      const fallback = matchExcelWithOrdersDeterministic(mappedRows, activeOrders);
+      matched = fallback.matched;
+      unmatchedExcelRows = fallback.unmatchedExcelRows;
     }
 
-    const matchedWithIdType = cleanData.map((row: any) => {
-      const provider = normalizeProvider(row.insurance_provider);
-      const insurancePrice = toNumberOrNull(row.insurance_price);
-      const vatRate = toNumberOrNull(row.vat_rate);
-
-      const nameCandidates = parseCustomerNameCandidates(row.customer);
-      let match = null;
-      for (const candidate of nameCandidates) {
-        const key = toMatchKey(
-          candidate.vorname,
-          candidate.nachname,
-          provider,
-          insurancePrice,
-          vatRate,
-        );
-        match = activeOrderByKey.get(key) ?? null;
-        if (!match) {
-          const fallbackKey = toFallbackKey(
-            candidate.vorname,
-            candidate.nachname,
-            insurancePrice,
-            vatRate,
-          );
-          match = activeOrderByFallbackKey.get(fallbackKey) ?? null;
-        }
-        if (match) break;
-      }
-      return {
-        ...row,
-        id: match?.orderId ?? null,
-        type: match?.orderType ?? null,
-      };
-    });
-
-    const matchedData = matchedWithIdType.filter(
-      (row: any) => row.id && row.type,
+    const partialMatched = buildPartialMatches(
+      unmatchedExcelRows,
+      activeOrders,
+      aiRejectedPartials,
     );
 
-    return res.json({
+    res.json({
       success: true,
-      data: matchedData,
-      meta: {
-        excelRows: cleanData.length,
-        activeInsuranceRows: activeOrders.length,
-        matchedRows: matchedData.length,
-        exclData: cleanData,
-        // matchedWithIdType: matchedWithIdType,
-
-        activeOrders: activeOrders,
-      },
+      exclData: mappedRows,
+      activeOrders,
+      matched,
+      matchCount: matched.length,
+      unmatchedExcelRows,
+      partialMatched,
+      partialMatchCount: partialMatched.length,
     });
   } catch (error) {
-    console.error("Validate insurance changelog error:", error);
-    return res.status(500).json({
+    console.error("Get full Excel data error:", error);
+    res.status(500).json({
       success: false,
       message: "Something went wrong",
       error: error.message,
     });
   }
 };
-
 
 export const getCalculationData = async (req: Request, res: Response) => {
   const partnerId = req.user?.id;
