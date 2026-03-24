@@ -1002,207 +1002,92 @@ export const managePrescription = async (req: Request, res: Response) => {
 // // }
 
 //---------------------------------validate insurance changelog---------------------------------
+
+/*
+* customerOrders
+* insuranceTotalPrice Float?
+* insurance_status insurance_status? @default(pending)
+* insurance_payed  Boolean?          @default(false)|
+
+* enum insurance_status {
+  pending
+  approved
+  rejected
+}
+
+* shoe_order
+* insurance_price Float?
+* insurance_status insurance_status? @default(pending)
+* insurance_payed  Boolean?          @default(false)
+*/
+
 export const validateInsuranceChangelog = async (req, res) => {
+  type NormalizedInsuranceRow = {
+    customer?: unknown;
+    insurance_provider?: unknown;
+    insurance_price?: unknown;
+    vat_rate?: unknown;
+    [key: string]: unknown;
+  };
+
+  const columnMap = {
+    customer: ["patient", "versicherter"],
+    insurance_provider: ["meldung", "message"],
+    insurance_price: ["basis 10%", "basis"],
+    vat_rate: ["mwst 20%", "tax", "vat"],
+  };
+  const aliasToStandardKey = Object.fromEntries(
+    Object.entries(columnMap).flatMap(([stdKey, aliases]) =>
+      aliases.map((alias) => [String(alias).toLowerCase().trim(), stdKey]),
+    ),
+  );
+
+  function normalizeRow(row): NormalizedInsuranceRow {
+    const normalized: NormalizedInsuranceRow = {};
+
+    for (const key in row) {
+      const lowerKey = key.toLowerCase().trim();
+      const stdKey = aliasToStandardKey[lowerKey];
+      if (stdKey) normalized[stdKey] = row[key];
+    }
+
+    return normalized;
+  }
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
-    }
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(sheet);
 
-    const headerRow = rows[0] || {};
-    const headerToKey = {};
-    for (const key of Object.keys(headerRow)) {
-      const val = headerRow[key];
-      if (val != null && String(val).trim()) headerToKey[String(val).trim()] = key;
-    }
-    const keyVersicherter = headerToKey["Versicherter"] || headerToKey["Patient"] || "__EMPTY_3";
-    const keyMeldung = headerToKey["Meldung"] || "__EMPTY_5";
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
 
-    const data = [];
-    for (let i = 1; i < (rows.length || 0); i++) {
-      const row = rows[i];
-      const versicherter = row[keyVersicherter] != null && row[keyVersicherter] !== "" ? String(row[keyVersicherter]).trim() : null;
-      const meldung = row[keyMeldung] != null && row[keyMeldung] !== "" ? String(row[keyMeldung]).trim() : null;
-      if (!versicherter && !meldung) continue;
-      if (meldung && meldung.startsWith("Vorkommen:")) continue;
-      let betrag = null;
-      for (const name of ["Betrag", "Brutto Geliefert", "Brutto Abgerechnet"]) {
-        const k = headerToKey[name];
-        if (!k || row[k] == null || row[k] === "") continue;
-        const n = parseFloat(String(row[k]).replace(",", "."));
-        if (!isNaN(n)) { betrag = n; break; }
-      }
-      let mwst = null;
-      const kMwst = headerToKey["MwSt 20%"];
-      if (kMwst && row[kMwst] != null && row[kMwst] !== "") {
-        const n = parseFloat(String(row[kMwst]).replace(",", "."));
-        if (!isNaN(n)) mwst = n;
-      }
-      if (mwst == null && betrag != null) mwst = Math.round(betrag * 0.2 * 100) / 100;
-      data.push({ Versicherter: versicherter, Meldung: meldung, Betrag: betrag, "MwSt 20%": mwst });
-    }
+    // Excel template has header in row 2 (row 1 has helper values),
+    // so use range: 1 to read correct column names.
+    const rawData = XLSX.utils.sheet_to_json(sheet, { range: 1 });
 
-    const { id } = req.user;
-    const insoleRow = await prisma.customerOrders.findFirst({
-      where: { partnerId: id, paymnentType: { in: ["insurance", "broth"] }, insurance_payed: false },
-      select: {
-        id: true, orderNumber: true, paymnentType: true, totalPrice: true, insuranceTotalPrice: true,
-        private_payed: true, insurance_status: true, createdAt: true, vatRate: true,
-        customer: { select: { id: true, telefon: true, vorname: true, nachname: true } },
-        prescription: { select: { id: true, insurance_number: true, insurance_provider: true, prescription_number: true, proved_number: true, referencen_number: true, doctor_name: true, doctor_location: true, prescription_date: true, validity_weeks: true, establishment_number: true, practice_number: true, aid_code: true } },
-      },
-    });
-    const shoeRow = await prisma.shoe_order.findFirst({
-      where: { partnerId: id, payment_type: { in: ["insurance", "broth"] }, insurance_payed: false },
-      select: {
-        id: true, orderNumber: true, payment_type: true, total_price: true, insurance_price: true,
-        private_payed: true, insurance_status: true, createdAt: true, vat_rate: true,
-        customer: { select: { id: true, telefon: true, vorname: true, nachname: true } },
-        prescription: { select: { id: true, insurance_number: true, insurance_provider: true, prescription_number: true, proved_number: true, referencen_number: true, doctor_name: true, doctor_location: true, prescription_date: true, validity_weeks: true, establishment_number: true, practice_number: true, aid_code: true } },
-      },
-    });
-    const insole = insoleRow ? { ...insoleRow, insuranceType: "insole" } : null;
-    const shoe = shoeRow ? { ...shoeRow, insuranceType: "shoe" } : null;
+    // clean + normalize
+    // const cleanData = rawData.map(normalizeRow);
 
-    const tol = 0.02;
-    const n = (s) => (s == null || s === "" ? "" : String(s).toLowerCase().trim().replace(/\s+/g, " "));
-    const numEq = (a, b) => a != null && b != null && Math.abs(Number(a) - Number(b)) <= tol;
+    // clean + normalize
+    const cleanData = rawData
+      .map(normalizeRow)
+      .filter(
+        (row: NormalizedInsuranceRow) =>
+          row?.customer &&
+          row?.insurance_provider &&
+          row?.insurance_price !== undefined &&
+          row?.vat_rate !== undefined,
+      );
 
-    const machInsole = [];
-    const machShoe = [];
-    const notMachInsole = [];
-    const notMachShoe = [];
-
-    for (const item of data) {
-      const v = item.Versicherter;
-      const vNumMatch = v && v.match(/\d+/);
-      const vNum = vNumMatch ? vNumMatch[0] : null;
-      const vNamePart = v ? v.replace(/^\d+\s*/, "").trim() : "";
-      const vParts = vNamePart.split(",").map((s) => s.trim());
-      const vNachname = vParts[0] || "";
-      const vVorname = vParts[1] || "";
-
-      // Insole scoring (0–1 based on 4 checks)
-      if (insole) {
-        const versicherterMatchInsole =
-          !v ||
-          (insole.customer &&
-            ((insole.customer.telefon &&
-              vNum &&
-              String(insole.customer.telefon).replace(/\D/g, "").includes(vNum)) ||
-              (n(insole.customer.nachname) === n(vNachname) &&
-                n(insole.customer.vorname) === n(vVorname))));
-        const meldungMatchInsole =
-          !item.Meldung ||
-          !insole.prescription?.insurance_provider ||
-          n(item.Meldung).includes(n(insole.prescription.insurance_provider)) ||
-          n(insole.prescription.insurance_provider).includes(n(item.Meldung));
-        const betragMatchInsole =
-          item.Betrag == null ||
-          insole.insuranceTotalPrice == null ||
-          numEq(item.Betrag, insole.insuranceTotalPrice);
-        const mwstMatchInsole =
-          item["MwSt 20%"] == null ||
-          insole.vatRate == null ||
-          numEq(item["MwSt 20%"], insole.vatRate);
-
-        const checksInsole = [
-          versicherterMatchInsole,
-          meldungMatchInsole,
-          betragMatchInsole,
-          mwstMatchInsole,
-        ];
-        const insoleScore =
-          checksInsole.filter(Boolean).length / checksInsole.length;
-
-        if (insoleScore > 0) {
-          const insoleResult = {
-            id: insole.id,
-            orderNumber: insole.orderNumber,
-            paymnentType: insole.paymnentType,
-            totalPrice: insole.totalPrice,
-            insuranceTotalPrice: insole.insuranceTotalPrice,
-            private_payed: insole.private_payed,
-            insurance_status: insole.insurance_status,
-            createdAt: insole.createdAt,
-            vatRate: insole.vatRate,
-            prescription: insole.prescription,
-            customer: insole.customer,
-            insuranceType: "insole" as const,
-            matchScore: insoleScore,
-          };
-          if (insoleScore >= 0.9) machInsole.push(insoleResult);
-          else notMachInsole.push(insoleResult);
-        }
-      }
-
-      // Shoe scoring (0–1 based on 4 checks)
-      if (shoe) {
-        const versicherterMatchShoe =
-          !v ||
-          (shoe.customer &&
-            ((shoe.customer.telefon &&
-              vNum &&
-              String(shoe.customer.telefon).replace(/\D/g, "").includes(vNum)) ||
-              (n(shoe.customer.nachname) === n(vNachname) &&
-                n(shoe.customer.vorname) === n(vVorname))));
-        const meldungMatchShoe =
-          !item.Meldung ||
-          !shoe.prescription?.insurance_provider ||
-          n(item.Meldung).includes(n(shoe.prescription.insurance_provider)) ||
-          n(shoe.prescription.insurance_provider).includes(n(item.Meldung));
-        const betragMatchShoe =
-          item.Betrag == null ||
-          shoe.insurance_price == null ||
-          numEq(item.Betrag, shoe.insurance_price);
-        const mwstMatchShoe =
-          item["MwSt 20%"] == null ||
-          shoe.vat_rate == null ||
-          numEq(item["MwSt 20%"], shoe.vat_rate);
-
-        const checksShoe = [
-          versicherterMatchShoe,
-          meldungMatchShoe,
-          betragMatchShoe,
-          mwstMatchShoe,
-        ];
-        const shoeScore =
-          checksShoe.filter(Boolean).length / checksShoe.length;
-
-        if (shoeScore > 0) {
-          const shoeResult = {
-            id: shoe.id,
-            orderNumber: shoe.orderNumber,
-            paymnentType: shoe.payment_type,
-            totalPrice: shoe.total_price,
-            insuranceTotalPrice: shoe.insurance_price,
-            private_payed: shoe.private_payed,
-            insurance_status: shoe.insurance_status,
-            createdAt: shoe.createdAt,
-            vatRate: shoe.vat_rate,
-            prescription: shoe.prescription,
-            customer: shoe.customer,
-            insuranceType: "shoes" as const,
-            matchScore: shoeScore,
-          };
-          if (shoeScore >= 0.9) machShoe.push(shoeResult);
-          else notMachShoe.push(shoeResult);
-        }
-      }
-    }
-
-    return res.status(200).json({
+    res.json({
       success: true,
-      message: "Insurance changelog validated successfully",
-      machInsole,
-      machShoe,
-      notMachInsole,
-      notMachShoe,
+      data: cleanData,
     });
   } catch (error) {
     console.error("Validate insurance changelog error:", error);
-    res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
   }
 };
