@@ -2,11 +2,11 @@ import express from "express";
 import multer from "multer";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import {
+  getCalculationData,
   getInsuranceList,
   managePrescription,
   validateInsuranceChangelog,
 } from "./insurance.cotrollers";
- 
 
 const router = express.Router();
 
@@ -35,6 +35,10 @@ router.post(
   validateInsuranceChangelog,
 );
 
- 
+// router.get(
+//   "/get-calculation",
+//   verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
+//   getCalculationData,
+// );
 
 export default router;
