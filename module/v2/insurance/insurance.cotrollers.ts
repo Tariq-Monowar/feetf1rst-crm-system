@@ -1022,13 +1022,7 @@ export const managePrescription = async (req: Request, res: Response) => {
 */
 
 export const validateInsuranceChangelog = async (req, res) => {
-  type NormalizedInsuranceRow = {
-    customer?: unknown;
-    insurance_provider?: unknown;
-    insurance_price?: unknown;
-    vat_rate?: unknown;
-    [key: string]: unknown;
-  };
+  const partnerId = req.user?.id;
 
   const columnMap = {
     customer: ["patient", "versicherter"],
@@ -1036,58 +1030,307 @@ export const validateInsuranceChangelog = async (req, res) => {
     insurance_price: ["basis 10%", "basis"],
     vat_rate: ["mwst 20%", "tax", "vat"],
   };
+
   const aliasToStandardKey = Object.fromEntries(
     Object.entries(columnMap).flatMap(([stdKey, aliases]) =>
       aliases.map((alias) => [String(alias).toLowerCase().trim(), stdKey]),
     ),
   );
 
-  function normalizeRow(row): NormalizedInsuranceRow {
-    const normalized: NormalizedInsuranceRow = {};
+  const toNumberOrNull = (v) => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
 
-    for (const key in row) {
-      const lowerKey = key.toLowerCase().trim();
-      const stdKey = aliasToStandardKey[lowerKey];
-      if (stdKey) normalized[stdKey] = row[key];
+  const normalizeText = (v) =>
+    String(v ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const parseCustomerName = (v) => {
+    // Example input: "5566773344 test vorname, test nachname"
+    // 1) remove leading numeric id
+    // 2) split by comma into vorname / nachname
+    // 3) fallback for unexpected format
+    console.log("[validateInsuranceChangelog] parseCustomerName input:", v);
+    const raw = String(v ?? "").trim().replace(/^\d+\s*/, "");
+    const parts = raw.split(",");
+
+    if (parts.length >= 2) {
+      const parsed = {
+        vorname: normalizeText(parts[0]),
+        nachname: normalizeText(parts.slice(1).join(",")),
+      };
+      console.log("[validateInsuranceChangelog] parseCustomerName parsed:", parsed);
+      return parsed;
     }
 
+    const words = normalizeText(raw).split(" ").filter(Boolean);
+    if (words.length <= 1) {
+      const parsed = {
+        vorname: words[0] ?? "",
+        nachname: "",
+      };
+      console.log("[validateInsuranceChangelog] parseCustomerName parsed:", parsed);
+      return parsed;
+    }
+
+     
+
+    const parsed = {
+      vorname: words.slice(0, -1).join(" "),
+      nachname: words[words.length - 1],
+    };
+    console.log("[validateInsuranceChangelog] parseCustomerName parsed:", parsed);
+    return parsed;
+  };
+
+  const normalizeRow = (row) => {
+    const normalized = {};
+    for (const key in row) {
+      const stdKey = aliasToStandardKey[String(key).toLowerCase().trim()];
+      if (stdKey) normalized[stdKey] = row[key];
+    }
     return normalized;
-  }
+  };
 
   try {
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const fileBuffer = (req as any)?.file?.buffer;
+    if (!fileBuffer) {
+      return res.status(400).json({
+        success: false,
+        message: "Excel file is required (field: file)",
+      });
+    }
 
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-
-    // Excel template has header in row 2 (row 1 has helper values),
-    // so use range: 1 to read correct column names.
     const rawData = XLSX.utils.sheet_to_json(sheet, { range: 1 });
 
-    // clean + normalize
-    // const cleanData = rawData.map(normalizeRow);
-
-    // clean + normalize
-    const cleanData = rawData
+    const cleanData: any[] = (rawData as any[])
       .map(normalizeRow)
       .filter(
-        (row: NormalizedInsuranceRow) =>
-          row?.customer &&
-          row?.insurance_provider &&
-          row?.insurance_price !== undefined &&
-          row?.vat_rate !== undefined,
+        (row: any) =>
+          row.customer &&
+          row.insurance_provider &&
+          row.insurance_price !== undefined &&
+          row.vat_rate !== undefined,
       );
 
-    res.json({
+    console.log(cleanData);
+
+    const [insole, shoe] = await Promise.all([
+      prisma.customerOrders.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          insurance_status: "pending",
+          paymnentType: { in: ["insurance", "broth"] },
+          insuranceTotalPrice: { not: null },
+          prescription: { isNot: null },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          insuranceTotalPrice: true,
+          vatRate: true,
+          customer: { select: { vorname: true, nachname: true } },
+          prescription: { select: { insurance_provider: true } },
+        },
+      }),
+      prisma.shoe_order.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          insurance_status: "pending",
+          payment_type: { in: ["insurance", "broth"] },
+          insurance_price: { not: null },
+          prescription: { isNot: null },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          insurance_price: true,
+          vat_rate: true,
+          customer: { select: { vorname: true, nachname: true } },
+          prescription: { select: { insurance_provider: true } },
+        },
+      }),
+    ]);
+
+    const activeOrders = [
+      ...insole.map((o) => ({
+        orderId: o.id,
+        orderType: "insole" as const,
+        orderNumber: o.orderNumber,
+        vorname: normalizeText(o.customer?.vorname),
+        nachname: normalizeText(o.customer?.nachname),
+        provider: normalizeText(o.prescription?.insurance_provider),
+        insurancePrice: toNumberOrNull(o.insuranceTotalPrice),
+        vatRate: toNumberOrNull(o.vatRate),
+      })),
+      ...shoe.map((o) => ({
+        orderId: o.id,
+        orderType: "shoes" as const,
+        orderNumber: o.orderNumber,
+        vorname: normalizeText(o.customer?.vorname),
+        nachname: normalizeText(o.customer?.nachname),
+        provider: normalizeText(o.prescription?.insurance_provider),
+        insurancePrice: toNumberOrNull(o.insurance_price),
+        vatRate: toNumberOrNull(o.vat_rate),
+      })),
+    ];
+
+    const matchedData = cleanData
+      .map((row: any) => {
+        const customerName = parseCustomerName(row.customer);
+        const provider = normalizeText(row.insurance_provider);
+        const insurancePrice = toNumberOrNull(row.insurance_price);
+        const vatRate = toNumberOrNull(row.vat_rate);
+
+        const match = activeOrders.find(
+          (o) =>
+            o.vorname === customerName.vorname &&
+            o.nachname === customerName.nachname &&
+            o.provider === provider &&
+            o.insurancePrice === insurancePrice &&
+            o.vatRate === vatRate,
+        );
+
+        if (!match) return null;
+
+        return {
+          ...row,
+          matchedOrderId: match.orderId,
+          matchedOrderNumber: match.orderNumber,
+          matchedOrderType: match.orderType,
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({
       success: true,
-      data: cleanData,
+      data: matchedData,
+      meta: {
+        excelRows: cleanData.length,
+        activeInsuranceRows: activeOrders.length,
+        exclData: cleanData,
+        matchedRows: matchedData.length,
+        activeOrders: activeOrders,
+      },
     });
   } catch (error) {
     console.error("Validate insurance changelog error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Something went wrong",
       error: error.message,
     });
   }
 };
+
+// insuranceTotalPrice
+
+/*-----
+
+  const [insole, shoe] = await Promise.all([
+      prisma.customerOrders.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          insurance_status: "pending",
+          paymnentType: { in: ["insurance", "broth"] },
+          insuranceTotalPrice: { not: null },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          insuranceTotalPrice: true,
+          vatRate: true,
+          customer: { select: { vorname: true, nachname: true } },
+          prescription: { select: { insurance_provider: true } },
+        },
+      }),
+      prisma.shoe_order.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          insurance_status: "pending",
+          payment_type: { in: ["insurance", "broth"] },
+          insurance_price: { not: null },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          insurance_price: true,
+          vat_rate: true,
+          customer: { select: { vorname: true, nachname: true } },
+          prescription: { select: { insurance_provider: true } },
+        },
+      }),
+    ]);
+
+    const activeOrders = [
+      ...insole.map((o) => ({
+        orderId: o.id,
+        orderType: "insole" as const,
+        orderNumber: o.orderNumber,
+        customerName: normalizeText(`${o.customer?.nachname ?? ""} ${o.customer?.vorname ?? ""}`),
+        provider: normalizeText(o.prescription?.insurance_provider),
+        insurancePrice: toNumberOrNull(o.insuranceTotalPrice),
+        vatRate: toNumberOrNull(o.vatRate),
+      })),
+      ...shoe.map((o) => ({
+        orderId: o.id,
+        orderType: "shoes" as const,
+        orderNumber: o.orderNumber,
+        customerName: normalizeText(`${o.customer?.nachname ?? ""} ${o.customer?.vorname ?? ""}`),
+        provider: normalizeText(o.prescription?.insurance_provider),
+        insurancePrice: toNumberOrNull(o.insurance_price),
+        vatRate: toNumberOrNull(o.vat_rate),
+      })),
+    ];
+
+    const matchedData = cleanData
+      .map((row) => {
+        const customerName = normalizeCustomerName(row.customer);
+        const provider = normalizeText(row.insurance_provider);
+        const insurancePrice = toNumberOrNull(row.insurance_price);
+        const vatRate = toNumberOrNull(row.vat_rate);
+
+        const match = activeOrders.find(
+          (o) =>
+            o.customerName === customerName &&
+            o.provider === provider &&
+            o.insurancePrice === insurancePrice &&
+            o.vatRate === vatRate,
+        );
+
+        if (!match) return null;
+
+        return {
+          ...row,
+          matchedOrderId: match.orderId,
+          matchedOrderNumber: match.orderNumber,
+          matchedOrderType: match.orderType,
+        };
+      })
+      .filter(Boolean);
+
+    //------------------------------------
+    res.json({
+      success: true,
+      data: matchedData,
+      meta: {
+        excelRows: cleanData.length,
+        activeInsuranceRows: activeOrders.length,
+        matchedRows: matchedData.length,
+      },
+    });
+
+
+
+*/
