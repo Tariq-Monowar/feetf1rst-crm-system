@@ -472,6 +472,21 @@ export const createOrder = async (req: Request, res: Response) => {
       let matchedSizeKey: string | null = null;
       // `foorSize` stores the groessenMengen JSON key (e.g. "35").
       let matchedSizeValue: number | null = null;
+      const sizeDebug: any = {
+        partnerId,
+        customerId,
+        versorgungId: effectiveVersorgungId ?? null,
+        hasVersorgungStoreId: !!versorgung?.storeId,
+        storeId: versorgung?.storeId ?? null,
+        storeLoaded: false,
+        storeType: null as any,
+        groessenMengenType: null as any,
+        groessenMengenKeys: null as any,
+        footLengthMm,
+        targetLengthRady,
+        sizeKey: null as any,
+        reason: null as any,
+      };
       /** Sent to background job to decrement store stock after response. */
       let storeUpdatePayload: {
         storeId: string;
@@ -516,6 +531,15 @@ export const createOrder = async (req: Request, res: Response) => {
               })
             : null,
         ]);
+
+      sizeDebug.storeLoaded = !!store;
+      sizeDebug.storeType = store?.type ?? null;
+      sizeDebug.groessenMengenType =
+        store?.groessenMengen == null ? null : typeof store.groessenMengen;
+      sizeDebug.groessenMengenKeys =
+        store?.groessenMengen && typeof store.groessenMengen === "object"
+          ? Object.keys(store.groessenMengen as any).length
+          : null;
 
       // If the supply references a store, it must exist.
       if (versorgung.storeId && !store) {
@@ -650,7 +674,9 @@ export const createOrder = async (req: Request, res: Response) => {
         let sizeKey: string | null = isMillingBlock
           ? findBlockSizeKey(sizes, footLengthMm)
           : findClosestSizeKey(sizes, targetLengthRady);
+        sizeDebug.sizeKey = sizeKey;
         if (!sizeKey) {
+          sizeDebug.reason = "NO_MATCHED_SIZE_KEY";
           const err: any = new Error("NO_MATCHED_SIZE_IN_STORE");
           err.requiredLength = targetLengthRady;
           err.footLengthMm = footLengthMm;
@@ -664,6 +690,7 @@ export const createOrder = async (req: Request, res: Response) => {
             lengthMm == null ||
             Math.abs(targetLengthRady - lengthMm) > tolerance
           ) {
+            sizeDebug.reason = "SIZE_OUT_OF_TOLERANCE";
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
             err.requiredLength = targetLengthRady;
             err.footLengthMm = footLengthMm;
@@ -687,6 +714,7 @@ export const createOrder = async (req: Request, res: Response) => {
         }
         const currentQty = getSizeQuantity(sizes[sizeKey]);
         if (currentQty < 1) {
+          sizeDebug.reason = "INSUFFICIENT_STOCK";
           const err: any = new Error("INSUFFICIENT_STOCK");
           err.sizeKey = sizeKey;
           err.isMillingBlock = isMillingBlock;
@@ -714,6 +742,17 @@ export const createOrder = async (req: Request, res: Response) => {
           partnerId: store.userId,
           isMillingBlock,
         };
+      } else {
+        // Size matching skipped → explain why.
+        sizeDebug.reason = !versorgung?.storeId
+          ? "VERSORGUNG_HAS_NO_STORE"
+          : !store
+            ? "STORE_NOT_LOADED"
+            : !store.groessenMengen
+              ? "STORE_HAS_NO_GROESSENMENGEN"
+              : typeof store.groessenMengen !== "object"
+                ? "STORE_GROESSENMENGEN_NOT_OBJECT"
+                : "SIZE_MATCHING_SKIPPED";
       }
 
       const insuranceList = Array.isArray(insurances)
@@ -786,6 +825,7 @@ export const createOrder = async (req: Request, res: Response) => {
         // include resolved size values so the HTTP response can show them immediately
         foorSize: matchedSizeValue,
         storeUpdatePayload,
+        sizeDebug,
       };
     });
 
@@ -855,6 +895,9 @@ export const createOrder = async (req: Request, res: Response) => {
     /*--------------------------
              SUCCESS RESPONSE
     ----------------------------*/
+    if (order.matchedSizeKey == null || order.foorSize == null) {
+      console.warn("[createOrder][size-debug]", order.sizeDebug);
+    }
     return res.status(201).json({
       success: true,
       message: "Order created successfully",
