@@ -52,6 +52,7 @@
     "adjest:footSizeMM": "ts-node scripts/adjest-footSizeMM.ts",
     "adject:admin:store:id": "ts-node scripts/adject-admin-store-id.ts",
     "find:auto-order-without-admin-store-id": "ts-node scripts/find-auto-order-without-admin-store-id.ts",
+    "cleanup:orphan-store-links": "ts-node scripts/cleanup-orphan-store-links.ts",
     "null:delete": "ts-node scripts/delete-null-admin-order-transition-id.ts"
   },
   "keywords": [],
