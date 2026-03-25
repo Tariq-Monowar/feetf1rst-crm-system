@@ -2385,7 +2385,7 @@ export const getKvaData = async (req: Request, res: Response) => {
         },
         // shippingAddressesForKv:
         //   order?.partner?.orderSettings?.shipping_addresses_for_kv,
-        shippingAddressesForKv: (kv_location as string) || order?.kv_location,
+        shippingAddressesForKv: kv_location || order?.kv_location || null,
         prescriptionInfo: {
           doctorName: order?.prescription?.doctor_name,
           doctorLocation: order?.prescription?.doctor_location,
