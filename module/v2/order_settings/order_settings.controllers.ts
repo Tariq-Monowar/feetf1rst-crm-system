@@ -252,11 +252,11 @@ export const manageOrderSettings = async (req: Request, res: Response) => {
     if (shipping_addresses_for_kv !== undefined) {
       if (
         shipping_addresses_for_kv !== null &&
-        typeof shipping_addresses_for_kv !== "string"
+        typeof shipping_addresses_for_kv !== "object"
       ) {
         return res.status(400).json({
           success: false,
-          message: "shipping_addresses_for_kv must be a string or null",
+          message: "shipping_addresses_for_kv must be JSON (object/array) or null",
         });
       }
       updateData.shipping_addresses_for_kv = shipping_addresses_for_kv;

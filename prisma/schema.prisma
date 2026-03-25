@@ -3113,7 +3113,7 @@ model order_settings {
   // 9 - we should loock worke time (employee availability)
   lookWorkTime Boolean @default(true)
 
-  shipping_addresses_for_kv String?
+  shipping_addresses_for_kv Json?
 
   // 10 - insole pikup deat line
   isInsolePickupDateLine Boolean @default(false)
@@ -3490,6 +3490,7 @@ model prescription {
   validity_weeks    Int?    @default(4)
 
   //Cash register and status data
+  //cost_bearer_id
   cost_bearer_id String?
   status_number  String?
   aid_code       String? // BVH / Hilfsmittel / ... / Code
