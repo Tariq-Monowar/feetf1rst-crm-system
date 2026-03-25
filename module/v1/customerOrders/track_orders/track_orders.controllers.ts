@@ -2277,6 +2277,8 @@ export const getKvaData = async (req: Request, res: Response) => {
     const partnerId = req.user?.id;
     const { orderId } = req.params;
 
+    const { kv_location } = req.query;
+
     if (!orderId) {
       return res.status(400).json({
         success: false,
@@ -2292,6 +2294,7 @@ export const getKvaData = async (req: Request, res: Response) => {
         kvaNumber: true,
         createdAt: true,
         foorSize: true,
+        kv_location: true,
         partner: {
           select: {
             image: true,
@@ -2348,6 +2351,13 @@ export const getKvaData = async (req: Request, res: Response) => {
         ? `KV-${year}-${String(order.kvaNumber).padStart(4, "0")}`
         : null;
 
+    if (kv_location) {
+      await prisma.customerOrders.update({
+        where: { id: orderId },
+        data: { kv_location: kv_location as string },
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Kva data fetched successfully",
@@ -2373,12 +2383,14 @@ export const getKvaData = async (req: Request, res: Response) => {
           phone: order?.customer?.telefon,
           email: order?.customer?.email,
         },
-        shippingAddressesForKv:
-          order?.partner?.orderSettings?.shipping_addresses_for_kv,
+        // shippingAddressesForKv:
+        //   order?.partner?.orderSettings?.shipping_addresses_for_kv,
+        shippingAddressesForKv: (kv_location as string) || order?.kv_location,
         prescriptionInfo: {
           doctorName: order?.prescription?.doctor_name,
           doctorLocation: order?.prescription?.doctor_location,
         },
+        
       },
     });
   } catch (error) {
