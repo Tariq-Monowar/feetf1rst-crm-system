@@ -7,8 +7,8 @@ import { generateNextOrderNumber } from "../module/v2/admin_order_transitions/ad
 const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
-  // every5m i need to run this cron job
-  cron.schedule("* * * * *", async () => { //
+  // every 1m i need to run this cron job
+  cron.schedule("*/1 * * * *", async () => { //
     console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {
@@ -203,60 +203,42 @@ export const dailyReport = () => {
           );
           const totalPrice = unitPrice * totalQuantity;
 
-          let createdOverview: any;
+          const orderNumber = await getNextOrderNumberForPartnerCached(
+            String(store.userId),
+          );
 
-          // Create transition + set FK only when unitPrice & totalPrice exist.
-          if (unitPrice && totalPrice) {
-            const orderNumber = await getNextOrderNumberForPartnerCached(
-              String(store.userId),
-            );
+          // Always create transition so StoreOrderOverview keeps adminOrderTransitionId.
+          const transition = await (prisma as any).admin_order_transitions.create({
+            data: {
+              orderNumber,
+              orderFor: "store",
+              storeId: store.id,
+              partnerId: store.userId,
+              price: totalPrice,
+              note: "Stock",
+            },
+          });
 
-            const transition = await (prisma as any).admin_order_transitions.create(
-              {
-                data: {
-                  orderNumber,
-                  orderFor: "store",
-                  storeId: store.id,
-                  partnerId: store.userId,
-                  price: totalPrice,
-                  note: "Stock",
-                },
-              },
-            );
+          const createdOverview = await storeOrderOverviewModel.create({
+            data: {
+              storeId: store.id,
+              partnerId: store.userId,
+              artikelnummer: store.artikelnummer,
+              produktname: store.produktname,
+              hersteller: store.hersteller,
+              groessenMengen: overviewGroessenMengen,
+              delivered_quantity: deliveredQuantity,
+              type: store.type ?? "rady_insole",
+              status: "In_bearbeitung",
+              adminOrderTransitionId: transition.id,
+            },
+          });
 
-            createdOverview = await storeOrderOverviewModel.create({
-              data: {
-                storeId: store.id,
-                partnerId: store.userId,
-                artikelnummer: store.artikelnummer,
-                produktname: store.produktname,
-                hersteller: store.hersteller,
-                groessenMengen: overviewGroessenMengen,
-                delivered_quantity: deliveredQuantity,
-                type: store.type ?? "rady_insole",
-                status: "In_bearbeitung",
-                adminOrderTransitionId: transition.id,
-              },
-            });
-
+          if (totalPrice > 0) {
             await (prisma as any).partner_total_amount.upsert({
               where: { partnerId: store.userId },
               update: { totalAmount: { increment: totalPrice } },
               create: { partnerId: store.userId, totalAmount: totalPrice },
-            });
-          } else {
-            createdOverview = await storeOrderOverviewModel.create({
-              data: {
-                storeId: store.id,
-                partnerId: store.userId,
-                artikelnummer: store.artikelnummer,
-                produktname: store.produktname,
-                hersteller: store.hersteller,
-                groessenMengen: overviewGroessenMengen,
-                delivered_quantity: deliveredQuantity,
-                type: store.type ?? "rady_insole",
-                status: "In_bearbeitung",
-              },
             });
           }
 
