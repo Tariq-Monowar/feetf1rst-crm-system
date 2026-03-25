@@ -7,8 +7,8 @@ import { generateNextOrderNumber } from "../module/v2/admin_order_transitions/ad
 const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
-  // every 1m i need to run this cron job
-  cron.schedule("*/1 * * * *", async () => { //
+  // every friday at 7:00 PM
+  cron.schedule("0 19 * * 5", async () => { //
     console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {
