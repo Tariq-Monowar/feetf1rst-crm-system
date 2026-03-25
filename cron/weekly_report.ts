@@ -27,7 +27,10 @@ export const dailyReport = () => {
         return inactiveBrandsByPartner;
       };
 
-      const buildOverviewData = (groessenMengen: any) => {
+      const buildOverviewData = (
+        groessenMengen: any,
+        ctx?: { storeId?: string; partnerId?: string },
+      ) => {
         const updatedGroessenMengen = { ...groessenMengen };
         const overviewGroessenMengen: any = {};
 
@@ -42,15 +45,32 @@ export const dailyReport = () => {
             continue;
           }
 
+          const oldLimit = Number(item.auto_order_limit ?? 0);
+          const nextLimit = oldLimit - 1;
+          const autoOrderQty = Number(item.auto_order_quantity ?? 0);
+
           overviewGroessenMengen[size] = {
             length: Number(item.length ?? 0),
-            quantity: Number(item.auto_order_quantity ?? 0),
+            quantity: autoOrderQty,
           };
 
           updatedGroessenMengen[size] = {
             ...item,
-            auto_order_limit: item.auto_order_limit - 1,
+            auto_order_limit: nextLimit,
           };
+
+          console.log(
+            "[auto-order][size]",
+            JSON.stringify({
+              storeId: ctx?.storeId ?? null,
+              partnerId: ctx?.partnerId ?? null,
+              size,
+              length: overviewGroessenMengen[size]?.length,
+              selectedQuantity: autoOrderQty,
+              auto_order_limit: oldLimit,
+              new_auto_order_limit: nextLimit,
+            }),
+          );
         }
 
         return {
@@ -59,7 +79,10 @@ export const dailyReport = () => {
         };
       };
 
-      const buildDeliveredQuantityData = (groessenMengen: any) => {
+      const buildDeliveredQuantityData = (
+        groessenMengen: any,
+        ctx?: { storeId?: string; partnerId?: string },
+      ) => {
         if (
           !groessenMengen ||
           typeof groessenMengen !== "object" ||
@@ -82,6 +105,15 @@ export const dailyReport = () => {
             quantity: 0,
           };
         }
+
+        console.log(
+          "[auto-order][delivered_quantity:init]",
+          JSON.stringify({
+            storeId: ctx?.storeId ?? null,
+            partnerId: ctx?.partnerId ?? null,
+            deliveredQuantityKeys: Object.keys(deliveredQuantity),
+          }),
+        );
 
         return deliveredQuantity;
       };
@@ -160,6 +192,16 @@ export const dailyReport = () => {
       };
 
       for (const store of stores) {
+        console.log(
+          "[auto-order][store]",
+          JSON.stringify({
+            storeId: store.id,
+            partnerId: store.userId,
+            artikelnummer: store.artikelnummer,
+            produktname: store.produktname,
+            hersteller: store.hersteller,
+          }),
+        );
         const inactiveBrands = inactiveBrandsByPartner.get(String(store.userId));
         const brandCandidates = [
           String(store.hersteller ?? "").trim().toLowerCase(),
@@ -184,7 +226,10 @@ export const dailyReport = () => {
         }
 
         const { overviewGroessenMengen, updatedGroessenMengen } =
-          buildOverviewData(groessenMengen);
+          buildOverviewData(groessenMengen, {
+            storeId: String(store.id),
+            partnerId: String(store.userId),
+          });
 
         if (Object.keys(overviewGroessenMengen).length === 0) {
           continue;
@@ -192,7 +237,10 @@ export const dailyReport = () => {
 
         try {
           const deliveredQuantity =
-            buildDeliveredQuantityData(overviewGroessenMengen);
+            buildDeliveredQuantityData(overviewGroessenMengen, {
+              storeId: String(store.id),
+              partnerId: String(store.userId),
+            });
 
           const unitPrice =
             Number((store as any).unit_price ?? 0) ||
@@ -205,6 +253,18 @@ export const dailyReport = () => {
 
           const orderNumber = await getNextOrderNumberForPartnerCached(
             String(store.userId),
+          );
+
+          console.log(
+            "[auto-order][calc]",
+            JSON.stringify({
+              storeId: store.id,
+              partnerId: store.userId,
+              unitPrice,
+              totalQuantity,
+              totalPrice,
+              orderNumber,
+            }),
           );
 
           // Always create transition so StoreOrderOverview keeps adminOrderTransitionId.
@@ -233,6 +293,19 @@ export const dailyReport = () => {
               adminOrderTransitionId: transition.id,
             },
           });
+
+          console.log(
+            "[auto-order][created]",
+            JSON.stringify({
+              storeId: store.id,
+              partnerId: store.userId,
+              overviewId: createdOverview.id ?? null,
+              adminOrderTransitionId: transition.id,
+              orderNumber,
+              // helpful for tracking how quantities "go there"
+              overviewGroessenMengen,
+            }),
+          );
 
           if (totalPrice > 0) {
             await (prisma as any).partner_total_amount.upsert({
