@@ -476,8 +476,9 @@ export const createOrder = async (req: Request, res: Response) => {
     ----------------------------*/
     const order = await prisma.$transaction(async (tx) => {
       let matchedSizeKey: string | null = null;
+      // `foorSize` stores the groessenMengen JSON key (e.g. "35").
       let matchedSizeValue: number | null = null;
-      /** Sent to background job to decrement store stock after we respond. */
+      /** Sent to background job to decrement store stock after response. */
       let storeUpdatePayload: {
         storeId: string;
         sizeKey: string;
@@ -694,16 +695,15 @@ export const createOrder = async (req: Request, res: Response) => {
         }
         matchedSizeKey = sizeKey;
         // Persist matched size into customerOrders.foorSize.
-        // Use the matched store "length" if available (same source as tolerance check),
-        // otherwise fall back to numeric sizeKey.
-        const matchedLengthMm = extractLengthValue(sizes[sizeKey]);
-        matchedSizeValue =
-          matchedLengthMm != null && Number.isFinite(matchedLengthMm)
-            ? Number(matchedLengthMm)
-            : (() => {
-                const n = parseFloat(String(sizeKey));
-                return Number.isFinite(n) ? n : null;
-              })();
+        // groessenMengen example:
+        //   "35": { length: 87, quantity: 27, ... }
+        // so we persist: foorSize=35.
+        const parsedSizeKey = parseFloat(String(sizeKey));
+        matchedSizeValue = Number.isFinite(parsedSizeKey)
+          ? parsedSizeKey
+          : null;
+
+        // Store stock decrement happens in a background transaction.
         storeUpdatePayload = {
           storeId: store.id,
           sizeKey,
@@ -761,22 +761,29 @@ export const createOrder = async (req: Request, res: Response) => {
         ),
       ]);
 
+      // Only write fields we actually resolved from groessenMengen.
       if (matchedSizeValue != null) {
+        const updateData: any = {};
+        if (matchedSizeValue != null) updateData.foorSize = matchedSizeValue;
         await tx.customerOrders.update({
           where: { id: newOrder.id },
-          data: { foorSize: matchedSizeValue },
+          data: updateData,
         });
       }
 
-      return { ...newOrder, matchedSizeKey, storeUpdatePayload };
+      return {
+        ...newOrder,
+        matchedSizeKey,
+        // include resolved size values so the HTTP response can show them immediately
+        foorSize: matchedSizeValue,
+        storeUpdatePayload,
+      };
     });
 
     if (privetSupply) redis.del(privetSupply).catch(() => {});
 
     /*--------------------------
-             BACKGROUND: DECREMENT STORE STOCK
-             So we can return 201 quickly; stock is updated in a separate
-             transaction via setImmediate. If stock is already 0 we skip and log.
+      BACKGROUND: decrement store stock (same as original flow)
     ----------------------------*/
     if (order.storeUpdatePayload) {
       const {
@@ -787,6 +794,7 @@ export const createOrder = async (req: Request, res: Response) => {
         partnerId,
         isMillingBlock,
       } = order.storeUpdatePayload;
+
       setImmediate(() => {
         prisma
           .$transaction(async (tx) => {
@@ -794,11 +802,9 @@ export const createOrder = async (req: Request, res: Response) => {
               where: { id: storeId },
               select: { id: true, groessenMengen: true, userId: true },
             });
-            if (
-              !store?.groessenMengen ||
-              typeof store.groessenMengen !== "object"
-            )
+            if (!store?.groessenMengen || typeof store.groessenMengen !== "object")
               return;
+
             const sizes = { ...(store.groessenMengen as Record<string, any>) };
             const currentQty = getSizeQuantity(sizes[sizeKey]);
             if (currentQty < 1) {
@@ -807,12 +813,14 @@ export const createOrder = async (req: Request, res: Response) => {
               );
               return;
             }
+
             const newQty = currentQty - 1;
             sizes[sizeKey] = setSizeQuantity(sizes[sizeKey], newQty);
             await tx.stores.update({
               where: { id: storeId },
               data: { groessenMengen: sizes },
             });
+
             await tx.storesHistory.create({
               data: {
                 storeId,
@@ -843,6 +851,7 @@ export const createOrder = async (req: Request, res: Response) => {
       message: "Order created successfully",
       orderId: order.id,
       matchedSize: order.matchedSizeKey,
+      foorSize: order.foorSize ?? null,
       supplyType: privetSupply ? "private" : "public",
     });
   } catch (err: any) {

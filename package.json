@@ -48,6 +48,8 @@
     "adjest:delivered_quantity": "ts-node scripts/adjest-delivered-quantity.ts",
     "prise:adjectment": "ts-node scripts/prise-adjectment.ts",
     "adject:size": "ts-node scripts/adject-size.ts",
+    "adject:foorSize": "ts-node scripts/adjest-footSizeMM.ts",
+    "adjest:footSizeMM": "ts-node scripts/adjest-footSizeMM.ts",
     "adject:admin:store:id": "ts-node scripts/adject-admin-store-id.ts",
     "find:auto-order-without-admin-store-id": "ts-node scripts/find-auto-order-without-admin-store-id.ts",
     "null:delete": "ts-node scripts/delete-null-admin-order-transition-id.ts"
