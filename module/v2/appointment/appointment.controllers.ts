@@ -366,7 +366,10 @@ export const getEmployeeFreeSlotsByCustomer = async (
 
     type Interval = { start: number; end: number };
 
-    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
+    const subtractIntervals = (
+      base: Interval[],
+      busy: Interval[],
+    ): Interval[] => {
       if (!busy.length || !base.length) return base;
       let result = base.slice();
       for (const b of busy) {
@@ -393,13 +396,16 @@ export const getEmployeeFreeSlotsByCustomer = async (
 
     const result = employees.map((emp) => {
       const slots =
-        availabilityByEmployee.get(emp.id) && availabilityByEmployee.get(emp.id)!.length
+        availabilityByEmployee.get(emp.id) &&
+        availabilityByEmployee.get(emp.id)!.length
           ? availabilityByEmployee.get(emp.id)!
           : [{ start: 0, end: 24 * 60 }];
 
       const busy = busyByEmployee.get(emp.id) ?? [];
       const free = subtractIntervals(slots, busy);
-      const freeSlots = free.map((iv) => `${format(iv.start)}-${format(iv.end)}`);
+      const freeSlots = free.map(
+        (iv) => `${format(iv.start)}-${format(iv.end)}`,
+      );
 
       return {
         employeeId: emp.id,
@@ -425,7 +431,10 @@ export const getEmployeeFreeSlotsByCustomer = async (
 };
 
 // Compute per-employee free percentage over one or more dates
-export const getEmployeeFreePercentage = async (req: Request, res: Response) => {
+export const getEmployeeFreePercentage = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { id: partnerId } = req.user;
     const { dates } = req.body as { dates?: string[] };
@@ -526,7 +535,10 @@ export const getEmployeeFreePercentage = async (req: Request, res: Response) => 
 
     type Interval = { start: number; end: number };
 
-    const subtractIntervals = (base: Interval[], busy: Interval[]): Interval[] => {
+    const subtractIntervals = (
+      base: Interval[],
+      busy: Interval[],
+    ): Interval[] => {
       if (!busy.length || !base.length) return base;
       let result = base.slice();
       for (const b of busy) {
@@ -553,8 +565,7 @@ export const getEmployeeFreePercentage = async (req: Request, res: Response) => 
     for (const av of availability) {
       const key = `${av.employeeId}:${av.dayOfWeek}`;
       const list =
-        availabilityByKey.get(key) ??
-        availabilityByKey.set(key, []).get(key)!;
+        availabilityByKey.get(key) ?? availabilityByKey.set(key, []).get(key)!;
       for (const t of av.availability_time) {
         list.push({ start: toMinutes(t.startTime), end: toMinutes(t.endTime) });
       }
@@ -569,8 +580,7 @@ export const getEmployeeFreePercentage = async (req: Request, res: Response) => 
       const interval = { start, end: start + durMinutes };
       for (const ae of appt.appointmentEmployees) {
         const key = `${ae.employeeId}:${dateKey}`;
-        const list =
-          busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
+        const list = busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
         list.push(interval);
       }
     }
@@ -945,9 +955,14 @@ export const createAppointment = async (req: Request, res: Response) => {
       `/dashboard/calendar`,
     );
 
+    const language = process.env.LANGUAGE || "en";
+
     res.status(201).json({
       success: true,
-      message: "Appointment created successfully",
+      message:
+        language === "de"
+          ? "Termin erfolgreich erstellt"
+          : "Appointment created successfully",
       appointment: formatAppointmentResponse(appointment),
     });
   } catch (error) {
@@ -1191,7 +1206,7 @@ export const updateAppointment = async (req: Request, res: Response) => {
 
     const employeId = multiEmployee
       ? employees[0].employeId
-      : body.employeId ?? existing.employeId;
+      : (body.employeId ?? existing.employeId);
     const assignedToStr = multiEmployee
       ? employees.map((e: any) => e.assignedTo).join(", ")
       : typeof body.assignedTo === "string"
@@ -1592,20 +1607,25 @@ export const getAllAppointmentsDate = async (req: Request, res: Response) => {
     const { id } = req.user;
     const { year, month, employee } = req.query;
 
-    const now        = new Date();
-    const targetYear = parseInt(year as string)  || now.getFullYear();
+    const now = new Date();
+    const targetYear = parseInt(year as string) || now.getFullYear();
     const targetMonth = month !== undefined ? parseInt(month as string) : null;
 
     // Range: full year or single month
-    const rangeStart = targetMonth !== null
-      ? new Date(targetYear, targetMonth - 1, 1)
-      : new Date(targetYear, 0, 1);
-    const rangeEnd = targetMonth !== null
-      ? new Date(targetYear, targetMonth, 1)
-      : new Date(targetYear + 1, 0, 1);
+    const rangeStart =
+      targetMonth !== null
+        ? new Date(targetYear, targetMonth - 1, 1)
+        : new Date(targetYear, 0, 1);
+    const rangeEnd =
+      targetMonth !== null
+        ? new Date(targetYear, targetMonth, 1)
+        : new Date(targetYear + 1, 0, 1);
 
     const employeeIds: string[] = employee
-      ? (Array.isArray(employee) ? (employee as string[]) : (employee as string).split(","))
+      ? (Array.isArray(employee)
+          ? (employee as string[])
+          : (employee as string).split(",")
+        )
           .map((e) => e.trim())
           .filter(Boolean)
       : [];
@@ -1623,7 +1643,10 @@ export const getAllAppointmentsDate = async (req: Request, res: Response) => {
              AND a.date >= $2 AND a.date < $3
              AND ae."employeeId" IN (${placeholders})
            ORDER BY d`,
-          id, rangeStart, rangeEnd, ...employeeIds,
+          id,
+          rangeStart,
+          rangeEnd,
+          ...employeeIds,
         )
       ).map((r) => r.d);
     } else {
