@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { paymnentType } from "@prisma/client";
+import { insurance_status, paymnentType } from "@prisma/client";
 import { prisma } from "../../../db";
 import * as XLSX from "xlsx";
 import { GoogleGenAI } from "@google/genai";
@@ -1357,184 +1357,225 @@ export const getCalculationData = async (req: Request, res: Response) => {
       });
     }
 
-    /** Same insurance scope as get-insurance-list: broth/insurance with a set insurance price */
+    // ---------------- Periods (dashboard-style: month + week deltas) ----------------
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    // Monday as week start (dashboard-friendly)
+    const day = (now.getDay() + 6) % 7; // 0=Mon ... 6=Sun
+    const startOfThisWeek = new Date(now);
+    startOfThisWeek.setDate(now.getDate() - day);
+    startOfThisWeek.setHours(0, 0, 0, 0);
+    const startOfNextWeek = new Date(startOfThisWeek);
+    startOfNextWeek.setDate(startOfThisWeek.getDate() + 7);
+    const startOfLastWeek = new Date(startOfThisWeek);
+    startOfLastWeek.setDate(startOfThisWeek.getDate() - 7);
+
+    // ---------------- Scopes (align to get-insurance-list + approved-data semantics) ----------------
     const insurancePaymentIn = {
       in: [paymnentType.insurance, paymnentType.broth],
     };
 
-    const insoleInsuranceBase = {
+    // Active = insurance not paid yet (insurance_payed=false)
+    const insoleActiveWhere = {
       partnerId,
       paymnentType: insurancePaymentIn,
       insuranceTotalPrice: { not: null },
+      insurance_payed: false,
+      insurance_status: { in: [insurance_status.pending, insurance_status.approved] },
     };
-
-    const shoeInsuranceBase = {
+    const shoeActiveWhere = {
       partnerId,
       payment_type: insurancePaymentIn,
       insurance_price: { not: null },
+      insurance_payed: false,
+      insurance_status: { in: [insurance_status.pending, insurance_status.approved] },
     };
 
-    const now = new Date();
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfThisMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
+    const insolePendingWhere = {
+      ...insoleActiveWhere,
+      insurance_status: insurance_status.pending,
+    };
+    const shoePendingWhere = {
+      ...shoeActiveWhere,
+      insurance_status: insurance_status.pending,
+    };
+
+    // Approved = insurance paid (insurance_payed=true) and insurance_status=approved
+    const insoleApprovedWhere = {
+      partnerId,
+      paymnentType: insurancePaymentIn,
+      insuranceTotalPrice: { not: null },
+      insurance_payed: true,
+      insurance_status: insurance_status.approved,
+    };
+    const shoeApprovedWhere = {
+      partnerId,
+      payment_type: insurancePaymentIn,
+      insurance_price: { not: null },
+      insurance_payed: true,
+      insurance_status: insurance_status.approved,
+    };
+
+    // ---------------- Query (cards) ----------------
     const [
-      totalInsole,
-      totalShoe,
-      pendingInsole,
-      pendingShoe,
-      approvedLastMonthInsole,
-      approvedLastMonthShoe,
-      createdThisMonthInsole,
-      createdThisMonthShoe,
-      createdLastMonthInsole,
-      createdLastMonthShoe,
-      revenueThisMonthInsole,
-      revenueThisMonthShoe,
-      revenueLastMonthInsole,
-      revenueLastMonthShoe,
+      activeTotalCountInsole,
+      activeTotalCountShoe,
+      pendingTotalCountInsole,
+      pendingTotalCountShoe,
+      activeCreatedThisMonthInsole,
+      activeCreatedThisMonthShoe,
+      activeCreatedLastMonthInsole,
+      activeCreatedLastMonthShoe,
+      pendingCreatedThisMonthInsole,
+      pendingCreatedThisMonthShoe,
+      approvedTotalCountInsole,
+      approvedTotalCountShoe,
+      approvedUpdatedThisWeekInsole,
+      approvedUpdatedThisWeekShoe,
+      approvedUpdatedLastWeekInsole,
+      approvedUpdatedLastWeekShoe,
+      revenueThisMonthInsoleAgg,
+      revenueThisMonthShoeAgg,
+      revenueLastMonthInsoleAgg,
+      revenueLastMonthShoeAgg,
     ] = await Promise.all([
-      prisma.customerOrders.count({ where: insoleInsuranceBase }),
-      prisma.shoe_order.count({ where: shoeInsuranceBase }),
+      prisma.customerOrders.count({ where: insoleActiveWhere }),
+      prisma.shoe_order.count({ where: shoeActiveWhere }),
+      prisma.customerOrders.count({ where: insolePendingWhere }),
+      prisma.shoe_order.count({ where: shoePendingWhere }),
+      prisma.customerOrders.count({
+        where: { ...insoleActiveWhere, createdAt: { gte: startOfThisMonth, lt: startOfNextMonth } },
+      }),
+      prisma.shoe_order.count({
+        where: { ...shoeActiveWhere, createdAt: { gte: startOfThisMonth, lt: startOfNextMonth } },
+      }),
+      prisma.customerOrders.count({
+        where: { ...insoleActiveWhere, createdAt: { gte: startOfLastMonth, lt: startOfThisMonth } },
+      }),
+      prisma.shoe_order.count({
+        where: { ...shoeActiveWhere, createdAt: { gte: startOfLastMonth, lt: startOfThisMonth } },
+      }),
+      prisma.customerOrders.count({
+        where: { ...insolePendingWhere, createdAt: { gte: startOfThisMonth, lt: startOfNextMonth } },
+      }),
+      prisma.shoe_order.count({
+        where: { ...shoePendingWhere, createdAt: { gte: startOfThisMonth, lt: startOfNextMonth } },
+      }),
+      prisma.customerOrders.count({ where: insoleApprovedWhere }),
+      prisma.shoe_order.count({ where: shoeApprovedWhere }),
       prisma.customerOrders.count({
         where: {
-          ...insoleInsuranceBase,
-          insurance_status: "pending",
+          ...insoleApprovedWhere,
+          updatedAt: { gte: startOfThisWeek, lt: startOfNextWeek },
         },
       }),
       prisma.shoe_order.count({
         where: {
-          ...shoeInsuranceBase,
-          insurance_status: "pending",
+          ...shoeApprovedWhere,
+          updatedAt: { gte: startOfThisWeek, lt: startOfNextWeek },
         },
       }),
       prisma.customerOrders.count({
         where: {
-          ...insoleInsuranceBase,
-          insurance_status: "approved",
-          updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          ...insoleApprovedWhere,
+          updatedAt: { gte: startOfLastWeek, lt: startOfThisWeek },
         },
       }),
       prisma.shoe_order.count({
         where: {
-          ...shoeInsuranceBase,
-          insurance_status: "approved",
-          updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
-        },
-      }),
-      prisma.customerOrders.count({
-        where: {
-          ...insoleInsuranceBase,
-          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
-        },
-      }),
-      prisma.shoe_order.count({
-        where: {
-          ...shoeInsuranceBase,
-          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
-        },
-      }),
-      prisma.customerOrders.count({
-        where: {
-          ...insoleInsuranceBase,
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
-        },
-      }),
-      prisma.shoe_order.count({
-        where: {
-          ...shoeInsuranceBase,
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          ...shoeApprovedWhere,
+          updatedAt: { gte: startOfLastWeek, lt: startOfThisWeek },
         },
       }),
       prisma.customerOrders.aggregate({
         where: {
-          ...insoleInsuranceBase,
-          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+          ...insoleApprovedWhere,
+          updatedAt: { gte: startOfThisMonth, lt: startOfNextMonth },
         },
         _sum: { insuranceTotalPrice: true },
       }),
       prisma.shoe_order.aggregate({
         where: {
-          ...shoeInsuranceBase,
-          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+          ...shoeApprovedWhere,
+          updatedAt: { gte: startOfThisMonth, lt: startOfNextMonth },
         },
         _sum: { insurance_price: true },
       }),
       prisma.customerOrders.aggregate({
         where: {
-          ...insoleInsuranceBase,
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          ...insoleApprovedWhere,
+          updatedAt: { gte: startOfLastMonth, lt: startOfThisMonth },
         },
         _sum: { insuranceTotalPrice: true },
       }),
       prisma.shoe_order.aggregate({
         where: {
-          ...shoeInsuranceBase,
-          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+          ...shoeApprovedWhere,
+          updatedAt: { gte: startOfLastMonth, lt: startOfThisMonth },
         },
         _sum: { insurance_price: true },
       }),
     ]);
 
-    const totalInsuranceOrders = totalInsole + totalShoe;
-    const pendingApprovalCount = pendingInsole + pendingShoe;
-    const approvedLastMonthCount =
-      approvedLastMonthInsole + approvedLastMonthShoe;
+    const activeTotalCount = activeTotalCountInsole + activeTotalCountShoe;
+    const pendingTotalCount = pendingTotalCountInsole + pendingTotalCountShoe;
+
+    const activeCreatedThisMonth =
+      activeCreatedThisMonthInsole + activeCreatedThisMonthShoe;
+    const activeCreatedLastMonth =
+      activeCreatedLastMonthInsole + activeCreatedLastMonthShoe;
+
+    const activeChangeThisMonth = activeCreatedThisMonth - activeCreatedLastMonth;
+
+    const pendingCreatedThisMonth =
+      pendingCreatedThisMonthInsole + pendingCreatedThisMonthShoe;
+
+    const approvedTotalCount = approvedTotalCountInsole + approvedTotalCountShoe;
+    const approvedUpdatedThisWeek =
+      approvedUpdatedThisWeekInsole + approvedUpdatedThisWeekShoe;
+    const approvedUpdatedLastWeek =
+      approvedUpdatedLastWeekInsole + approvedUpdatedLastWeekShoe;
+    const approvedChangeThisWeek =
+      approvedUpdatedThisWeek - approvedUpdatedLastWeek;
 
     const revenueThisMonth =
-      (revenueThisMonthInsole._sum.insuranceTotalPrice ?? 0) +
-      (revenueThisMonthShoe._sum.insurance_price ?? 0);
+      (revenueThisMonthInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (revenueThisMonthShoeAgg._sum.insurance_price ?? 0);
     const revenueLastMonth =
-      (revenueLastMonthInsole._sum.insuranceTotalPrice ?? 0) +
-      (revenueLastMonthShoe._sum.insurance_price ?? 0);
+      (revenueLastMonthInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (revenueLastMonthShoeAgg._sum.insurance_price ?? 0);
 
-    const createdThisMonth = createdThisMonthInsole + createdThisMonthShoe;
-    const createdLastMonth = createdLastMonthInsole + createdLastMonthShoe;
-    const newOrdersDeltaThisMonth = createdThisMonth - createdLastMonth;
-
-    let revenueChangePercentVsPreviousMonth: number | null = null;
-    if (revenueLastMonth > 0) {
-      revenueChangePercentVsPreviousMonth =
-        Math.round(
-          ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 1000,
-        ) / 10;
-    } else if (revenueThisMonth > 0) {
-      revenueChangePercentVsPreviousMonth = 100;
-    }
+    const revenueChangePercent =
+      revenueLastMonth === 0
+        ? revenueThisMonth > 0
+          ? 100
+          : 0
+        : Number(
+            (((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100).toFixed(2),
+          );
 
     return res.status(200).json({
       success: true,
       data: {
-        /** 1. Alle Krankenkassenaufträge (insurance/broth + insurance price set) */
-        totalInsuranceOrders,
-        /** 2. Warten auf Genehmigung */
-        pendingApprovalCount,
-        /** 3. Im Vormonat auf „genehmigt“ gesetzt (updatedAt im letzten Kalendermonat) */
-        approvedLastMonthCount,
-        /** 4. Umsatz aktueller Monat (Summe insuranceTotalPrice / insurance_price, Aufträge angelegt in diesem Monat) */
-        revenueThisMonth,
-        revenueLastMonth,
-        revenueChangePercentVsPreviousMonth,
-        /** Hilfe fürs Dashboard: neue Aufträge diesen Monat vs. Vormonat */
-        newOrdersThisMonth: createdThisMonth,
-        newOrdersDeltaThisMonth,
+        activeKrankenkassen: {
+          count: activeTotalCount,
+          changeCountThisMonth: activeChangeThisMonth,
+        },
+        ordersWaitingForGenehmigt: {
+          count: pendingTotalCount,
+          waitingThisMonthCount: pendingCreatedThisMonth,
+        },
+        approvedOrders: {
+          count: approvedTotalCount,
+          changeCountThisWeek: approvedChangeThisWeek,
+        },
+        revenueMonth: {
+          amountThisMonth: Math.round(revenueThisMonth * 100) / 100,
+          changePercentVsLastMonth: revenueChangePercent,
+        },
       },
     });
   } catch (error: any) {

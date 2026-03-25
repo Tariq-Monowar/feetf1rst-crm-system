@@ -2560,12 +2560,20 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             email: true,
             geburtsdatum: true,
             gender: true,
+            screenerFile: {
+              select: {
+                picture_23: true,
+                picture_24: true,
+                createdAt: true,
+              },
+            },
           },
         },
         screenerFile: {
           select: {
             picture_23: true,
             picture_24: true,
+            createdAt: true,
           },
         },
       },
@@ -2577,6 +2585,13 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
         message: "Order not found",
       });
     }
+
+    const customerScreenerFile =
+      order.customer?.screenerFile && order.customer.screenerFile.length > 0
+        ? order.customer.screenerFile[0]
+        : null;
+
+    const fallbackScreenerFile = order?.screenerFile ?? customerScreenerFile;
 
     // grösse:
     // (Number(order?.customer?.fusslange1) +
@@ -2607,8 +2622,8 @@ export const getWerkstattzettelA3Pdf = async (req: Request, res: Response) => {
             5) /
           2,
         screenerFile: {
-          picture_23: order?.screenerFile?.picture_23 ?? null,
-          picture_24: order?.screenerFile?.picture_24 ?? null,
+          picture_23: fallbackScreenerFile?.picture_23 ?? null,
+          picture_24: fallbackScreenerFile?.picture_24 ?? null,
         },
         diagnosisInfo: {
           productName: order?.product?.name,
