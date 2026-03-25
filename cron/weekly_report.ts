@@ -275,7 +275,7 @@ export const dailyReport = () => {
               storeId: store.id,
               partnerId: store.userId,
               price: totalPrice,
-              note: "Stock",
+              note: "Einlagenbestellung",
             },
           });
 
