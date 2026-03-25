@@ -517,6 +517,13 @@ export const createOrder = async (req: Request, res: Response) => {
             : null,
         ]);
 
+      // If the supply references a store, it must exist.
+      if (versorgung.storeId && !store) {
+        const err: any = new Error("STORE_NOT_FOUND");
+        err.storeId = versorgung.storeId;
+        throw err;
+      }
+
       const finalEmployeeId =
         werkstattEmployeeId ?? defaultEmployee?.id ?? null;
 
@@ -861,6 +868,13 @@ export const createOrder = async (req: Request, res: Response) => {
              ERROR HANDLING
              Map known throw codes to 400 messages; everything else → 500.
     ----------------------------*/
+    if (err?.message === "STORE_NOT_FOUND")
+      return res.status(400).json({
+        success: false,
+        message:
+          "Store nicht gefunden. Bitte wähle eine andere Versorgung oder ein anderes Lager-Produkt.",
+        storeId: err.storeId ?? null,
+      });
     if (err?.message === "NO_MATCHED_SIZE_IN_STORE")
       return res.status(400).json({
         success: false,
