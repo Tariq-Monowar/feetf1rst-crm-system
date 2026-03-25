@@ -640,6 +640,7 @@ model customer_price {
   updatedAt DateTime @updatedAt
 }
 
+
 model customer_settings {
   id String @id @default(uuid())
 
