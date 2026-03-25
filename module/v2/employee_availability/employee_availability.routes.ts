@@ -10,11 +10,19 @@ import {
   deleteAvailabilityTime,
   checkEmployeeAvailabilitySlot,
   getCombinedAvailableTimeSlots,
+  getSingleEmployeeAvailability,
 } from "./employee_availability.controllers";
 
 const router = express.Router();
 
 router.get("/availability-list/:employeeId", verifyUser("PARTNER"), getEmployeeAvailability);
+// get single employee availability
+router.get(
+  "/availability-single/:employeeId/:dayOfWeek",
+  verifyUser("PARTNER"),
+  getSingleEmployeeAvailability,
+);
+
 router.post("/create/:employeeId", verifyUser("PARTNER"), createEmployeeAvailability);
 
 router.patch("/toggle-activity/:employeeId", verifyUser("PARTNER"), activeEmployeeAvailability);

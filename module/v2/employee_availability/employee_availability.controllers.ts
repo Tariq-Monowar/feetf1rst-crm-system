@@ -30,6 +30,61 @@ export const getEmployeeAvailability = async (req: Request, res: Response) => {
   }
 };
 
+export const getSingleEmployeeAvailability = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const employeeId = req.params.employeeId;
+    const partnerId = req.user?.id;
+    const dayOfWeekRaw = req.params.dayOfWeek ?? (req.query.dayOfWeek as any);
+    const dayOfWeek = Number(dayOfWeekRaw);
+
+    if (!employeeId) {
+      return res.status(400).json({
+        success: false,
+        message: "employeeId is required",
+      });
+    }
+
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid dayOfWeek",
+        validDays: [0, 1, 2, 3, 4, 5, 6],
+      });
+    }
+
+    const one = await prisma.employee_availability.findFirst({
+      where: { employeeId, partnerId, dayOfWeek },
+      include: {
+        availability_time: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    if (!one) {
+      return res.status(404).json({
+        success: false,
+        message: "Availability not found for this employee/day",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: one,
+    });
+  } catch (error) {
+    console.error("Get single employee availability error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (error as Error).message,
+    });
+  }
+};
+
 export const createEmployeeAvailability = async (
   req: Request,
   res: Response,
@@ -222,17 +277,23 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
     if (list.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "availability_time is required (array of { title, startTime, endTime }).",
+        message:
+          "availability_time is required (array of { title, startTime, endTime }).",
       });
     }
 
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
-      if (!s || typeof s !== "object" || !s.title || !s.startTime || !s.endTime) {
+      if (
+        !s ||
+        typeof s !== "object" ||
+        !s.title ||
+        !s.startTime ||
+        !s.endTime
+      ) {
         return res.status(400).json({
           success: false,
-          message:
-            `availability_time[${i}] must include title, startTime, and endTime.`,
+          message: `availability_time[${i}] must include title, startTime, and endTime.`,
         });
       }
       if (s.isActive !== undefined && typeof s.isActive !== "boolean") {
@@ -299,7 +360,7 @@ export const addEmployeeAvailability = async (req: Request, res: Response) => {
 export const updateAvailabilityTime = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
-    
+
     if (!partnerId) {
       return res.status(401).json({
         success: false,
@@ -330,7 +391,12 @@ export const updateAvailabilityTime = async (req: Request, res: Response) => {
       });
     }
 
-    const data: { title?: string; startTime?: string; endTime?: string; isActive?: boolean } = {};
+    const data: {
+      title?: string;
+      startTime?: string;
+      endTime?: string;
+      isActive?: boolean;
+    } = {};
     if (title !== undefined) data.title = title;
     if (startTime !== undefined) data.startTime = startTime;
     if (endTime !== undefined) data.endTime = endTime;
@@ -339,7 +405,8 @@ export const updateAvailabilityTime = async (req: Request, res: Response) => {
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Provide at least one of: title, startTime, endTime, isActive.",
+        message:
+          "Provide at least one of: title, startTime, endTime, isActive.",
       });
     }
 
@@ -441,9 +508,7 @@ export const checkEmployeeAvailabilitySlot = async (
       });
     }
 
-    const [timeStr, period] = time.includes(" ")
-      ? time.split(" ")
-      : [time, ""];
+    const [timeStr, period] = time.includes(" ") ? time.split(" ") : [time, ""];
     const [hStr, mStr] = timeStr.split(":");
     let hours = Number(hStr);
     const minutes = Number(mStr);
