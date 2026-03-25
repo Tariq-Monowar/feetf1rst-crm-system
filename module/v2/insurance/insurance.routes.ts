@@ -3,6 +3,7 @@ import multer from "multer";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import {
   getCalculationData,
+  getInsurancePaymentExpectationData,
   getInsuranceList,
   managePrescription,
   validateInsuranceChangelog,
@@ -48,6 +49,13 @@ router.get(
   "/get-calculation",
   verifyUser("EMPLOYEE", "PARTNER"),
   getCalculationData,
+);
+
+// Extra cards: approved but not paid / pending but expected + revenue this month
+router.get(
+  "/get-calculation-extra",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  getInsurancePaymentExpectationData,
 );
 
 export default router;

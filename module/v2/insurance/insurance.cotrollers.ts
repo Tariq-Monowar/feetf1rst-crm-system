@@ -1493,28 +1493,28 @@ export const getCalculationData = async (req: Request, res: Response) => {
       prisma.customerOrders.aggregate({
         where: {
           ...insoleApprovedWhere,
-          updatedAt: { gte: startOfThisMonth, lt: startOfNextMonth },
+          createdAt: { gte: startOfThisMonth, lt: startOfNextMonth },
         },
         _sum: { insuranceTotalPrice: true },
       }),
       prisma.shoe_order.aggregate({
         where: {
           ...shoeApprovedWhere,
-          updatedAt: { gte: startOfThisMonth, lt: startOfNextMonth },
+          createdAt: { gte: startOfThisMonth, lt: startOfNextMonth },
         },
         _sum: { insurance_price: true },
       }),
       prisma.customerOrders.aggregate({
         where: {
           ...insoleApprovedWhere,
-          updatedAt: { gte: startOfLastMonth, lt: startOfThisMonth },
+          createdAt: { gte: startOfLastMonth, lt: startOfThisMonth },
         },
         _sum: { insuranceTotalPrice: true },
       }),
       prisma.shoe_order.aggregate({
         where: {
           ...shoeApprovedWhere,
-          updatedAt: { gte: startOfLastMonth, lt: startOfThisMonth },
+          createdAt: { gte: startOfLastMonth, lt: startOfThisMonth },
         },
         _sum: { insurance_price: true },
       }),
@@ -1584,6 +1584,177 @@ export const getCalculationData = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong",
       error: error.message,
+    });
+  }
+};
+
+// Extra dashboard cards:
+// 1) Genehmigt but still not paid
+// 2) Not genehmigt yet but expected (pending, not paid)
+// 4) Revenue this month (approved + paid, created this month)
+export const getInsurancePaymentExpectationData = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfLast30Days = new Date(now);
+    startOfLast30Days.setDate(now.getDate() - 30);
+
+    const insurancePaymentIn = {
+      in: [paymnentType.insurance, paymnentType.broth],
+    };
+
+    const insoleApprovedNotPaidWhere = {
+      partnerId,
+      paymnentType: insurancePaymentIn,
+      insuranceTotalPrice: { not: null },
+      insurance_payed: false,
+      insurance_status: insurance_status.approved,
+    };
+    const shoeApprovedNotPaidWhere = {
+      partnerId,
+      payment_type: insurancePaymentIn,
+      insurance_price: { not: null },
+      insurance_payed: false,
+      insurance_status: insurance_status.approved,
+    };
+
+    const insolePendingNotPaidWhere = {
+      ...insoleApprovedNotPaidWhere,
+      insurance_status: insurance_status.pending,
+    };
+    const shoePendingNotPaidWhere = {
+      ...shoeApprovedNotPaidWhere,
+      insurance_status: insurance_status.pending,
+    };
+
+    const insoleApprovedPaidThisMonthWhere = {
+      partnerId,
+      paymnentType: insurancePaymentIn,
+      insuranceTotalPrice: { not: null },
+      insurance_payed: true,
+      insurance_status: insurance_status.approved,
+      createdAt: { gte: startOfThisMonth, lt: startOfNextMonth },
+    };
+    const shoeApprovedPaidThisMonthWhere = {
+      partnerId,
+      payment_type: insurancePaymentIn,
+      insurance_price: { not: null },
+      insurance_payed: true,
+      insurance_status: insurance_status.approved,
+      createdAt: { gte: startOfThisMonth, lt: startOfNextMonth },
+    };
+
+    // Expected within 30 days: pending and not paid AND created in last 30 days.
+    const insolePendingExpected30DaysWhere = {
+      ...insolePendingNotPaidWhere,
+      createdAt: { gte: startOfLast30Days, lt: now },
+    };
+    const shoePendingExpected30DaysWhere = {
+      ...shoePendingNotPaidWhere,
+      createdAt: { gte: startOfLast30Days, lt: now },
+    };
+
+    // Overdue: approved but not paid and older than 30 days.
+    const insoleApprovedOverdueWhere = {
+      ...insoleApprovedNotPaidWhere,
+      createdAt: { lt: startOfLast30Days },
+    };
+    const shoeApprovedOverdueWhere = {
+      ...shoeApprovedNotPaidWhere,
+      createdAt: { lt: startOfLast30Days },
+    };
+
+    const [
+      openReceivablesInsoleAgg,
+      openReceivablesShoeAgg,
+      expectedIn30DaysInsoleAgg,
+      expectedIn30DaysShoeAgg,
+      overdueInsoleAgg,
+      overdueShoeAgg,
+      revenueInsoleAgg,
+      revenueShoeAgg,
+    ] = await Promise.all([
+      prisma.customerOrders.aggregate({
+        where: insoleApprovedNotPaidWhere,
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: shoeApprovedNotPaidWhere,
+        _sum: { insurance_price: true },
+      }),
+      prisma.customerOrders.aggregate({
+        where: insolePendingExpected30DaysWhere,
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: shoePendingExpected30DaysWhere,
+        _sum: { insurance_price: true },
+      }),
+      prisma.customerOrders.aggregate({
+        where: insoleApprovedOverdueWhere,
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: shoeApprovedOverdueWhere,
+        _sum: { insurance_price: true },
+      }),
+      prisma.customerOrders.aggregate({
+        where: insoleApprovedPaidThisMonthWhere,
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: shoeApprovedPaidThisMonthWhere,
+        _sum: { insurance_price: true },
+      }),
+    ]);
+
+    const revenueThisMonth =
+      (revenueInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (revenueShoeAgg._sum.insurance_price ?? 0);
+
+    const openReceivablesAmount =
+      (openReceivablesInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (openReceivablesShoeAgg._sum.insurance_price ?? 0);
+
+    const expectedIn30DaysAmount =
+      (expectedIn30DaysInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (expectedIn30DaysShoeAgg._sum.insurance_price ?? 0);
+
+    const overdueAmount =
+      (overdueInsoleAgg._sum.insuranceTotalPrice ?? 0) +
+      (overdueShoeAgg._sum.insurance_price ?? 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        openReceivablesAmount:
+          Math.round(openReceivablesAmount * 100) / 100,
+        expectedIn30DaysAmount: Math.round(expectedIn30DaysAmount * 100) / 100,
+        overdueAmount: Math.round(overdueAmount * 100) / 100,
+        revenueThisMonth: Math.round(revenueThisMonth * 100) / 100,
+      },
+    });
+  } catch (error: any) {
+    console.error(
+      "Get insurance payment expectation data error:",
+      error,
+    );
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error?.message,
     });
   }
 };
