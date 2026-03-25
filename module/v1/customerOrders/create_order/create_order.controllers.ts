@@ -268,12 +268,6 @@ export const createOrder = async (req: Request, res: Response) => {
         select: {
           fusslange1: true,
           fusslange2: true,
-          fussbreite1: true,
-          fussbreite2: true,
-          kugelumfang1: true,
-          kugelumfang2: true,
-          rist1: true,
-          rist2: true,
         },
       }),
       privetSupply
@@ -643,7 +637,8 @@ export const createOrder = async (req: Request, res: Response) => {
 
       /** If order is linked to a store, resolve size (block or rady), check tolerance and stock. */
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
-        const sizes = { ...(store.groessenMengen as Record<string, any>) };
+        // Avoid cloning the whole JSON; we only read from it here.
+        const sizes = store.groessenMengen as Record<string, any>;
         const isMillingBlock = store.type === "milling_block";
         let sizeKey: string | null = isMillingBlock
           ? findBlockSizeKey(sizes, footLengthMm)
@@ -722,6 +717,22 @@ export const createOrder = async (req: Request, res: Response) => {
       const fallbackVat = needPartnerVat ? vat_country : null;
 
       /** Write history and insurance rows for this order. */
+      const insuranceRows =
+        insuranceList.length > 0
+          ? insuranceList.map((item: any) => ({
+              orderId: newOrder.id,
+              price:
+                item.price != null && item.price !== ""
+                  ? Number(item.price)
+                  : null,
+              description:
+                item.description != null && item.description !== ""
+                  ? item.description
+                  : null,
+              vat_country: fallbackVat,
+            }))
+          : [];
+
       await Promise.all([
         tx.customerHistorie.create({
           data: {
@@ -743,22 +754,13 @@ export const createOrder = async (req: Request, res: Response) => {
             note: null,
           } as any,
         }),
-        ...insuranceList.map((item: any) =>
-          tx.customerOrderInsurance.create({
-            data: {
-              orderId: newOrder.id,
-              price:
-                item.price != null && item.price !== ""
-                  ? Number(item.price)
-                  : null,
-              description:
-                item.description != null && item.description !== ""
-                  ? item.description
-                  : null,
-              vat_country: fallbackVat,
-            },
-          }),
-        ),
+        ...(insuranceRows.length > 0
+          ? [
+              tx.customerOrderInsurance.createMany({
+                data: insuranceRows,
+              }),
+            ]
+          : []),
       ]);
 
       // Only write fields we actually resolved from groessenMengen.
