@@ -3,9 +3,19 @@
 
 export function extractLengthValue(value: any): number | null {
   if (value == null) return null;
-  if (typeof value === "object" && !Array.isArray(value) && "length" in value) {
-    const n = Number((value as any).length);
-    return Number.isFinite(n) ? n : null;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    // Support multiple key styles that exist in different environments/data migrations.
+    const candidates = [
+      obj.length,
+      (obj as any).Length,
+      (obj as any).length_mm,
+      (obj as any).lengthMm,
+    ];
+    for (const c of candidates) {
+      const n = Number(c);
+      if (Number.isFinite(n)) return n;
+    }
   }
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
