@@ -1067,6 +1067,21 @@ export const validateInsuranceChangelog = async (req, res) => {
       aiRejectedPartials,
     );
 
+    const simpleResponse =
+      String(req.query.response ?? req.query.responce ?? "")
+        .toLowerCase()
+        .trim() === "simple";
+
+    if (simpleResponse) {
+      return res.json({
+        success: true,
+        matched,
+        matchCount: matched.length,
+        partialMatched,
+        partialMatchCount: partialMatched.length,
+      });
+    }
+
     res.json({
       success: true,
       exclData: mappedRows,
