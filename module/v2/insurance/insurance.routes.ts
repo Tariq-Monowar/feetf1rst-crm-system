@@ -6,6 +6,7 @@ import {
   getInsuranceList,
   managePrescription,
   validateInsuranceChangelog,
+  approvedData
 } from "./insurance.cotrollers";
 
 const router = express.Router();
@@ -35,10 +36,18 @@ router.post(
   validateInsuranceChangelog,
 );
 
-// router.get(
-//   "/get-calculation",
-//   verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
-//   getCalculationData,
-// );
+//approved data from excel
+
+router.post(
+  "/approved-data",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  approvedData,
+);
+
+router.get(
+  "/get-calculation",
+  verifyUser("EMPLOYEE", "PARTNER"),
+  getCalculationData,
+);
 
 export default router;

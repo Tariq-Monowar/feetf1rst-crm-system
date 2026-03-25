@@ -1,623 +1,8 @@
 import { Request, Response } from "express";
+import { paymnentType } from "@prisma/client";
 import { prisma } from "../../../db";
 import * as XLSX from "xlsx";
 import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
-
-const getActiveInsuranceOrders = async (partnerId: string) => {
-  const [insole, shoe] = await Promise.all([
-    prisma.customerOrders.findMany({
-      where: {
-        partnerId,
-        insurance_payed: false,
-        paymnentType: { in: ["insurance", "broth"] },
-        insuranceTotalPrice: { not: null },
-        prescription: { isNot: null },
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        orderNumber: true,
-        paymnentType: true,
-        totalPrice: true,
-        insuranceTotalPrice: true,
-        private_payed: true,
-        insurance_status: true,
-        createdAt: true,
-        vatRate: true,
-        prescription: true,
-        customer: {
-          select: {
-            id: true,
-            vorname: true,
-            nachname: true,
-            telefon: true,
-          },
-        },
-      },
-    }),
-    prisma.shoe_order.findMany({
-      where: {
-        partnerId,
-        insurance_payed: false,
-        payment_type: { in: ["insurance", "broth"] },
-        insurance_price: { not: null },
-        prescription: { isNot: null },
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        orderNumber: true,
-        payment_type: true,
-        total_price: true,
-        insurance_price: true,
-        private_payed: true,
-        insurance_status: true,
-        vat_rate: true,
-        createdAt: true,
-        updatedAt: true,
-        prescription: true,
-        customer: {
-          select: {
-            id: true,
-            vorname: true,
-            nachname: true,
-            telefon: true,
-          },
-        },
-      },
-    }),
-  ]);
-
-  const insoleData = insole.map((order) => ({
-    ...order,
-    insuranceType: "insole" as const,
-  }));
-
-  const shoeData = shoe.map((order) => ({
-    id: order.id,
-    orderNumber: order.orderNumber,
-    paymnentType: order.payment_type,
-    totalPrice: order.total_price,
-    insuranceTotalPrice: order.insurance_price,
-    private_payed: order.private_payed,
-    insurance_status: order.insurance_status,
-    vatRate: order.vat_rate,
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt,
-    prescription: order.prescription,
-    customer: order.customer,
-    insuranceType: "shoes" as const,
-  }));
-
-  return [...insoleData, ...shoeData].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-};
-
-const normalizeText = (value: unknown) =>
-  String(value ?? "")
-    .toLowerCase()
-    .trim()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/^(abrechnung|korrektur)\s*-\s*/i, "")
-    .replace(/\(.*?\)/g, "")
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ");
-
-const toNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-};
-
-const extractNameFromRow = (row: Record<string, unknown>) => {
-  const direct =
-    row.Patient ??
-    row.Versicherter ??
-    row["Versicherter Name"] ??
-    row["Vers Zuname"] ??
-    null;
-  const first = row["Vers Vorname"];
-  if (row["Vers Zuname"] || first) {
-    return normalizeText(`${row["Vers Zuname"] ?? ""} ${first ?? ""}`.trim());
-  }
-  return normalizeText(direct);
-};
-
-const extractInsuranceFromRow = (row: Record<string, unknown>) =>
-  normalizeText(
-    row.Meldung ??
-      row["Korr.-Beschreibung"] ??
-      row.Kostentraeger ??
-      row.Kostenträger ??
-      row.insurance_provider,
-  );
-
-const isIgnoredSheetField = (normalizedKey: string) =>
-  ["abgerechnet", "akzeptiert"].some((x) => normalizedKey.includes(x));
-
-const toDbProblemFieldName = (excelFieldName: string) => {
-  const key = normalizeText(excelFieldName);
-
-  if (
-    [
-      "betrag",
-      "gesamt brutto",
-      "gesamt netto",
-      "tarif netto",
-      "basis 20%",
-      "basis 10%",
-      "amount",
-      "total",
-      "gross",
-      "net",
-      "price",
-      "sum",
-      "value",
-      "charge",
-      "cost",
-      "fee",
-      "vat",
-      "mwst",
-      "ust",
-    ].some((x) => key.includes(x))
-  ) {
-    return "insuranceTotalPrice";
-  }
-
-  if (
-    ["meldung", "insurance", "kostentrager", "kostentraeger", "korr", "provider"].some(
-      (x) => key.includes(x),
-    )
-  ) {
-    return "prescription.insurance_provider";
-  }
-
-  if (
-    [
-      "patient",
-      "versicherter",
-      "name",
-      "vers zuname",
-      "vers vorname",
-      "vorname",
-      "nachname",
-    ].some((x) => key.includes(x))
-  ) {
-    return "customer.name";
-  }
-
-  return "unknown";
-};
-
-const pickFieldName = (
-  row: Record<string, unknown>,
-  matcher: (normalizedKey: string) => boolean,
-  fallback: string,
-) => {
-  const entry = Object.keys(row).find((k) => {
-    const nk = normalizeText(k);
-    if (isIgnoredSheetField(nk)) return false;
-    return matcher(nk);
-  });
-  return entry ?? fallback;
-};
-
-const getAmountFieldName = (row: Record<string, unknown>) =>
-  pickFieldName(
-    row,
-    (k) =>
-      [
-        "betrag",
-        "gesamt brutto",
-        "gesamt netto",
-        "tarif netto",
-        "basis 20%",
-        "basis 10%",
-        "amount",
-        "total",
-        "gross",
-        "net",
-        "price",
-        "sum",
-        "value",
-        "charge",
-        "cost",
-        "fee",
-        "vat",
-        "mwst",
-        "ust",
-      ].some((x) => k.includes(x)),
-    "amount",
-  );
-
-const getInsuranceFieldName = (row: Record<string, unknown>) =>
-  pickFieldName(
-    row,
-    (k) =>
-      ["meldung", "insurance", "kostentrager", "kostentraeger", "korr", "provider"].some(
-        (x) => k.includes(x),
-      ),
-    "insurance",
-  );
-
-const getNameFieldName = (row: Record<string, unknown>) =>
-  pickFieldName(
-    row,
-    (k) =>
-      [
-        "patient",
-        "versicherter",
-        "name",
-        "vers zuname",
-        "vers vorname",
-        "vorname",
-        "nachname",
-      ].some((x) => k.includes(x)),
-    "name",
-  );
-
-const extractAmountFromRow = (row: Record<string, unknown>) => {
-  const preferredKeys = [
-    "betrag",
-    "gesamt brutto",
-    "gesamt netto",
-    "tarif netto",
-    "basis 20%",
-    "basis 10%",
-    "amount",
-    "total",
-    "gross",
-    "net",
-    "price",
-    "sum",
-    "value",
-    "charge",
-    "cost",
-    "fee",
-    "vat",
-    "mwst",
-    "ust",
-  ];
-
-  const rowEntries = Object.entries(row);
-  let raw: number | null = null;
-
-  for (const [key, value] of rowEntries) {
-    const n = toNumber(value);
-    if (n === null) continue;
-    const nk = normalizeText(key);
-    if (isIgnoredSheetField(nk)) continue;
-    if (preferredKeys.some((k) => nk.includes(k))) {
-      raw = n;
-      break;
-    }
-  }
-
-  if (raw === null) {
-    const fallback = rowEntries
-      .map(([key, value]) => ({ key: normalizeText(key), value: toNumber(value) }))
-      .filter(
-        (x) =>
-          x.value !== null &&
-          !isIgnoredSheetField(x.key) &&
-          !/(^| )(id|nr|num|number|code|datum|date|year|month|vo|penr)( |$)/.test(
-            x.key,
-          ),
-      )
-      .sort((a, b) => Math.abs((b.value as number)) - Math.abs((a.value as number)));
-
-    raw = fallback[0]?.value ?? null;
-  }
-
-  return raw === null ? null : Math.abs(raw);
-};
-
-const buildPartialMatches = (
-  unmatchedExcelRows: Record<string, unknown>[],
-  activeOrders: any[],
-  aiRejectedPartials: Array<{
-    orderId: string;
-    problemFields: string[];
-  }> = [],
-) => {
-  const orderProblems = new Map<string, Set<string>>();
-
-  const markProblem = (orderId: string, fields: string[]) => {
-    const set = orderProblems.get(orderId) ?? new Set<string>();
-    fields
-      .map(toDbProblemFieldName)
-      .filter((f) => f !== "unknown")
-      .forEach((f) => set.add(f));
-    orderProblems.set(orderId, set);
-  };
-
-  aiRejectedPartials.forEach((p) => markProblem(p.orderId, p.problemFields));
-
-  unmatchedExcelRows.forEach((row) => {
-      const excelInsurance = extractInsuranceFromRow(row);
-      const excelName = extractNameFromRow(row);
-      const excelAmount = extractAmountFromRow(row);
-
-      const bestCandidate = activeOrders
-        .filter((order) => {
-          const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
-          const orderName = normalizeText(
-            `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
-          );
-          const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
-          const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
-
-          const insuranceSignal =
-            !!excelInsurance &&
-            !!orderInsurance &&
-            (excelInsurance.includes(orderInsurance) ||
-              orderInsurance.includes(excelInsurance));
-          const nameSignal =
-            !!excelName &&
-            !!orderName &&
-            (excelName.includes(orderName) || orderName.includes(excelName));
-          const amountSignal =
-            excelAmount !== null &&
-            orderAmount !== null &&
-            Math.abs(excelAmount - orderAmount) <= 1;
-
-          return (
-            insuranceSignal || nameSignal || amountSignal
-          );
-        })
-        .map((order) => {
-          const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
-          const orderName = normalizeText(
-            `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
-          );
-          const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
-          const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
-
-          const nameMatch =
-            !!excelName &&
-            !!orderName &&
-            (excelName.includes(orderName) || orderName.includes(excelName));
-          const insuranceMatch =
-            !!excelInsurance &&
-            !!orderInsurance &&
-            (excelInsurance.includes(orderInsurance) ||
-              orderInsurance.includes(excelInsurance));
-          const amountMatch =
-            excelAmount !== null &&
-            orderAmount !== null &&
-            Math.abs(excelAmount - orderAmount) <= 1;
-
-          let signalScore = 0;
-          if (insuranceMatch) signalScore += 3;
-          if (nameMatch) signalScore += 2;
-          if (amountMatch) signalScore += 2;
-
-          const issues: string[] = [];
-          if (!nameMatch) issues.push(getNameFieldName(row));
-          if (!amountMatch) issues.push(getAmountFieldName(row));
-          if (!insuranceMatch) issues.push(getInsuranceFieldName(row));
-
-          return {
-            orderId: order.id as string,
-            signalScore,
-            issues,
-          };
-        })
-        .sort((a, b) => b.signalScore - a.signalScore)[0];
-
-      if (!bestCandidate) return;
-      markProblem(bestCandidate.orderId, bestCandidate.issues);
-  });
-
-  return activeOrders
-    .filter((order) => orderProblems.has(order.id))
-    .map((order) => ({
-      ...order,
-      problemFields: Array.from(orderProblems.get(order.id) ?? []),
-    }));
-};
-
-const matchExcelWithOrdersDeterministic = (
-  excelRows: Record<string, unknown>[],
-  activeOrders: any[],
-) => {
-  const usedOrderIds = new Set<string>();
-  const matchedOrderMap = new Map<string, Record<string, unknown>[]>();
-  const unmatchedExcelRows: Record<string, unknown>[] = [];
-
-  for (const row of excelRows) {
-    const excelName = extractNameFromRow(row);
-    const excelInsurance = normalizeText(
-      row.Meldung ?? row["Korr.-Beschreibung"] ?? row.Kostentraeger ?? row.Kostenträger,
-    );
-    const excelAmountRaw = toNumber(row.Betrag ?? row["Gesamt Netto"] ?? row["Tarif Netto"]);
-    const excelAmount = excelAmountRaw === null ? null : Math.abs(excelAmountRaw);
-
-    let bestOrder: any = null;
-    let bestScore = -1;
-
-    for (const order of activeOrders) {
-      if (usedOrderIds.has(order.id)) continue;
-
-      const orderName = normalizeText(
-        `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
-      );
-      const orderInsurance = normalizeText(order?.prescription?.insurance_provider);
-      const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
-      const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
-
-      const nameMatch =
-        !!excelName &&
-        !!orderName &&
-        (excelName.includes(orderName) || orderName.includes(excelName));
-      const insuranceMatch =
-        !!excelInsurance &&
-        !!orderInsurance &&
-        (excelInsurance.includes(orderInsurance) ||
-          orderInsurance.includes(excelInsurance));
-      const amountMatch =
-        excelAmount !== null &&
-        orderAmount !== null &&
-        Math.abs(excelAmount - orderAmount) <= 1;
-
-      let score = 0;
-      if (amountMatch) score += 2;
-      if (nameMatch) score += 2;
-      if (insuranceMatch) score += 1;
-
-      if (score > bestScore && amountMatch && (nameMatch || insuranceMatch)) {
-        bestScore = score;
-        bestOrder = order;
-      }
-    }
-
-    if (!bestOrder) {
-      unmatchedExcelRows.push(row);
-      continue;
-    }
-
-    usedOrderIds.add(bestOrder.id);
-    const prev = matchedOrderMap.get(bestOrder.id) ?? [];
-    prev.push(row);
-    matchedOrderMap.set(bestOrder.id, prev);
-  }
-
-  const matched = activeOrders
-    .filter((order) => matchedOrderMap.has(order.id))
-    .map((order) => ({ ...order }));
-
-  return { matched, unmatchedExcelRows };
-};
-
-const parseJsonFromModelText = (text: string) => {
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (_e) {
-    const start = cleaned.indexOf("[");
-    const end = cleaned.lastIndexOf("]");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
-    }
-    throw new Error("Invalid JSON from model");
-  }
-};
-
-const matchExcelWithOrdersAI = async (
-  excelRows: Record<string, unknown>[],
-  activeOrders: any[],
-) => {
-  const ordersForAi = activeOrders.map((o) => ({
-    id: o.id,
-    orderNumber: o.orderNumber,
-    customerName: `${o?.customer?.vorname ?? ""} ${o?.customer?.nachname ?? ""}`.trim(),
-    insuranceProvider: o?.prescription?.insurance_provider ?? null,
-    amount: o?.insuranceTotalPrice ?? null,
-  }));
-
-  const prompt = `
-You match random-structure Excel rows to insurance orders.
-
-Input:
-- excelRows: arbitrary column names / structure
-- orders: known active orders
-
-Rules:
-1) Infer best columns dynamically for person name, insurance provider and amount.
-2) Match by strongest combined signal (name, insurance, amount).
-3) Amount match tolerance: +/- 1.
-4) If uncertain, do not match.
-
-Return ONLY a JSON array with this shape:
-[
-  {
-    "excelIndex": 0,
-    "orderId": "uuid-or-null",
-    "confidence": 0
-  }
-]
-
-Constraints:
-- orderId must be null when no reliable match.
-- Use each orderId at most once.
-
-excelRows:
-${JSON.stringify(excelRows)}
-
-orders:
-${JSON.stringify(ordersForAi)}
-`;
-
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: prompt,
-  });
-
-  const raw = response.text ?? "[]";
-  const aiMatches = parseJsonFromModelText(raw) as Array<{
-    excelIndex?: number;
-    orderId?: string | null;
-    confidence?: number;
-  }>;
-  console.log("aiMatches ====================", aiMatches);
-
-  const usedOrderIds = new Set<string>();
-  const matchedOrderMap = new Map<string, number>();
-  const unmatchedExcelRows: Record<string, unknown>[] = [];
-  const aiRejectedPartials: Array<{
-    orderId: string;
-    problemFields: string[];
-  }> = [];
-
-  excelRows.forEach((row, idx) => {
-    const item = aiMatches.find((m) => m?.excelIndex === idx);
-    const orderId = item?.orderId;
-    if (!orderId || usedOrderIds.has(orderId)) {
-      unmatchedExcelRows.push(row);
-      return;
-    }
-
-    const pickedOrder = activeOrders.find((o) => o.id === orderId);
-    if (!pickedOrder) {
-      unmatchedExcelRows.push(row);
-      return;
-    }
-
-    // Strict guard: AI can infer structure, but final match must satisfy amount tolerance.
-    // If amount differs (e.g. Excel Gesamt Brutto 50 vs order 52), move to partial flow.
-    const excelAmount = extractAmountFromRow(row);
-    const orderAmountRaw = toNumber(pickedOrder.insuranceTotalPrice);
-    const orderAmount = orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
-    const amountMismatch =
-      excelAmount !== null &&
-      orderAmount !== null &&
-      Math.abs(excelAmount - orderAmount) > 1;
-
-    if (amountMismatch) {
-      unmatchedExcelRows.push(row);
-      aiRejectedPartials.push({
-        orderId: pickedOrder.id,
-        problemFields: [getAmountFieldName(row)],
-      });
-      return;
-    }
-
-    usedOrderIds.add(orderId);
-    matchedOrderMap.set(orderId, (matchedOrderMap.get(orderId) ?? 0) + 1);
-  });
-
-  const matched = activeOrders
-    .filter((order) => matchedOrderMap.has(order.id))
-    .map((order) => ({ ...order }));
-
-  return { matched, unmatchedExcelRows, aiRejectedPartials };
-};
 
 //---------------------------------insurance list---------------------------------
 export const getInsuranceList = async (req: Request, res: Response) => {
@@ -875,6 +260,98 @@ export const getInsuranceList = async (req: Request, res: Response) => {
 };
 
 export const managePrescription = async (req: Request, res: Response) => {
+  const getActiveInsuranceOrders = async (partnerId: string) => {
+    const [insole, shoe] = await Promise.all([
+      prisma.customerOrders.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          paymnentType: { in: ["insurance", "broth"] },
+          insuranceTotalPrice: { not: null },
+          prescription: { isNot: null },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          orderNumber: true,
+          paymnentType: true,
+          totalPrice: true,
+          insuranceTotalPrice: true,
+          private_payed: true,
+          insurance_status: true,
+          createdAt: true,
+          vatRate: true,
+          prescription: true,
+          customer: {
+            select: {
+              id: true,
+              vorname: true,
+              nachname: true,
+              telefon: true,
+            },
+          },
+        },
+      }),
+      prisma.shoe_order.findMany({
+        where: {
+          partnerId,
+          insurance_payed: false,
+          payment_type: { in: ["insurance", "broth"] },
+          insurance_price: { not: null },
+          prescription: { isNot: null },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          orderNumber: true,
+          payment_type: true,
+          total_price: true,
+          insurance_price: true,
+          private_payed: true,
+          insurance_status: true,
+          vat_rate: true,
+          createdAt: true,
+          updatedAt: true,
+          prescription: true,
+          customer: {
+            select: {
+              id: true,
+              vorname: true,
+              nachname: true,
+              telefon: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const insoleData = insole.map((order) => ({
+      ...order,
+      insuranceType: "insole" as const,
+    }));
+
+    const shoeData = shoe.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      paymnentType: order.payment_type,
+      totalPrice: order.total_price,
+      insuranceTotalPrice: order.insurance_price,
+      private_payed: order.private_payed,
+      insurance_status: order.insurance_status,
+      vatRate: order.vat_rate,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      prescription: order.prescription,
+      customer: order.customer,
+      insuranceType: "shoes" as const,
+    }));
+
+    return [...insoleData, ...shoeData].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  };
+
   try {
     const { orderId, prescriptionId, type } = req.body;
     const partnerId = req.user?.id;
@@ -991,6 +468,653 @@ export const validateInsuranceChangelog = async (req, res) => {
       });
     }
 
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+
+    const getActiveInsuranceOrders = async (pid: string) => {
+      const [insole, shoe] = await Promise.all([
+        prisma.customerOrders.findMany({
+          where: {
+            partnerId: pid,
+            insurance_payed: false,
+            paymnentType: { in: ["insurance", "broth"] },
+            insuranceTotalPrice: { not: null },
+            prescription: { isNot: null },
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            orderNumber: true,
+            paymnentType: true,
+            totalPrice: true,
+            insuranceTotalPrice: true,
+            private_payed: true,
+            insurance_status: true,
+            createdAt: true,
+            vatRate: true,
+            prescription: true,
+            customer: {
+              select: {
+                id: true,
+                vorname: true,
+                nachname: true,
+                telefon: true,
+              },
+            },
+          },
+        }),
+        prisma.shoe_order.findMany({
+          where: {
+            partnerId: pid,
+            insurance_payed: false,
+            payment_type: { in: ["insurance", "broth"] },
+            insurance_price: { not: null },
+            prescription: { isNot: null },
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            orderNumber: true,
+            payment_type: true,
+            total_price: true,
+            insurance_price: true,
+            private_payed: true,
+            insurance_status: true,
+            vat_rate: true,
+            createdAt: true,
+            updatedAt: true,
+            prescription: true,
+            customer: {
+              select: {
+                id: true,
+                vorname: true,
+                nachname: true,
+                telefon: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const insoleData = insole.map((order) => ({
+        ...order,
+        insuranceType: "insole" as const,
+      }));
+
+      const shoeData = shoe.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        paymnentType: order.payment_type,
+        totalPrice: order.total_price,
+        insuranceTotalPrice: order.insurance_price,
+        private_payed: order.private_payed,
+        insurance_status: order.insurance_status,
+        vatRate: order.vat_rate,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        prescription: order.prescription,
+        customer: order.customer,
+        insuranceType: "shoes" as const,
+      }));
+
+      return [...insoleData, ...shoeData].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      );
+    };
+
+    const normalizeText = (value: unknown) =>
+      String(value ?? "")
+        .toLowerCase()
+        .trim()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/^(abrechnung|korrektur)\s*-\s*/i, "")
+        .replace(/\(.*?\)/g, "")
+        .replace(/[^\w\s]/g, " ")
+        .replace(/\s+/g, " ");
+
+    const toNumber = (value: unknown): number | null => {
+      if (value === null || value === undefined || value === "") return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const extractNameFromRow = (row: Record<string, unknown>) => {
+      const direct =
+        row.Patient ??
+        row.Versicherter ??
+        row["Versicherter Name"] ??
+        row["Vers Zuname"] ??
+        null;
+      const first = row["Vers Vorname"];
+      if (row["Vers Zuname"] || first) {
+        return normalizeText(
+          `${row["Vers Zuname"] ?? ""} ${first ?? ""}`.trim(),
+        );
+      }
+      return normalizeText(direct);
+    };
+
+    const extractInsuranceFromRow = (row: Record<string, unknown>) =>
+      normalizeText(
+        row.Meldung ??
+          row["Korr.-Beschreibung"] ??
+          row.Kostentraeger ??
+          row.Kostenträger ??
+          row.insurance_provider,
+      );
+
+    const isIgnoredSheetField = (normalizedKey: string) =>
+      ["abgerechnet", "akzeptiert"].some((x) => normalizedKey.includes(x));
+
+    const toDbProblemFieldName = (excelFieldName: string) => {
+      const key = normalizeText(excelFieldName);
+
+      if (
+        [
+          "betrag",
+          "gesamt brutto",
+          "gesamt netto",
+          "tarif netto",
+          "basis 20%",
+          "basis 10%",
+          "amount",
+          "total",
+          "gross",
+          "net",
+          "price",
+          "sum",
+          "value",
+          "charge",
+          "cost",
+          "fee",
+          "vat",
+          "mwst",
+          "ust",
+        ].some((x) => key.includes(x))
+      ) {
+        return "insuranceTotalPrice";
+      }
+
+      if (
+        [
+          "meldung",
+          "insurance",
+          "kostentrager",
+          "kostentraeger",
+          "korr",
+          "provider",
+        ].some((x) => key.includes(x))
+      ) {
+        return "prescription.insurance_provider";
+      }
+
+      if (
+        [
+          "patient",
+          "versicherter",
+          "name",
+          "vers zuname",
+          "vers vorname",
+          "vorname",
+          "nachname",
+        ].some((x) => key.includes(x))
+      ) {
+        return "customer.name";
+      }
+
+      return "unknown";
+    };
+
+    const pickFieldName = (
+      row: Record<string, unknown>,
+      matcher: (normalizedKey: string) => boolean,
+      fallback: string,
+    ) => {
+      const entry = Object.keys(row).find((k) => {
+        const nk = normalizeText(k);
+        if (isIgnoredSheetField(nk)) return false;
+        return matcher(nk);
+      });
+      return entry ?? fallback;
+    };
+
+    const getAmountFieldName = (row: Record<string, unknown>) =>
+      pickFieldName(
+        row,
+        (k) =>
+          [
+            "betrag",
+            "gesamt brutto",
+            "gesamt netto",
+            "tarif netto",
+            "basis 20%",
+            "basis 10%",
+            "amount",
+            "total",
+            "gross",
+            "net",
+            "price",
+            "sum",
+            "value",
+            "charge",
+            "cost",
+            "fee",
+            "vat",
+            "mwst",
+            "ust",
+          ].some((x) => k.includes(x)),
+        "amount",
+      );
+
+    const getInsuranceFieldName = (row: Record<string, unknown>) =>
+      pickFieldName(
+        row,
+        (k) =>
+          [
+            "meldung",
+            "insurance",
+            "kostentrager",
+            "kostentraeger",
+            "korr",
+            "provider",
+          ].some((x) => k.includes(x)),
+        "insurance",
+      );
+
+    const getNameFieldName = (row: Record<string, unknown>) =>
+      pickFieldName(
+        row,
+        (k) =>
+          [
+            "patient",
+            "versicherter",
+            "name",
+            "vers zuname",
+            "vers vorname",
+            "vorname",
+            "nachname",
+          ].some((x) => k.includes(x)),
+        "name",
+      );
+
+    const extractAmountFromRow = (row: Record<string, unknown>) => {
+      const preferredKeys = [
+        "betrag",
+        "gesamt brutto",
+        "gesamt netto",
+        "tarif netto",
+        "basis 20%",
+        "basis 10%",
+        "amount",
+        "total",
+        "gross",
+        "net",
+        "price",
+        "sum",
+        "value",
+        "charge",
+        "cost",
+        "fee",
+        "vat",
+        "mwst",
+        "ust",
+      ];
+
+      const rowEntries = Object.entries(row);
+      let raw: number | null = null;
+
+      for (const [key, value] of rowEntries) {
+        const n = toNumber(value);
+        if (n === null) continue;
+        const nk = normalizeText(key);
+        if (isIgnoredSheetField(nk)) continue;
+        if (preferredKeys.some((k) => nk.includes(k))) {
+          raw = n;
+          break;
+        }
+      }
+
+      if (raw === null) {
+        const fallback = rowEntries
+          .map(([key, value]) => ({
+            key: normalizeText(key),
+            value: toNumber(value),
+          }))
+          .filter(
+            (x) =>
+              x.value !== null &&
+              !isIgnoredSheetField(x.key) &&
+              !/(^| )(id|nr|num|number|code|datum|date|year|month|vo|penr)( |$)/.test(
+                x.key,
+              ),
+          )
+          .sort(
+            (a, b) =>
+              Math.abs(b.value as number) - Math.abs(a.value as number),
+          );
+
+        raw = fallback[0]?.value ?? null;
+      }
+
+      return raw === null ? null : Math.abs(raw);
+    };
+
+    const buildPartialMatches = (
+      unmatchedExcelRows: Record<string, unknown>[],
+      activeOrders: any[],
+      aiRejectedPartials: Array<{
+        orderId: string;
+        problemFields: string[];
+      }> = [],
+    ) => {
+      const orderProblems = new Map<string, Set<string>>();
+
+      const markProblem = (orderId: string, fields: string[]) => {
+        const set = orderProblems.get(orderId) ?? new Set<string>();
+        fields
+          .map(toDbProblemFieldName)
+          .filter((f) => f !== "unknown")
+          .forEach((f) => set.add(f));
+        orderProblems.set(orderId, set);
+      };
+
+      aiRejectedPartials.forEach((p) => markProblem(p.orderId, p.problemFields));
+
+      unmatchedExcelRows.forEach((row) => {
+        const excelInsurance = extractInsuranceFromRow(row);
+        const excelName = extractNameFromRow(row);
+        const excelAmount = extractAmountFromRow(row);
+
+        const bestCandidate = activeOrders
+          .filter((order) => {
+            const orderInsurance = normalizeText(
+              order?.prescription?.insurance_provider,
+            );
+            const orderName = normalizeText(
+              `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+            );
+            const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+            const orderAmount =
+              orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+            const insuranceSignal =
+              !!excelInsurance &&
+              !!orderInsurance &&
+              (excelInsurance.includes(orderInsurance) ||
+                orderInsurance.includes(excelInsurance));
+            const nameSignal =
+              !!excelName &&
+              !!orderName &&
+              (excelName.includes(orderName) || orderName.includes(excelName));
+            const amountSignal =
+              excelAmount !== null &&
+              orderAmount !== null &&
+              Math.abs(excelAmount - orderAmount) <= 1;
+
+            return insuranceSignal || nameSignal || amountSignal;
+          })
+          .map((order) => {
+            const orderInsurance = normalizeText(
+              order?.prescription?.insurance_provider,
+            );
+            const orderName = normalizeText(
+              `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+            );
+            const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+            const orderAmount =
+              orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+            const nameMatch =
+              !!excelName &&
+              !!orderName &&
+              (excelName.includes(orderName) || orderName.includes(excelName));
+            const insuranceMatch =
+              !!excelInsurance &&
+              !!orderInsurance &&
+              (excelInsurance.includes(orderInsurance) ||
+                orderInsurance.includes(excelInsurance));
+            const amountMatch =
+              excelAmount !== null &&
+              orderAmount !== null &&
+              Math.abs(excelAmount - orderAmount) <= 1;
+
+            let signalScore = 0;
+            if (insuranceMatch) signalScore += 3;
+            if (nameMatch) signalScore += 2;
+            if (amountMatch) signalScore += 2;
+
+            const issues: string[] = [];
+            if (!nameMatch) issues.push(getNameFieldName(row));
+            if (!amountMatch) issues.push(getAmountFieldName(row));
+            if (!insuranceMatch) issues.push(getInsuranceFieldName(row));
+
+            return {
+              orderId: order.id as string,
+              signalScore,
+              issues,
+            };
+          })
+          .sort((a, b) => b.signalScore - a.signalScore)[0];
+
+        if (!bestCandidate) return;
+        markProblem(bestCandidate.orderId, bestCandidate.issues);
+      });
+
+      return activeOrders
+        .filter((order) => orderProblems.has(order.id))
+        .map((order) => ({
+          ...order,
+          problemFields: Array.from(orderProblems.get(order.id) ?? []),
+        }));
+    };
+
+    const matchExcelWithOrdersDeterministic = (
+      excelRows: Record<string, unknown>[],
+      activeOrders: any[],
+    ) => {
+      const usedOrderIds = new Set<string>();
+      const matchedOrderMap = new Map<string, Record<string, unknown>[]>();
+      const unmatchedExcelRows: Record<string, unknown>[] = [];
+
+      for (const row of excelRows) {
+        const excelName = extractNameFromRow(row);
+        const excelInsurance = normalizeText(
+          row.Meldung ??
+            row["Korr.-Beschreibung"] ??
+            row.Kostentraeger ??
+            row.Kostenträger,
+        );
+        const excelAmountRaw = toNumber(
+          row.Betrag ?? row["Gesamt Netto"] ?? row["Tarif Netto"],
+        );
+        const excelAmount =
+          excelAmountRaw === null ? null : Math.abs(excelAmountRaw);
+
+        let bestOrder: any = null;
+        let bestScore = -1;
+
+        for (const order of activeOrders) {
+          if (usedOrderIds.has(order.id)) continue;
+
+          const orderName = normalizeText(
+            `${order?.customer?.vorname ?? ""} ${order?.customer?.nachname ?? ""}`,
+          );
+          const orderInsurance = normalizeText(
+            order?.prescription?.insurance_provider,
+          );
+          const orderAmountRaw = toNumber(order?.insuranceTotalPrice);
+          const orderAmount =
+            orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+
+          const nameMatch =
+            !!excelName &&
+            !!orderName &&
+            (excelName.includes(orderName) || orderName.includes(excelName));
+          const insuranceMatch =
+            !!excelInsurance &&
+            !!orderInsurance &&
+            (excelInsurance.includes(orderInsurance) ||
+              orderInsurance.includes(excelInsurance));
+          const amountMatch =
+            excelAmount !== null &&
+            orderAmount !== null &&
+            Math.abs(excelAmount - orderAmount) <= 1;
+
+          let score = 0;
+          if (amountMatch) score += 2;
+          if (nameMatch) score += 2;
+          if (insuranceMatch) score += 1;
+
+          if (score > bestScore && amountMatch && (nameMatch || insuranceMatch)) {
+            bestScore = score;
+            bestOrder = order;
+          }
+        }
+
+        if (!bestOrder) {
+          unmatchedExcelRows.push(row);
+          continue;
+        }
+
+        usedOrderIds.add(bestOrder.id);
+        const prev = matchedOrderMap.get(bestOrder.id) ?? [];
+        prev.push(row);
+        matchedOrderMap.set(bestOrder.id, prev);
+      }
+
+      const matched = activeOrders
+        .filter((order) => matchedOrderMap.has(order.id))
+        .map((order) => ({ ...order }));
+
+      return { matched, unmatchedExcelRows };
+    };
+
+    const parseJsonFromModelText = (text: string) => {
+      const cleaned = text.replace(/```json|```/g, "").trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch (_e) {
+        const start = cleaned.indexOf("[");
+        const end = cleaned.lastIndexOf("]");
+        if (start !== -1 && end !== -1 && end > start) {
+          return JSON.parse(cleaned.slice(start, end + 1));
+        }
+        throw new Error("Invalid JSON from model");
+      }
+    };
+
+    const matchExcelWithOrdersAI = async (
+      excelRows: Record<string, unknown>[],
+      activeOrders: any[],
+    ) => {
+      const ordersForAi = activeOrders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        customerName:
+          `${o?.customer?.vorname ?? ""} ${o?.customer?.nachname ?? ""}`.trim(),
+        insuranceProvider: o?.prescription?.insurance_provider ?? null,
+        amount: o?.insuranceTotalPrice ?? null,
+      }));
+
+      const prompt = `
+You match random-structure Excel rows to insurance orders.
+
+Input:
+- excelRows: arbitrary column names / structure
+- orders: known active orders
+
+Rules:
+1) Infer best columns dynamically for person name, insurance provider and amount.
+2) Match by strongest combined signal (name, insurance, amount).
+3) Amount match tolerance: +/- 1.
+4) If uncertain, do not match.
+
+Return ONLY a JSON array with this shape:
+[
+  {
+    "excelIndex": 0,
+    "orderId": "uuid-or-null",
+    "confidence": 0
+  }
+]
+
+Constraints:
+- orderId must be null when no reliable match.
+- Use each orderId at most once.
+
+excelRows:
+${JSON.stringify(excelRows)}
+
+orders:
+${JSON.stringify(ordersForAi)}
+`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt,
+      });
+
+      const raw = response.text ?? "[]";
+      const aiMatches = parseJsonFromModelText(raw) as Array<{
+        excelIndex?: number;
+        orderId?: string | null;
+        confidence?: number;
+      }>;
+
+      const usedOrderIds = new Set<string>();
+      const matchedOrderMap = new Map<string, number>();
+      const unmatchedExcelRows: Record<string, unknown>[] = [];
+      const aiRejectedPartials: Array<{
+        orderId: string;
+        problemFields: string[];
+      }> = [];
+
+      excelRows.forEach((row, idx) => {
+        const item = aiMatches.find((m) => m?.excelIndex === idx);
+        const orderId = item?.orderId;
+        if (!orderId || usedOrderIds.has(orderId)) {
+          unmatchedExcelRows.push(row);
+          return;
+        }
+
+        const pickedOrder = activeOrders.find((o) => o.id === orderId);
+        if (!pickedOrder) {
+          unmatchedExcelRows.push(row);
+          return;
+        }
+
+        const excelAmount = extractAmountFromRow(row);
+        const orderAmountRaw = toNumber(pickedOrder.insuranceTotalPrice);
+        const orderAmount =
+          orderAmountRaw === null ? null : Math.abs(orderAmountRaw);
+        const amountMismatch =
+          excelAmount !== null &&
+          orderAmount !== null &&
+          Math.abs(excelAmount - orderAmount) > 1;
+
+        if (amountMismatch) {
+          unmatchedExcelRows.push(row);
+          aiRejectedPartials.push({
+            orderId: pickedOrder.id,
+            problemFields: [getAmountFieldName(row)],
+          });
+          return;
+        }
+
+        usedOrderIds.add(orderId);
+        matchedOrderMap.set(orderId, (matchedOrderMap.get(orderId) ?? 0) + 1);
+      });
+
+      const matched = activeOrders
+        .filter((order) => matchedOrderMap.has(order.id))
+        .map((order) => ({ ...order }));
+
+      return { matched, unmatchedExcelRows, aiRejectedPartials };
+    };
+
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
 
     const sheetName = workbook.SheetNames[0];
@@ -1056,7 +1180,10 @@ export const validateInsuranceChangelog = async (req, res) => {
       aiRejectedPartials = aiResult.aiRejectedPartials;
     } catch (aiError) {
       console.error("AI matching failed, fallback deterministic:", aiError);
-      const fallback = matchExcelWithOrdersDeterministic(mappedRows, activeOrders);
+      const fallback = matchExcelWithOrdersDeterministic(
+        mappedRows,
+        activeOrders,
+      );
       matched = fallback.matched;
       unmatchedExcelRows = fallback.unmatchedExcelRows;
     }
@@ -1102,12 +1229,320 @@ export const validateInsuranceChangelog = async (req, res) => {
   }
 };
 
-export const getCalculationData = async (req: Request, res: Response) => {
-  const partnerId = req.user?.id;
-  if (!partnerId) {
-    return res.status(401).json({
+export const approvedData = async (req: Request, res: Response) => {
+  type InsuranceOrderRef = { id: string; type: string };
+
+  const normalizeInsuranceOrderType = (type: string): "insole" | "shoes" => {
+    const t = String(type ?? "").toLowerCase().trim();
+    if (t === "insole") return "insole";
+    if (t === "shoe" || t === "shoes") return "shoes";
+    throw new Error(`Invalid order type: ${type}. Use "insole" or "shoe".`);
+  };
+
+  const partitionIdsByType = (items: InsuranceOrderRef[] | undefined) => {
+    const insole: string[] = [];
+    const shoes: string[] = [];
+    if (!Array.isArray(items)) return { insole, shoes };
+    for (const item of items) {
+      if (!item?.id) continue;
+      const kind = normalizeInsuranceOrderType(item.type);
+      if (kind === "insole") insole.push(item.id);
+      else shoes.push(item.id);
+    }
+    return { insole, shoes };
+  };
+
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const { approvedIds, rejectedIds } = req.body as {
+      approvedIds?: InsuranceOrderRef[];
+      rejectedIds?: InsuranceOrderRef[];
+    };
+
+    let approvedInsole: string[];
+    let approvedShoes: string[];
+    let rejectedInsole: string[];
+    let rejectedShoes: string[];
+
+    try {
+      const a = partitionIdsByType(approvedIds);
+      approvedInsole = a.insole;
+      approvedShoes = a.shoes;
+      const r = partitionIdsByType(rejectedIds);
+      rejectedInsole = r.insole;
+      rejectedShoes = r.shoes;
+    } catch (e: any) {
+      return res.status(400).json({
+        success: false,
+        message: e?.message ?? "Invalid body",
+      });
+    }
+
+    const results = await prisma.$transaction(async (tx) => {
+      const approvedInsoleRes =
+        approvedInsole.length > 0
+          ? await tx.customerOrders.updateMany({
+              where: { id: { in: approvedInsole }, partnerId },
+              data: {
+                insurance_payed: true,
+                insurance_status: "approved",
+              },
+            })
+          : { count: 0 };
+
+      const approvedShoesRes =
+        approvedShoes.length > 0
+          ? await tx.shoe_order.updateMany({
+              where: { id: { in: approvedShoes }, partnerId },
+              data: {
+                insurance_payed: true,
+                insurance_status: "approved",
+              },
+            })
+          : { count: 0 };
+
+      const rejectedInsoleRes =
+        rejectedInsole.length > 0
+          ? await tx.customerOrders.updateMany({
+              where: { id: { in: rejectedInsole }, partnerId },
+              data: { insurance_status: "rejected" },
+            })
+          : { count: 0 };
+
+      const rejectedShoesRes =
+        rejectedShoes.length > 0
+          ? await tx.shoe_order.updateMany({
+              where: { id: { in: rejectedShoes }, partnerId },
+              data: { insurance_status: "rejected" },
+            })
+          : { count: 0 };
+
+      return {
+        approvedInsoleCount: approvedInsoleRes.count,
+        approvedShoesCount: approvedShoesRes.count,
+        rejectedInsoleCount: rejectedInsoleRes.count,
+        rejectedShoesCount: rejectedShoesRes.count,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Insurance statuses updated.",
+      ...results,
+    });
+  } catch (error: any) {
+    console.error("Approved data error:", error);
+    res.status(500).json({
       success: false,
-      message: "Unauthorized",
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+export const getCalculationData = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    /** Same insurance scope as get-insurance-list: broth/insurance with a set insurance price */
+    const insurancePaymentIn = {
+      in: [paymnentType.insurance, paymnentType.broth],
+    };
+
+    const insoleInsuranceBase = {
+      partnerId,
+      paymnentType: insurancePaymentIn,
+      insuranceTotalPrice: { not: null },
+    };
+
+    const shoeInsuranceBase = {
+      partnerId,
+      payment_type: insurancePaymentIn,
+      insurance_price: { not: null },
+    };
+
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfThisMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    const [
+      totalInsole,
+      totalShoe,
+      pendingInsole,
+      pendingShoe,
+      approvedLastMonthInsole,
+      approvedLastMonthShoe,
+      createdThisMonthInsole,
+      createdThisMonthShoe,
+      createdLastMonthInsole,
+      createdLastMonthShoe,
+      revenueThisMonthInsole,
+      revenueThisMonthShoe,
+      revenueLastMonthInsole,
+      revenueLastMonthShoe,
+    ] = await Promise.all([
+      prisma.customerOrders.count({ where: insoleInsuranceBase }),
+      prisma.shoe_order.count({ where: shoeInsuranceBase }),
+      prisma.customerOrders.count({
+        where: {
+          ...insoleInsuranceBase,
+          insurance_status: "pending",
+        },
+      }),
+      prisma.shoe_order.count({
+        where: {
+          ...shoeInsuranceBase,
+          insurance_status: "pending",
+        },
+      }),
+      prisma.customerOrders.count({
+        where: {
+          ...insoleInsuranceBase,
+          insurance_status: "approved",
+          updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+      }),
+      prisma.shoe_order.count({
+        where: {
+          ...shoeInsuranceBase,
+          insurance_status: "approved",
+          updatedAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+      }),
+      prisma.customerOrders.count({
+        where: {
+          ...insoleInsuranceBase,
+          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+        },
+      }),
+      prisma.shoe_order.count({
+        where: {
+          ...shoeInsuranceBase,
+          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+        },
+      }),
+      prisma.customerOrders.count({
+        where: {
+          ...insoleInsuranceBase,
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+      }),
+      prisma.shoe_order.count({
+        where: {
+          ...shoeInsuranceBase,
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+      }),
+      prisma.customerOrders.aggregate({
+        where: {
+          ...insoleInsuranceBase,
+          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+        },
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: {
+          ...shoeInsuranceBase,
+          createdAt: { gte: startOfThisMonth, lte: endOfThisMonth },
+        },
+        _sum: { insurance_price: true },
+      }),
+      prisma.customerOrders.aggregate({
+        where: {
+          ...insoleInsuranceBase,
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+        _sum: { insuranceTotalPrice: true },
+      }),
+      prisma.shoe_order.aggregate({
+        where: {
+          ...shoeInsuranceBase,
+          createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
+        },
+        _sum: { insurance_price: true },
+      }),
+    ]);
+
+    const totalInsuranceOrders = totalInsole + totalShoe;
+    const pendingApprovalCount = pendingInsole + pendingShoe;
+    const approvedLastMonthCount =
+      approvedLastMonthInsole + approvedLastMonthShoe;
+
+    const revenueThisMonth =
+      (revenueThisMonthInsole._sum.insuranceTotalPrice ?? 0) +
+      (revenueThisMonthShoe._sum.insurance_price ?? 0);
+    const revenueLastMonth =
+      (revenueLastMonthInsole._sum.insuranceTotalPrice ?? 0) +
+      (revenueLastMonthShoe._sum.insurance_price ?? 0);
+
+    const createdThisMonth = createdThisMonthInsole + createdThisMonthShoe;
+    const createdLastMonth = createdLastMonthInsole + createdLastMonthShoe;
+    const newOrdersDeltaThisMonth = createdThisMonth - createdLastMonth;
+
+    let revenueChangePercentVsPreviousMonth: number | null = null;
+    if (revenueLastMonth > 0) {
+      revenueChangePercentVsPreviousMonth =
+        Math.round(
+          ((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 1000,
+        ) / 10;
+    } else if (revenueThisMonth > 0) {
+      revenueChangePercentVsPreviousMonth = 100;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        /** 1. Alle Krankenkassenaufträge (insurance/broth + insurance price set) */
+        totalInsuranceOrders,
+        /** 2. Warten auf Genehmigung */
+        pendingApprovalCount,
+        /** 3. Im Vormonat auf „genehmigt“ gesetzt (updatedAt im letzten Kalendermonat) */
+        approvedLastMonthCount,
+        /** 4. Umsatz aktueller Monat (Summe insuranceTotalPrice / insurance_price, Aufträge angelegt in diesem Monat) */
+        revenueThisMonth,
+        revenueLastMonth,
+        revenueChangePercentVsPreviousMonth,
+        /** Hilfe fürs Dashboard: neue Aufträge diesen Monat vs. Vormonat */
+        newOrdersThisMonth: createdThisMonth,
+        newOrdersDeltaThisMonth,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get calculation data error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
     });
   }
 };
