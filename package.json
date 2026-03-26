@@ -5,7 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node build/index.js",
-    "build": "prisma db push && prisma generate && tsc",
+    "build": "prisma db push && prisma generate && tsc && pm2 restart all",
     "postinstall": "prisma generate",
     "dev": "nodemon --exec ts-node index.ts",
     "db:push": "npx prisma db push",
