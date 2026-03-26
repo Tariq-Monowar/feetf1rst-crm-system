@@ -396,8 +396,8 @@ export const buyStorage = async (req, res) => {
     const { id: userId } = req.user;
     const {
       admin_store_id,
-      lagerort = null as string | null, // এটা স্টর লোকেশন।
-      selling_price = 0,
+      lagerort, // store location (optional)
+      selling_price,
       groessenMengen: bodyGroessenMengen,
       price,
       prise,
@@ -425,6 +425,19 @@ export const buyStorage = async (req, res) => {
       });
     }
 
+    // Validate storeType strictly from admin_store (never trust body).
+    const storeTypeRaw = adminStore.type as StoreType | null;
+    if (!storeTypeRaw || !VALID_STORE_TYPES_BUY.includes(storeTypeRaw)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Admin store has invalid type. Valid types: rady_insole, milling_block",
+        type: adminStore.type ?? null,
+        validTypes: VALID_STORE_TYPES_BUY,
+      });
+    }
+    const storeType: StoreType = storeTypeRaw;
+
     // Validate required fields from admin_store
     if (
       !adminStore.productName ||
@@ -440,25 +453,46 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Type is read-only from admin_store — never override or change; keep exactly as stored.
-    const storeType = adminStore.type as StoreType;
-
-    // Use body if user sent it, else fall back to admin_store
-    const sourceGroessenMengen =
+    // Use body groessenMengen if provided, else fallback to admin_store.
+    const sourceGroessenMengen: Record<string, any> =
       bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
         ? (bodyGroessenMengen as Record<string, any>)
         : ((adminStore.groessenMengen as Record<string, any> | null) ?? {});
+
+    // Normalize length keys for rady_insole, and prevent wrong keys for milling_block.
+    const normalizeLength = (sizeData: any): number => {
+      if (!sizeData || typeof sizeData !== "object") return 0;
+      const obj = sizeData as any;
+      const candidates = [obj.length, obj.Length, obj.length_mm, obj.lengthMm];
+      for (const c of candidates) {
+        const n = Number(c);
+        if (Number.isFinite(n)) return n;
+      }
+      return 0;
+    };
+
+    const cleanedGroessenMengen: Record<string, any> = {};
+    for (const key of Object.keys(sourceGroessenMengen)) {
+      // milling_block should only have block keys "1"|"2"|"3"
+      if (storeType === "milling_block" && !["1", "2", "3"].includes(String(key)))
+        continue;
+      const v = sourceGroessenMengen[key];
+      cleanedGroessenMengen[key] = v;
+      if (storeType !== "milling_block" && v && typeof v === "object") {
+        // ensure `length` exists in the expected property
+        cleanedGroessenMengen[key] = { ...v, length: normalizeLength(v) };
+      }
+    }
+
     const transformedGroessenMengen = transformGroessenMengenForStore(
-      sourceGroessenMengen,
+      cleanedGroessenMengen,
       storeType,
     );
 
-    const lagerortFinal =
-      req.body.lagerort !== undefined
-        ? req.body.lagerort
-        : (null as string | null);
-    const sellingPriceFinal =
-      req.body.selling_price !== undefined ? selling_price : 0;
+    const lagerortFinal: string | null =
+      lagerort !== undefined ? (lagerort ?? null) : null;
+    const sellingPriceFinal: number =
+      selling_price !== undefined ? Number(selling_price ?? 0) : 0;
     const priceFinal =
       req.body.price !== undefined
         ? (price ?? 0)
@@ -982,7 +1016,7 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
               partnerId: userId,
               storeId: store.id,
               price: totalPrice,
-              note: "Stock",
+              note: "Einlagenbestellung",
             },
           });
 

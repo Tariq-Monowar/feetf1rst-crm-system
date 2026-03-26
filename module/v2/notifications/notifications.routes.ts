@@ -5,25 +5,52 @@ import {
   getAllNotificaions,
   getCountUnreadNotifications,
   markeAsReadNotifications,
-  deleteNotifications
+  deleteNotifications,
+  markAsDeepReadNotifications,
 } from "./notifications.controllers";
 
 const router = express.Router();
 
-router.post("/create", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createNotification);
+// POST _baseUrl/v2/notifications/create
+router.post(
+  "/create",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  createNotification,
+);
 
-router.get("/get-all", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAllNotificaions);
+// GET _baseUrl/v2/notifications/get-all
+router.get(
+  "/get-all",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAllNotificaions,
+);
 
+// GET _baseUrl/v2/notifications/unread-count
 router.get(
   "/unread-count",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  getCountUnreadNotifications
+  getCountUnreadNotifications,
 );
+
+// PATCH _baseUrl/v2/notifications/mark-as-read
 router.patch(
   "/mark-as-read",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
-  markeAsReadNotifications
+  markeAsReadNotifications,
 );
-router.delete("/delete", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteNotifications);
+
+// PATCH _baseUrl/v2/notifications/mark-as-deep-read
+router.patch(
+  "/mark-as-deep-read",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  markAsDeepReadNotifications,
+);
+
+// DELETE _baseUrl/v2/notifications/delete
+router.delete(
+  "/delete",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  deleteNotifications,
+);
 
 export default router;

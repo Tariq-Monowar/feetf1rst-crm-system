@@ -99,6 +99,7 @@ model User {
   appomnentBookingRules       appomnent_booking_rules[]
   documentsAndClaims          documents_and_claims[]
   inventorySuppliers          inventory_supplier[]
+  indsoleRequireFields        indsole_require_fields[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -1022,6 +1023,9 @@ model customer_versorgungen {
  * other price is insurance paymnent if status is insurance
  */
 
+/**
+ * =============================== CUSTOMER ORDERS ===============================
+ */
 enum u_orderType {
   Rady_Insole
   Milling_Block
@@ -1393,6 +1397,29 @@ model order_notes {
 enum OrderType {
   insole
   shoe
+}
+
+model indsole_require_fields {
+  id String @id @default(cuid())
+
+  partnerId String @unique
+  partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  ausführliche_diagnose Boolean? @default(false)
+  versorgung_laut_arzt   Boolean? @default(false)
+  positionsnummer        Boolean? @default(false)
+  diagnosisList          Boolean? @default(false)
+  employeeId             Boolean? @default(false)
+  kva                    Boolean? @default(false)
+  halbprobe              Boolean? @default(false)
+  einlagentyp            Boolean? @default(false)
+  überzug               Boolean? @default(false)
+  quantity               Boolean? @default(false)
+  schuhmodell_wählen    Boolean? @default(false)
+  versorgung_note        Boolean? @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /**
@@ -2426,6 +2453,10 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2449,6 +2480,10 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3023,21 +3058,24 @@ model notification {
   partnerId String
   user      User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  message String
-  eventId String?
-  route   String?
-  isRead  Boolean @default(false)
+  message  String
+  eventId  String?
+  route    String?
+  isRead   Boolean @default(false)
+  deepRead Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([partnerId, isRead])
 }
 
 enum notificationType {
-  Appointment_Reminder
-  Appointment_Created
-  updated_massschuhe_order_status
-  admin_order_canceled
-  shop_interest
+  Appointment_Reminder    // /dashboard/calendar
+  Appointment_Created     // /dashboard/calendar
+  updated_massschuhe_order_status  // /dashboard/balance-dashboard
+  admin_order_canceled            // /dashboard/manage-order
+  shop_interest    // dashboard/shop-products
   test
 }
 

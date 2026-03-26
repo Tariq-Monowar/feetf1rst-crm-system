@@ -11,6 +11,7 @@ import notifications from "./notifications/notifications.routes";
 import dashboardOverview from "./dashboard_overview/dashboard_overview.routes";
 import software_version from "./software_version/software_version.routes";
 import order_settings from "./order_settings/order_settings.routes";
+import order_required_fields from "./order_required_fields/order_required_fields.routes";
 import partner_chat from "./partner_chat/partner_chat.routes";
 import partner_payout from "./partner_payout/partner_payout.routes";
 import pickups from "./pickups/pickups.routes";
@@ -62,6 +63,7 @@ const moduleRoutes = [
   { path: "/dashboard-overview", route: dashboardOverview },
   { path: "/software_version", route: software_version },
   { path: "/order_settings", route: order_settings },
+  { path: "/order-required-fields", route: order_required_fields },
   { path: "/partner-chat", route: partner_chat },
   { path: "/partner-payout", route: partner_payout },
   { path: "/pickups", route: pickups },
