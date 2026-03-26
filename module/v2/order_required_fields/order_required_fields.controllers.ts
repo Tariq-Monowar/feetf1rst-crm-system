@@ -14,6 +14,7 @@ const DEFAULT_INDSOLE_REQUIRE_FIELDS = {
   quantity: false,
   schuhmodell_wählen: false,
   versorgung_note: false,
+  versorgung: false,
 };
 
 /**
@@ -61,6 +62,7 @@ export const getOrderRequiredFields = async (req: Request, res: Response) => {
       "quantity",
       "schuhmodell_wählen",
       "versorgung_note",
+      "versorgung",
       "createdAt",
       "updatedAt",
     ] as const;
@@ -122,6 +124,7 @@ const BOOLEAN_KEYS = [
   "quantity",
   "schuhmodell_wählen",
   "versorgung_note",
+  "versorgung",
 ] as const;
 
 /**

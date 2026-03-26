@@ -32,7 +32,8 @@ router.put(
   "überzug": false,
   "quantity": true,
   "schuhmodell_wählen": false,
-  "versorgung_note": true
+  "versorgung_note": true,
+  "versorgung": false
 }
  * }
  */

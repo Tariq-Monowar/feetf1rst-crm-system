@@ -433,7 +433,8 @@ model Employees {
   partnerId String
   user      User   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
-  WorkshopNote WorkshopNote?
+  WorkshopNote   WorkshopNote?
+  store_location store_location[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -666,10 +667,15 @@ model store_location {
   address     String?
   description String?
 
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   customerSettings    customer_settings? @relation(fields: [customer_settingsId], references: [id])
   customer_settingsId String?
+
+  //relation with employees one to one
+  employeesIds String?
+  employees    Employees? @relation(fields: [employeesIds], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([createdAt])
@@ -1417,6 +1423,7 @@ model indsole_require_fields {
   quantity               Boolean? @default(false)
   schuhmodell_wählen    Boolean? @default(false)
   versorgung_note        Boolean? @default(false)
+  versorgung             Boolean? @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2457,6 +2464,11 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2480,6 +2492,11 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3071,11 +3088,11 @@ model notification {
 }
 
 enum notificationType {
-  Appointment_Reminder    // /dashboard/calendar
-  Appointment_Created     // /dashboard/calendar
-  updated_massschuhe_order_status  // /dashboard/balance-dashboard
-  admin_order_canceled            // /dashboard/manage-order
-  shop_interest    // dashboard/shop-products
+  Appointment_Reminder // /dashboard/calendar
+  Appointment_Created // /dashboard/calendar
+  updated_massschuhe_order_status // /dashboard/balance-dashboard
+  admin_order_canceled // /dashboard/manage-order
+  shop_interest // dashboard/shop-products
   test
 }
 
