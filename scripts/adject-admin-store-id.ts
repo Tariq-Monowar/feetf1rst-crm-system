@@ -1,234 +1,117 @@
-import "dotenv/config";
-import { prisma } from "../db";
+model store_location {
+  id String @id @default(uuid())
 
-type StoreRow = {
-  id: string;
-  hersteller: string;
-  produktname: string;
-  artikelnummer: string;
-  type: "rady_insole" | "milling_block";
-  adminStoreId: string | null;
-};
+  partnerId String?
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-type AdminStoreRow = {
-  id: string;
-  brand: string | null;
-  productName: string | null;
-  artikelnummer: string | null;
-  type: "rady_insole" | "milling_block";
-  updatedAt: Date;
-};
+  isPrimary Boolean @default(false)
 
-type UpdateDetail = {
-  storeId: string;
-  previousAdminStoreId: string | null;
-  nextAdminStoreId: string;
-  brand: string;
-  productName: string;
-  artikelnummer: string;
-  type: "rady_insole" | "milling_block";
-};
+  address     String?
+  description String?
 
-type NoMatchDetail = {
-  storeId: string;
-  brand: string;
-  productName: string;
-  artikelnummer: string;
-  type: "rady_insole" | "milling_block";
-};
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  
+  customerSettings    customer_settings? @relation(fields: [customer_settingsId], references: [id])
+  customer_settingsId String?
 
-type AmbiguousDetail = {
-  storeId: string;
-  brand: string;
-  productName: string;
-  artikelnummer: string;
-  type: "rady_insole" | "milling_block";
-  candidateAdminStoreIds: string[];
-};
-
-const normalize = (value: string | null | undefined): string => {
-  return String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-};
-
-const keyFor = (
-  brand: string | null | undefined,
-  productName: string | null | undefined,
-  artikelnummer: string | null | undefined,
-  type: "rady_insole" | "milling_block"
-): string => {
-  return [normalize(brand), normalize(productName), normalize(artikelnummer), type].join("||");
-};
-
-async function main() {
-  const stores = (await prisma.stores.findMany({
-    where: { auto_order: true },
-    select: {
-      id: true,
-      hersteller: true,
-      produktname: true,
-      artikelnummer: true,
-      type: true,
-      adminStoreId: true,
-    },
-  })) as StoreRow[];
-
-  const adminStores = (await prisma.admin_store.findMany({
-    select: {
-      id: true,
-      brand: true,
-      productName: true,
-      artikelnummer: true,
-      type: true,
-      updatedAt: true,
-    },
-  })) as AdminStoreRow[];
-
-  if (!stores.length) {
-    console.log("No Stores with auto_order=true found.");
-    return;
-  }
-
-  const byComposite = new Map<string, AdminStoreRow[]>();
-  for (const admin of adminStores) {
-    const key = keyFor(admin.brand, admin.productName, admin.artikelnummer, admin.type);
-    const list = byComposite.get(key) ?? [];
-    list.push(admin);
-    byComposite.set(key, list);
-  }
-
-  let scanned = 0;
-  let updated = 0;
-  let unchanged = 0;
-  let skippedNoMatch = 0;
-  let skippedAmbiguous = 0;
-  const updatedDetails: UpdateDetail[] = [];
-  const skippedNoMatchDetails: NoMatchDetail[] = [];
-  const skippedAmbiguousDetails: AmbiguousDetail[] = [];
-
-  for (const store of stores) {
-    scanned++;
-
-    const matchKey = keyFor(
-      store.hersteller,
-      store.produktname,
-      store.artikelnummer,
-      store.type
-    );
-    const matches = byComposite.get(matchKey) ?? [];
-
-    if (matches.length === 0) {
-      skippedNoMatch++;
-      skippedNoMatchDetails.push({
-        storeId: store.id,
-        brand: store.hersteller,
-        productName: store.produktname,
-        artikelnummer: store.artikelnummer,
-        type: store.type,
-      });
-      continue;
-    }
-
-    let chosen: AdminStoreRow;
-    if (matches.length === 1) {
-      chosen = matches[0];
-    } else {
-      // multiple matches with same signature -> use most recently updated row
-      const sorted = [...matches].sort(
-        (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-      );
-      if (
-        sorted[1] &&
-        sorted[0].updatedAt.getTime() === sorted[1].updatedAt.getTime()
-      ) {
-        skippedAmbiguous++;
-        skippedAmbiguousDetails.push({
-          storeId: store.id,
-          brand: store.hersteller,
-          productName: store.produktname,
-          artikelnummer: store.artikelnummer,
-          type: store.type,
-          candidateAdminStoreIds: sorted.map((item) => item.id),
-        });
-        continue;
-      }
-      chosen = sorted[0];
-    }
-
-    if (store.adminStoreId === chosen.id) {
-      unchanged++;
-      continue;
-    }
-
-    await prisma.stores.update({
-      where: { id: store.id },
-      data: { adminStoreId: chosen.id },
-    });
-    updated++;
-    updatedDetails.push({
-      storeId: store.id,
-      previousAdminStoreId: store.adminStoreId,
-      nextAdminStoreId: chosen.id,
-      brand: store.hersteller,
-      productName: store.produktname,
-      artikelnummer: store.artikelnummer,
-      type: store.type,
-    });
-  }
-
-  const summary = {
-    scanned,
-    updated,
-    unchanged,
-    skippedNoMatch,
-    skippedAmbiguous,
-    onlyAutoOrderTrue: true,
-  };
-
-  console.log("\n================= adject:admin:store:id =================");
-  console.log("Summary:");
-  console.table([summary]);
-
-  if (updatedDetails.length > 0) {
-    console.log("\nUpdated rows:");
-    console.table(updatedDetails);
-  }
-
-  if (skippedNoMatchDetails.length > 0) {
-    console.log("\nSkipped (no admin_store match):");
-    console.table(skippedNoMatchDetails);
-  }
-
-  if (skippedAmbiguousDetails.length > 0) {
-    console.log("\nSkipped (ambiguous match):");
-    console.table(
-      skippedAmbiguousDetails.map((row) => ({
-        ...row,
-        candidateAdminStoreIds: row.candidateAdminStoreIds.join(", "),
-      }))
-    );
-  }
-
-  console.log("==========================================================\n");
-  console.log(
-    JSON.stringify(
-      {
-        summary,
-        updatedDetails,
-        skippedNoMatchDetails,
-        skippedAmbiguousDetails,
-      },
-      null,
-      2
-    )
-  );
+  @@index([partnerId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([id])
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error("adject:admin:store:id failed:", error);
-    process.exit(1);
-  });
+
+model order_settings {
+  id        Int      @id @default(autoincrement())
+  updatedAt DateTime @updatedAt
+
+  // 1
+  autoCalcPelottePos Boolean @default(true)
+
+  // 2
+  autoSendToProd Boolean @default(false)
+
+  // 3 - attach scans to order
+  attachFootScans Boolean @default(true)
+
+  // 4 - include basic meas. points 10+11
+  showMeasPoints10_11 Boolean @default(false)
+
+  // 5 - actually print the foot scans
+  printFootScans Boolean @default(true)
+
+  // 6 - detailed / extended meas. points 10+11
+  showMeasPoints10_11_Det Boolean @default(false)
+
+  // 7 - when orser is created this time i should create appomnent or not
+  order_creation_appomnent Boolean @default(true)
+
+  // true  → Auftragssteller übernimmt Abholung (customer/requester picks up)
+  // false → Tester Mitarbeiter pro Standort (fixed tester employee per location)
+  pickupAssignmentMode Boolean @default(true)
+
+  // 8 - appomnent overlap
+  appomnentOverlap Boolean @default(false)
+
+  // 9 - we should loock worke time (employee availability)
+  lookWorkTime Boolean @default(true)
+
+  shipping_addresses_for_kv Json?
+
+  // 10 - insole pikup deat line
+  isInsolePickupDateLine Boolean @default(false)
+  insolePickupDateLine   Int?
+
+  // Optional: multi-company support
+  partnerId String? @unique
+  partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([updatedAt])
+  @@map("order_settings")
+}
+
+
+model Employees {
+  id String @id @default(uuid())
+
+  accountName String
+
+  employeeName    String
+  email           String?
+  password        String?
+  financialAccess Boolean @default(false)
+  jobPosition     String?
+  image           String?
+  role            Role    @default(EMPLOYEE)
+
+  partnerId String
+  user      User   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  WorkshopNote WorkshopNote?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointmentEmployees        AppointmentEmployee[]
+  massschuheOrders            massschuhe_order[]
+  customerOrdersHistories     customerOrdersHistory[]
+  massschuheOrderHistories    massschuhe_order_history[]
+  customerOrders              customerOrders[]
+  partnerConversationMembers  partner_conversation_members[]
+  partnerConversationMessages partner_conversation_message[]
+  employeeFeatureAccess       employee_feature_access[]
+  leave_application           leave_application[]
+  shoeOrders                  shoe_order[]
+  posReceipts                 pos_receipt[]
+  workHours                   work_hours[]
+  shoeOrderSteps              shoe_order_step[]
+  workTypes                   work_types[]
+  timelineAnalytics           timeline_analytics[]
+  employeeAvailabilities      employee_availability[]
+  appomnentRooms              appomnent_room[]
+
+  @@index([partnerId]) // createOrder: find first employee by partner
+  @@index([createdAt])
+}
