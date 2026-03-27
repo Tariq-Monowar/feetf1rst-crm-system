@@ -9,6 +9,13 @@ export const getCustomerSettings = async (req: Request, res: Response) => {
       where: { partnerId },
     });
 
+    const storeLocations = await prisma.order_settings.findMany({
+      where: { partnerId },
+      select: {
+        pickupAssignmentMode: true,
+      },
+    });
+
     if (!customerSettings) {
       return res.status(404).json({
         success: false,
@@ -20,6 +27,7 @@ export const getCustomerSettings = async (req: Request, res: Response) => {
       success: true,
       message: "Customer settings fetched successfully",
       data: customerSettings,
+      orderSettings: storeLocations,
     });
   } catch (error: any) {
     console.error("Error in getCustomerSettings:", error);
@@ -265,7 +273,8 @@ export const updateStoreLocations = async (req: Request, res: Response) => {
     if (!existingLocation) {
       return res.status(404).json({
         success: false,
-        message: "Store location not found or you don't have permission to update it",
+        message:
+          "Store location not found or you don't have permission to update it",
       });
     }
 
@@ -290,8 +299,14 @@ export const updateStoreLocations = async (req: Request, res: Response) => {
         where: { id },
         data: {
           address: address !== undefined ? address : existingLocation.address,
-          description: description !== undefined ? description : existingLocation.description,
-          isPrimary: isPrimary !== undefined ? isPrimary === true : existingLocation.isPrimary,
+          description:
+            description !== undefined
+              ? description
+              : existingLocation.description,
+          isPrimary:
+            isPrimary !== undefined
+              ? isPrimary === true
+              : existingLocation.isPrimary,
         },
         select: {
           id: true,
@@ -342,7 +357,8 @@ export const deleteStoreLocations = async (req: Request, res: Response) => {
     if (!storeLocation) {
       return res.status(404).json({
         success: false,
-        message: "Store location not found or you don't have permission to delete it",
+        message:
+          "Store location not found or you don't have permission to delete it",
       });
     }
 
