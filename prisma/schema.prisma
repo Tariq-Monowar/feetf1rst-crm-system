@@ -683,6 +683,7 @@ model store_location {
   //relation with employees one to one
   employeesIds   String?          @unique
   employees      Employees?       @relation(fields: [employeesIds], references: [id], onDelete: SetNull)
+  
   appomnentRooms appomnent_room[]
 
   @@index([partnerId])

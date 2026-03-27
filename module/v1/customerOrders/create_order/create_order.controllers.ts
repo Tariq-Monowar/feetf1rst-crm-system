@@ -267,6 +267,7 @@ export const createOrder = async (req: Request, res: Response) => {
       rawShadowOrVersorgung,
       validPrescription,
       partnerForVat,
+      orderSettings,
     ] = await Promise.all([
       screenerId
         ? prisma.screener_file.findUnique({
@@ -277,6 +278,8 @@ export const createOrder = async (req: Request, res: Response) => {
       prisma.customers.findUnique({
         where: { id: customerId },
         select: {
+          vorname: true,
+          nachname: true,
           fusslange1: true,
           fusslange2: true,
         },
@@ -310,6 +313,10 @@ export const createOrder = async (req: Request, res: Response) => {
             select: { accountInfos: { select: { vat_country: true } } },
           })
         : Promise.resolve(null),
+      prisma.order_settings.findUnique({
+        where: { partnerId },
+        select: { order_creation_appomnent: true, autoSendToProd: true, pickupAssignmentMode: true },
+      }),
     ]);
 
     /*--------------------------
@@ -334,6 +341,10 @@ export const createOrder = async (req: Request, res: Response) => {
         return bad(400, "Please set the vat country in your account info");
       vat_country = acc.vat_country;
     }
+    const initialOrderStatus =
+      orderSettings?.autoSendToProd === true
+        ? "In_Fertigung"
+        : "Warten_auf_Versorgungsstart";
 
     // Resolve foot length priority:
     // 1) request body.customerFootLength
@@ -638,6 +649,7 @@ export const createOrder = async (req: Request, res: Response) => {
           !Number.isNaN(Number(austriaPriceInput)) && {
             austria_price: Number(austriaPriceInput),
           }),
+        orderStatus: initialOrderStatus,
         type: store?.type ?? "rady_insole",
         u_orderType:
           body.orderCategory === "sonstiges"
@@ -834,8 +846,8 @@ export const createOrder = async (req: Request, res: Response) => {
         tx.customerOrdersHistory.create({
           data: {
             orderId: newOrder.id,
-            statusFrom: "Warten_auf_Versorgungsstart",
-            statusTo: "Warten_auf_Versorgungsstart",
+            statusFrom: initialOrderStatus,
+            statusTo: initialOrderStatus,
             partnerId,
             employeeId: newOrder.employeeId ?? null,
             note: null,
@@ -871,6 +883,77 @@ export const createOrder = async (req: Request, res: Response) => {
     });
 
     if (privetSupply) redis.del(privetSupply).catch(() => {});
+
+    const shouldCreateAppointment =
+      orderSettings?.order_creation_appomnent ?? true;
+    const appointmentMeta: {
+      enabledBySetting: boolean;
+      created: boolean;
+      appointmentId: string | null;
+      skippedReason: string | null;
+    } = {
+      enabledBySetting: shouldCreateAppointment,
+      created: false,
+      appointmentId: null,
+      skippedReason: null,
+    };
+
+    if (shouldCreateAppointment) {
+      const appointmentBaseDateRaw = fertigstellungBis ?? auftragsDatum ?? null;
+      const appointmentBaseDate = appointmentBaseDateRaw
+        ? new Date(appointmentBaseDateRaw)
+        : null;
+
+      if (!appointmentBaseDate || Number.isNaN(appointmentBaseDate.getTime())) {
+        appointmentMeta.skippedReason =
+          "Missing or invalid fertigstellungBis/auftragsDatum";
+      } else {
+        const appointmentDate = new Date(
+          appointmentBaseDate.getFullYear(),
+          appointmentBaseDate.getMonth(),
+          appointmentBaseDate.getDate(),
+        );
+        const hh = String(appointmentBaseDate.getHours()).padStart(2, "0");
+        const mm = String(appointmentBaseDate.getMinutes()).padStart(2, "0");
+        const appointmentTime = `${hh}:${mm}`;
+        const fallbackCustomerName = `${customer?.vorname ?? ""} ${customer?.nachname ?? ""}`.trim();
+        const appointmentCustomerName =
+          kundenName && String(kundenName).trim() !== ""
+            ? String(kundenName).trim()
+            : fallbackCustomerName || "Order Customer";
+        const appointmentAssignedTo =
+          mitarbeiter && String(mitarbeiter).trim() !== ""
+            ? String(mitarbeiter).trim()
+            : "Order";
+
+        try {
+          const createdAppointment = await prisma.appointment.create({
+            data: {
+              customer_name: appointmentCustomerName,
+              time: appointmentTime,
+              date: appointmentDate,
+              reason: `Order ${order.id} pickup`,
+              assignedTo: appointmentAssignedTo,
+              userId: partnerId,
+              customerId,
+              ...(order.employeeId && { employeId: order.employeeId }),
+            },
+            select: { id: true },
+          });
+          appointmentMeta.created = true;
+          appointmentMeta.appointmentId = createdAppointment.id;
+        } catch (appointmentError: any) {
+          appointmentMeta.skippedReason =
+            appointmentError?.message || "Appointment creation failed";
+          console.error(
+            "[createOrder] Auto appointment creation failed:",
+            appointmentError,
+          );
+        }
+      }
+    } else {
+      appointmentMeta.skippedReason = "order_creation_appomnent is false";
+    }
 
     /*--------------------------
       BACKGROUND: decrement store stock (same as original flow)
@@ -946,6 +1029,7 @@ export const createOrder = async (req: Request, res: Response) => {
       matchedSize: order.matchedSizeKey,
       foorSize: order.foorSize ?? null,
       supplyType: privetSupply ? "private" : "public",
+      appointment: appointmentMeta,
     });
   } catch (err: any) {
     /*--------------------------
@@ -1282,7 +1366,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
-    const [customer, validPrescription, partnerForVat] = await Promise.all([
+    const [customer, validPrescription, partnerForVat, orderSettings] = await Promise.all([
       prisma.customers.findUnique({
         where: { id: customerId },
         select: { id: true },
@@ -1298,6 +1382,10 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
             select: { accountInfos: { select: { vat_country: true } } },
           })
         : Promise.resolve(null),
+      prisma.order_settings.findUnique({
+        where: { partnerId },
+        select: { autoSendToProd: true },
+      }),
     ]);
 
     if (!customer) return bad(404, "Customer not found");
@@ -1315,6 +1403,10 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
         ? Number(vat_rate)
         : undefined;
+    const initialOrderStatus =
+      orderSettings?.autoSendToProd === true
+        ? "In_Fertigung"
+        : "Warten_auf_Versorgungsstart";
 
     const order = await prisma.$transaction(async (tx) => {
       const [customerProduct, orderNumber, defaultEmployee] = await Promise.all([
@@ -1369,6 +1461,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         addonPrices: addonPrices != null && addonPrices !== "" ? Number(addonPrices) || 0 : 0,
         insuranceTotalPrice: insuranceTotalPrice != null && insuranceTotalPrice !== "" ? Number(insuranceTotalPrice) || 0 : 0,
         paymnentType: payment_type,
+        orderStatus: initialOrderStatus,
         type: resolvedStoreType,
         u_orderType: resolvedUOrderType,
         ...(finalEmployeeId && { employee: { connect: { id: finalEmployeeId } } }),
@@ -1400,8 +1493,8 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         tx.customerOrdersHistory.create({
           data: {
             orderId: newOrder.id,
-            statusFrom: "Warten_auf_Versorgungsstart",
-            statusTo: "Warten_auf_Versorgungsstart",
+            statusFrom: initialOrderStatus,
+            statusTo: initialOrderStatus,
             partnerId,
             employeeId: newOrder.employeeId ?? null,
             note: null,

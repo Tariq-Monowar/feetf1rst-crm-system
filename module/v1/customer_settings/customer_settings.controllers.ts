@@ -191,6 +191,15 @@ export const getStoreLocations = async (req: Request, res: Response) => {
           description: true,
           isPrimary: true,
           createdAt: true,
+          employees: {
+            select: {
+              id: true,
+              employeeName: true,
+              email: true,
+              accountName: true,
+              image: true,
+            },
+          },
         },
         orderBy: [
           {

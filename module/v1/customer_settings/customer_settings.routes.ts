@@ -25,6 +25,7 @@ router.delete("/settings", verifyUser("PARTNER","EMPLOYEE"), deleteCustomerSetti
 router.post("/store-locations", verifyUser("PARTNER","EMPLOYEE"), setStoreLocations);
 
 // GET - Get all store locations (with pagination)
+// {{_baseUrl}}customer-settings/store-locations
 router.get("/store-locations", verifyUser("PARTNER","EMPLOYEE"), getStoreLocations);
 
 // PUT - Update store location by ID
