@@ -126,6 +126,7 @@ export const createOrder = async (req: Request, res: Response) => {
       diagnosisList,
       prescriptionId: prescriptionIdFromBody,
       customerFootLength: customerFootLengthFromBody,
+      AppomentEmployeeId,
     } = body;
     const isHalbprobe = toBool(halbprobe);
     // Accept both snake_case and camelCase for Austria price
@@ -268,6 +269,7 @@ export const createOrder = async (req: Request, res: Response) => {
       validPrescription,
       partnerForVat,
       orderSettings,
+      appomentEmployee,
     ] = await Promise.all([
       screenerId
         ? prisma.screener_file.findUnique({
@@ -317,6 +319,12 @@ export const createOrder = async (req: Request, res: Response) => {
         where: { partnerId },
         select: { order_creation_appomnent: true, autoSendToProd: true, pickupAssignmentMode: true },
       }),
+      AppomentEmployeeId && String(AppomentEmployeeId).trim() !== ""
+        ? prisma.employees.findFirst({
+            where: { id: String(AppomentEmployeeId).trim(), partnerId },
+            select: { id: true, employeeName: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     /*--------------------------
@@ -890,11 +898,13 @@ export const createOrder = async (req: Request, res: Response) => {
       enabledBySetting: boolean;
       created: boolean;
       appointmentId: string | null;
+      employeeId: string | null;
       skippedReason: string | null;
     } = {
       enabledBySetting: shouldCreateAppointment,
       created: false,
       appointmentId: null,
+      employeeId: null,
       skippedReason: null,
     };
 
@@ -922,9 +932,11 @@ export const createOrder = async (req: Request, res: Response) => {
             ? String(kundenName).trim()
             : fallbackCustomerName || "Order Customer";
         const appointmentAssignedTo =
-          mitarbeiter && String(mitarbeiter).trim() !== ""
-            ? String(mitarbeiter).trim()
-            : "Order";
+          appomentEmployee?.employeeName
+            ? appomentEmployee.employeeName
+            : mitarbeiter && String(mitarbeiter).trim() !== ""
+              ? String(mitarbeiter).trim()
+              : "Order";
 
         try {
           const createdAppointment = await prisma.appointment.create({
@@ -936,12 +948,18 @@ export const createOrder = async (req: Request, res: Response) => {
               assignedTo: appointmentAssignedTo,
               userId: partnerId,
               customerId,
-              ...(order.employeeId && { employeId: order.employeeId }),
+              ...(appomentEmployee?.id
+                ? { employeId: appomentEmployee.id }
+                : order.employeeId
+                  ? { employeId: order.employeeId }
+                  : {}),
             },
             select: { id: true },
           });
           appointmentMeta.created = true;
           appointmentMeta.appointmentId = createdAppointment.id;
+          appointmentMeta.employeeId =
+            appomentEmployee?.id ?? order.employeeId ?? null;
         } catch (appointmentError: any) {
           appointmentMeta.skippedReason =
             appointmentError?.message || "Appointment creation failed";
@@ -1293,6 +1311,12 @@ const U_ORDER_TYPES = ["Rady_Insole", "Milling_Block", "Sonstiges"] as const;
 export const createOrderWithoutSupplyOrStore = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
+  const hasNonEmpty = (v: unknown) => v != null && String(v).trim() !== "";
+  const toOptionalNumber = (v: unknown): number | null => {
+    if (!hasNonEmpty(v)) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
 
   try {
     const partnerId = req.user.id;
@@ -1322,6 +1346,8 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       vat_rate,
       productName,
       u_orderType: uOrderTypeFromBody,
+      customerFootLength: customerFootLengthFromBody,
+      AppomentEmployeeId,
     } = body;
 
     const required = ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"];
@@ -1366,10 +1392,10 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
-    const [customer, validPrescription, partnerForVat, orderSettings] = await Promise.all([
+    const [customer, validPrescription, partnerForVat, orderSettings, appomentEmployee] = await Promise.all([
       prisma.customers.findUnique({
         where: { id: customerId },
-        select: { id: true },
+        select: { id: true, vorname: true, nachname: true, fusslange1: true, fusslange2: true },
       }),
       prisma.prescription.findFirst({
         where: { customerId, prescription_date: { gte: fourWeeksAgo, not: null } },
@@ -1384,8 +1410,14 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         : Promise.resolve(null),
       prisma.order_settings.findUnique({
         where: { partnerId },
-        select: { autoSendToProd: true },
+        select: { autoSendToProd: true, order_creation_appomnent: true },
       }),
+      AppomentEmployeeId && String(AppomentEmployeeId).trim() !== ""
+        ? prisma.employees.findFirst({
+            where: { id: String(AppomentEmployeeId).trim(), partnerId },
+            select: { id: true, employeeName: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!customer) return bad(404, "Customer not found");
@@ -1398,6 +1430,17 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
     }
 
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
+    const bodyFootLengthMm = toOptionalNumber(customerFootLengthFromBody);
+    if (hasNonEmpty(customerFootLengthFromBody) && bodyFootLengthMm == null) {
+      return bad(400, "customerFootLength must be a valid number");
+    }
+    const customerFootLengthFromProfileMm =
+      hasNonEmpty(customer.fusslange1) && hasNonEmpty(customer.fusslange2)
+        ? Math.max(Number(customer.fusslange1), Number(customer.fusslange2))
+        : null;
+    const resolvedCustomerFootLength =
+      bodyFootLengthMm ?? customerFootLengthFromProfileMm;
+
     const discountPercent = discount != null ? parseFloat(String(discount)) : 0;
     const orderVatRate =
       vat_rate != null && vat_rate !== "" && !Number.isNaN(Number(vat_rate))
@@ -1441,6 +1484,9 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         fußanalyse: null,
         einlagenversorgung: null,
         totalPrice,
+        ...(resolvedCustomerFootLength != null && {
+          customerFootLength: resolvedCustomerFootLength,
+        }),
         product: { connect: { id: customerProduct.id } },
         customer: { connect: { id: customerId } },
         partner: { connect: { id: partnerId } },
@@ -1515,11 +1561,93 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       return newOrder;
     });
 
+    const shouldCreateAppointment =
+      orderSettings?.order_creation_appomnent ?? true;
+    const appointmentMeta: {
+      enabledBySetting: boolean;
+      created: boolean;
+      appointmentId: string | null;
+      employeeId: string | null;
+      skippedReason: string | null;
+    } = {
+      enabledBySetting: shouldCreateAppointment,
+      created: false,
+      appointmentId: null,
+      employeeId: null,
+      skippedReason: null,
+    };
+
+    if (shouldCreateAppointment) {
+      const appointmentBaseDateRaw = fertigstellungBis ?? auftragsDatum ?? null;
+      const appointmentBaseDate = appointmentBaseDateRaw
+        ? new Date(appointmentBaseDateRaw)
+        : null;
+
+      if (!appointmentBaseDate || Number.isNaN(appointmentBaseDate.getTime())) {
+        appointmentMeta.skippedReason =
+          "Missing or invalid fertigstellungBis/auftragsDatum";
+      } else {
+        const appointmentDate = new Date(
+          appointmentBaseDate.getFullYear(),
+          appointmentBaseDate.getMonth(),
+          appointmentBaseDate.getDate(),
+        );
+        const hh = String(appointmentBaseDate.getHours()).padStart(2, "0");
+        const mm = String(appointmentBaseDate.getMinutes()).padStart(2, "0");
+        const appointmentTime = `${hh}:${mm}`;
+        const fallbackCustomerName = `${customer?.vorname ?? ""} ${customer?.nachname ?? ""}`.trim();
+        const appointmentCustomerName =
+          kundenName && String(kundenName).trim() !== ""
+            ? String(kundenName).trim()
+            : fallbackCustomerName || "Order Customer";
+        const appointmentAssignedTo =
+          appomentEmployee?.employeeName
+            ? appomentEmployee.employeeName
+            : mitarbeiter && String(mitarbeiter).trim() !== ""
+              ? String(mitarbeiter).trim()
+              : "Order";
+
+        try {
+          const createdAppointment = await prisma.appointment.create({
+            data: {
+              customer_name: appointmentCustomerName,
+              time: appointmentTime,
+              date: appointmentDate,
+              reason: `Order ${order.id} pickup`,
+              assignedTo: appointmentAssignedTo,
+              userId: partnerId,
+              customerId,
+              ...(appomentEmployee?.id
+                ? { employeId: appomentEmployee.id }
+                : order.employeeId
+                  ? { employeId: order.employeeId }
+                  : {}),
+            },
+            select: { id: true },
+          });
+          appointmentMeta.created = true;
+          appointmentMeta.appointmentId = createdAppointment.id;
+          appointmentMeta.employeeId =
+            appomentEmployee?.id ?? order.employeeId ?? null;
+        } catch (appointmentError: any) {
+          appointmentMeta.skippedReason =
+            appointmentError?.message || "Appointment creation failed";
+          console.error(
+            "[createOrderWithoutSupplyOrStore] Auto appointment creation failed:",
+            appointmentError,
+          );
+        }
+      }
+    } else {
+      appointmentMeta.skippedReason = "order_creation_appomnent is false";
+    }
+
     return res.status(201).json({
       success: true,
       message: "Order created without supply or store",
       orderId: order.id,
       supplyType: "none",
+      appointment: appointmentMeta,
     });
   } catch (err: any) {
     console.error("Create order without supply/store error:", err);
