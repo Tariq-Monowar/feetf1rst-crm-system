@@ -106,9 +106,9 @@ export const getBookingRules = async (req: Request, res: Response) => {
     });
 
     if (!rules) {
-      return res.status(404).json({
-        success: false,
-        message: "Booking rules not found. Use POST /manage to create.",
+      return res.status(200).json({
+        success: true,
+        data: null,
       });
     }
 
