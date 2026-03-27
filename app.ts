@@ -5,12 +5,11 @@ import http from "http";
 
 import v1 from "./module/v1/index";
 import v2 from "./module/v2/index";
+import sponsor_models from "./sponsor_models/v1/index";
 import path from "path";
 import { searchLocation } from "./utils/location";
 
 const app = express();
-
- 
 
 export const allowedOrigins = [
   "https://ideas-volumes-continually-danny.trycloudflare.com",
@@ -50,14 +49,14 @@ export const allowedOrigins = [
   "https://feetf1rst.tech",
   "https://admin.feetf1rst.tech",
   "https://boc-diet-hartford-featured.trycloudflare.com",
-  "https://2rn0d13r-3003.asse.devtunnels.ms"
+  "https://2rn0d13r-3003.asse.devtunnels.ms",
 ];
 
 app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.urlencoded({ extended: true }));
@@ -71,17 +70,23 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/", v1);
 app.use("/v2", v2);
 app.use("/location", searchLocation);
+app.use("/sponsor", sponsor_models);
 
 // Image proxy – fetches S3 assets server-side so the browser avoids CORS issues
 app.get("/proxy-image", async (req: Request, res: Response) => {
   const url = req.query.url as string;
-  if (!url || !url.startsWith("https://feetf1rst.s3.eu-central-1.amazonaws.com/")) {
+  if (
+    !url ||
+    !url.startsWith("https://feetf1rst.s3.eu-central-1.amazonaws.com/")
+  ) {
     return res.status(400).json({ message: "Invalid or disallowed URL" });
   }
   try {
     const upstream = await fetch(url);
     if (!upstream.ok) {
-      return res.status(upstream.status).json({ message: "Failed to fetch image" });
+      return res
+        .status(upstream.status)
+        .json({ message: "Failed to fetch image" });
     }
     const contentType = upstream.headers.get("content-type") || "image/jpeg";
     res.setHeader("Content-Type", contentType);

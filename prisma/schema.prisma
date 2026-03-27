@@ -681,9 +681,9 @@ model store_location {
   customer_settingsId String?
 
   //relation with employees one to one
-  employeesIds   String?          @unique
-  employees      Employees?       @relation(fields: [employeesIds], references: [id], onDelete: SetNull)
-  
+  employeesIds String?    @unique
+  employees    Employees? @relation(fields: [employeesIds], references: [id], onDelete: SetNull)
+
   appomnentRooms appomnent_room[]
 
   @@index([partnerId])
@@ -2483,6 +2483,8 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2506,6 +2508,8 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3734,4 +3738,21 @@ model inventory_positions {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model sponsor {
+  id String @id @default(cuid())
+
+  image String
+
+  createdAt DateTime @default(now())
+}
+
+model sponsor_players {
+  id String @id @default(cuid())
+
+  title String?
+  names  String[]
+
+  createdAt DateTime @default(now())
 }

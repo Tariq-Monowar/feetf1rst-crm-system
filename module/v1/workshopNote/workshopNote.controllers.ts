@@ -1,4 +1,4 @@
-import e, { Request, Response } from "express";
+import { Request, Response } from "express";
 import { prisma } from "../../../db";
 export const manageWorkshopNote = async (req, res) => {
   try {
