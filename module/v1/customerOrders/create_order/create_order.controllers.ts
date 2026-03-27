@@ -966,10 +966,12 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: `Keine passende Größe im Lager. Erforderliche Länge: ${err.requiredLength}mm. Nächstkleinere: ${err.nearestLowerSize?.length ?? "–"}mm. Nächstgrößere: ${err.nearestUpperSize?.length ?? "–"}mm.`,
+        storeType: err.storeType ?? null,
         suggestSupplyAndStock: true,
         suggestParams: {
           ...(err.requiredLength != null && { requiredLength: err.requiredLength }),
           ...(err.footLengthMm != null && { footLengthMm: err.footLengthMm }),
+          ...(err.storeType != null && { storeType: err.storeType }),
         },
       });
     if (err?.message === "INSUFFICIENT_STOCK")
@@ -1185,8 +1187,8 @@ export const suggestSupplyAndStock = async (req: Request, res: Response) => {
 /*--------------------------
   CREATE ORDER WITHOUT SUPPLY OR STORE
   Use when partner wants to proceed with an order that has no Versorgung
-  and no store (e.g. Sonstiges, custom, or manual fulfillment). No size/stock
-  check; creates a placeholder product and order with type Sonstiges.
+  and no store (manual/custom fulfillment). No size/stock check.
+  Frontend can send u_orderType: Rady_Insole | Milling_Block | Sonstiges.
 ----------------------------*/
 const PAYMENT_STATUSES_WITHOUT_SUPPLY = [
   "Privat_Bezahlt",
@@ -1194,6 +1196,7 @@ const PAYMENT_STATUSES_WITHOUT_SUPPLY = [
   "Krankenkasse_Ungenehmigt",
   "Krankenkasse_Genehmigt",
 ];
+const U_ORDER_TYPES = ["Rady_Insole", "Milling_Block", "Sonstiges"] as const;
 
 export const createOrderWithoutSupplyOrStore = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
@@ -1225,7 +1228,8 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       werkstattEmployeeId,
       discount,
       vat_rate,
-      productName = "Sonstiges",
+      productName,
+      u_orderType: uOrderTypeFromBody,
     } = body;
 
     const required = ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"];
@@ -1235,6 +1239,13 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
 
     const totalPrice = Number(totalPriceFromClient);
     if (Number.isNaN(totalPrice)) return bad(400, "totalPrice must be a valid number");
+    if (uOrderTypeFromBody != null && !U_ORDER_TYPES.includes(uOrderTypeFromBody))
+      return bad(400, "Invalid u_orderType", { validUOrderTypes: U_ORDER_TYPES });
+
+    const resolvedUOrderType: "Rady_Insole" | "Milling_Block" | "Sonstiges" =
+      U_ORDER_TYPES.includes(uOrderTypeFromBody) ? uOrderTypeFromBody : "Sonstiges";
+    const resolvedStoreType: "rady_insole" | "milling_block" =
+      resolvedUOrderType === "Milling_Block" ? "milling_block" : "rady_insole";
 
     const isNum = (v: unknown) => v != null && v !== "" && !Number.isNaN(Number(v));
     const hasInsuranceAmount = isNum(insuranceTotalPrice);
@@ -1301,7 +1312,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       const [customerProduct, orderNumber, defaultEmployee] = await Promise.all([
         tx.customerProduct.create({
           data: {
-            name: String(productName || "Sonstiges").trim() || "Sonstiges",
+            name: String(productName || resolvedUOrderType).trim() || resolvedUOrderType,
             rohlingHersteller: "-",
             artikelHersteller: "-",
             versorgung: "-",
@@ -1350,8 +1361,8 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         addonPrices: addonPrices != null && addonPrices !== "" ? Number(addonPrices) || 0 : 0,
         insuranceTotalPrice: insuranceTotalPrice != null && insuranceTotalPrice !== "" ? Number(insuranceTotalPrice) || 0 : 0,
         paymnentType: payment_type,
-        type: "rady_insole",
-        u_orderType: "Sonstiges",
+        type: resolvedStoreType,
+        u_orderType: resolvedUOrderType,
         ...(finalEmployeeId && { employee: { connect: { id: finalEmployeeId } } }),
         ...(orderVatRate != null && { vatRate: orderVatRate }),
         ...(validPrescription?.id && { prescription: { connect: { id: validPrescription.id } } }),
