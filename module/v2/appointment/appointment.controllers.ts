@@ -27,6 +27,17 @@ const formatAppointmentResponse = (appointment: any) => {
   return formatted;
 };
 
+/** Shared: "09:00" → minutes from midnight */
+const parseHHMMToMinutes = (s: string | null | undefined): number | null => {
+  if (!s || typeof s !== "string") return null;
+  const parts = s.trim().split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
 ///using ai------------------------------------------------------------------------------------
 // Helper function to check for overlapping appointments
 const checkAppointmentOverlap = async (
@@ -237,7 +248,7 @@ export const getAvailableTimeSlots = async (req: Request, res: Response) => {
   }
 };
 
-// Get per-employee free intervals for a date based on availability_time minus existing appointments
+// Get per-employee free intervals for a date: availability (or shop hours) minus appointments
 export const getEmployeeFreeSlotsByCustomer = async (
   req: Request,
   res: Response,
@@ -257,7 +268,18 @@ export const getEmployeeFreeSlotsByCustomer = async (
       return;
     }
 
-    const targetDate = new Date(date);
+    const parseLocalDay = (s: string): Date => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s).trim());
+      if (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      }
+      return new Date(s);
+    };
+
+    const formatYmdLocal = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    const targetDate = parseLocalDay(String(date));
     if (isNaN(targetDate.getTime())) {
       res.status(400).json({
         success: false,
@@ -266,29 +288,50 @@ export const getEmployeeFreeSlotsByCustomer = async (
       return;
     }
 
-    const dayOfWeek = targetDate.getDay(); // 0-6
+    const dayOfWeek = targetDate.getDay();
 
     const employees = await prisma.employees.findMany({
-      where: { id: { in: employeeIds } },
+      where: { id: { in: employeeIds }, partnerId },
       select: { id: true, employeeName: true },
     });
     const foundIds = new Set(employees.map((e) => e.id));
     const missingEmployeeIds = employeeIds.filter((eid) => !foundIds.has(eid));
 
-    const availability = await prisma.employee_availability.findMany({
-      where: {
-        employeeId: { in: employeeIds },
-        partnerId,
-        dayOfWeek,
-        isActive: true,
-      },
-      include: {
-        availability_time: {
-          where: { isActive: true },
-          orderBy: { startTime: "asc" },
+    const idsForQuery = employees.map((e) => e.id);
+    if (idsForQuery.length === 0) {
+      res.status(200).json({
+        success: true,
+        date: formatYmdLocal(targetDate),
+        missingEmployeeIds,
+        data: [],
+      });
+      return;
+    }
+
+    const [availability, shopSettings] = await Promise.all([
+      prisma.employee_availability.findMany({
+        where: {
+          employeeId: { in: idsForQuery },
+          partnerId,
+          dayOfWeek,
+          isActive: true,
         },
-      },
-    });
+        include: {
+          availability_time: {
+            where: { isActive: true },
+            orderBy: { startTime: "asc" },
+          },
+        },
+      }),
+      prisma.partners_settings.findUnique({
+        where: { partnerId },
+        select: { shop_open: true, shop_close: true },
+      }),
+    ]);
+
+    const fallbackOpen = parseHHMMToMinutes(shopSettings?.shop_open) ?? 9 * 60;
+    const fallbackClose =
+      parseHHMMToMinutes(shopSettings?.shop_close) ?? 18 * 60;
 
     const dayStart = new Date(
       targetDate.getFullYear(),
@@ -308,16 +351,22 @@ export const getEmployeeFreeSlotsByCustomer = async (
           gte: dayStart,
           lt: dayEnd,
         },
-        appointmentEmployees: {
-          some: {
-            employeeId: { in: employeeIds },
+        OR: [
+          {
+            appointmentEmployees: {
+              some: {
+                employeeId: { in: idsForQuery },
+              },
+            },
           },
-        },
+          { employeId: { in: idsForQuery } },
+        ],
       },
       select: {
         id: true,
         time: true,
         duration: true,
+        employeId: true,
         appointmentEmployees: {
           select: { employeeId: true },
         },
@@ -335,13 +384,25 @@ export const getEmployeeFreeSlotsByCustomer = async (
       return h * 60 + m;
     };
 
-    type DutyInterval = { start: number; end: number };
+    type Interval = { start: number; end: number };
 
-    // Pre-index availability and busy intervals per employee for O(n) lookups
-    const availabilityByEmployee = new Map<
-      string,
-      { start: number; end: number }[]
-    >();
+    const mergeIntervals = (intervals: Interval[]): Interval[] => {
+      if (!intervals.length) return [];
+      const sorted = [...intervals].sort((a, b) => a.start - b.start);
+      const out: Interval[] = [{ ...sorted[0] }];
+      for (let i = 1; i < sorted.length; i++) {
+        const cur = sorted[i];
+        const last = out[out.length - 1];
+        if (cur.start <= last.end) {
+          last.end = Math.max(last.end, cur.end);
+        } else {
+          out.push({ ...cur });
+        }
+      }
+      return out;
+    };
+
+    const availabilityByEmployee = new Map<string, Interval[]>();
     for (const av of availability) {
       const list =
         availabilityByEmployee.get(av.employeeId) ??
@@ -352,19 +413,24 @@ export const getEmployeeFreeSlotsByCustomer = async (
     }
 
     const busyByEmployee = new Map<string, Interval[]>();
+    const pushBusy = (eid: string, interval: Interval) => {
+      const list =
+        busyByEmployee.get(eid) ?? busyByEmployee.set(eid, []).get(eid)!;
+      list.push(interval);
+    };
+
     for (const appt of appointments) {
       const start = toMinutes(appt.time);
       const durMinutes = (appt.duration || 1) * 60;
       const interval = { start, end: start + durMinutes };
-      for (const ae of appt.appointmentEmployees) {
-        const list =
-          busyByEmployee.get(ae.employeeId) ??
-          busyByEmployee.set(ae.employeeId, []).get(ae.employeeId)!;
-        list.push(interval);
+      if (appt.appointmentEmployees.length > 0) {
+        for (const ae of appt.appointmentEmployees) {
+          pushBusy(ae.employeeId, interval);
+        }
+      } else if (appt.employeId) {
+        pushBusy(appt.employeId, interval);
       }
     }
-
-    type Interval = { start: number; end: number };
 
     const subtractIntervals = (
       base: Interval[],
@@ -395,14 +461,19 @@ export const getEmployeeFreeSlotsByCustomer = async (
     };
 
     const result = employees.map((emp) => {
-      const slots =
-        availabilityByEmployee.get(emp.id) &&
-        availabilityByEmployee.get(emp.id)!.length
-          ? availabilityByEmployee.get(emp.id)!
-          : [{ start: 0, end: 24 * 60 }];
+      const rawDuty = availabilityByEmployee.get(emp.id) ?? [];
+      let dutySlots: Interval[];
+      if (rawDuty.length > 0) {
+        dutySlots = mergeIntervals(rawDuty);
+      } else if (fallbackClose > fallbackOpen) {
+        dutySlots = [{ start: fallbackOpen, end: fallbackClose }];
+      } else {
+        dutySlots = [{ start: 0, end: 24 * 60 }];
+      }
 
-      const busy = busyByEmployee.get(emp.id) ?? [];
-      const free = subtractIntervals(slots, busy);
+      const busyRaw = busyByEmployee.get(emp.id) ?? [];
+      const busyMerged = mergeIntervals(busyRaw);
+      const free = subtractIntervals(dutySlots, busyMerged);
       const freeSlots = free.map(
         (iv) => `${format(iv.start)}-${format(iv.end)}`,
       );
@@ -416,7 +487,7 @@ export const getEmployeeFreeSlotsByCustomer = async (
 
     res.status(200).json({
       success: true,
-      date: targetDate.toISOString().slice(0, 10),
+      date: formatYmdLocal(targetDate),
       missingEmployeeIds,
       data: result,
     });
@@ -428,17 +499,6 @@ export const getEmployeeFreeSlotsByCustomer = async (
       error: error.message,
     });
   }
-};
-
-/** "09:00" → minutes from midnight; invalid → null (shared: employee %, room %) */
-const parseHHMMToMinutes = (s: string | null | undefined): number | null => {
-  if (!s || typeof s !== "string") return null;
-  const parts = s.trim().split(":");
-  if (parts.length < 2) return null;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return h * 60 + m;
 };
 
 // Compute per-employee free percentage over one or more dates
