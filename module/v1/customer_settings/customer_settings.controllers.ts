@@ -13,6 +13,7 @@ export const getCustomerSettings = async (req: Request, res: Response) => {
       where: { partnerId },
       select: {
         pickupAssignmentMode: true,
+        order_creation_appomnent: true,
       },
     });
 
