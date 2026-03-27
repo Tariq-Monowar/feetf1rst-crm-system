@@ -3127,6 +3127,9 @@ model partners_settings {
   orthotech Boolean @default(false)
   opannrit  Boolean @default(false)
 
+  shop_open String? //24h format like 09:00
+  shop_close String? //24h format like 18:00
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

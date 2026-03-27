@@ -303,3 +303,107 @@ export const deleteAppomnentRoom = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const getShopSettings = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const shopSettings = await prisma.partners_settings.findUnique({
+      where: { partnerId },
+      select: {
+        shop_open: true,
+        shop_close: true,
+      },
+    });
+
+    if (!shopSettings) {
+      return res.status(200).json({
+        success: true,
+        data: null,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        shop_open: shopSettings.shop_open,
+        shop_close: shopSettings.shop_close,
+      },
+    });
+  } catch (error) {
+    console.error("Get shop settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (error as Error).message,
+    });
+  }
+};
+
+export const updateShopSettings = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized.",
+      });
+    }
+
+    const { shop_open, shop_close } = req.body ?? {};
+
+    const data: { shop_open?: string | null; shop_close?: string | null } = {};
+    if (shop_open !== undefined) {
+      if (shop_open !== null && typeof shop_open !== "string") {
+        return res.status(400).json({ success: false, message: "shop_open must be string or null" });
+      }
+      data.shop_open = shop_open;
+    }
+    if (shop_close !== undefined) {
+      if (shop_close !== null && typeof shop_close !== "string") {
+        return res.status(400).json({ success: false, message: "shop_close must be string or null" });
+      }
+      data.shop_close = shop_close;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide at least one of shop_open, shop_close",
+      });
+    }
+
+    const result = await prisma.partners_settings.upsert({
+      where: { partnerId },
+      create: {
+        partnerId,
+        shop_open: data.shop_open ?? null,
+        shop_close: data.shop_close ?? null,
+      },
+      update: data,
+      select: {
+        shop_open: true,
+        shop_close: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Shop settings saved",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Update shop settings error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: (error as Error).message,
+    });
+  }
+};

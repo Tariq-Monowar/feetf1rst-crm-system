@@ -7,6 +7,8 @@ import {
   createAppomnentRoom,
   updateAppomnentRoom,
   deleteAppomnentRoom,
+  getShopSettings,
+  updateShopSettings,
 } from "./appomnent_room.controllers";
 
 const router = express.Router();
@@ -17,5 +19,16 @@ router.get("/get/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getAppomnentR
 router.post("/create", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppomnentRoom);
 router.patch("/update/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateAppomnentRoom);
 router.delete("/delete/:id", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), deleteAppomnentRoom);
+
+//--------------------------------------------------------
+// Shop settings
+//--------------------------------------------------------
+// Get shop settings
+//{{_baseUrl}}v2/appointment/appomnent-room/shop-settings
+router.get("/shop-settings", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getShopSettings);
+
+// Update shop settings
+//{{_baseUrl}}v2/appointment/appomnent-room/shop-settings
+router.post("/shop-settings", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), updateShopSettings);
 
 export default router;
