@@ -49,6 +49,10 @@ export const createOrder = async (req: Request, res: Response) => {
     const n = Number(v);
     return Number.isNaN(n) ? null : n;
   };
+  const toUOrderTypeFromStoreType = (
+    storeType: "rady_insole" | "milling_block" | null | undefined,
+  ): "Rady_Insole" | "Milling_Block" =>
+    storeType === "milling_block" ? "Milling_Block" : "Rady_Insole";
 
   /** Fields we need from Versorgungen when loading or creating one. */
   const VERSORGUNG_SELECT = {
@@ -713,7 +717,9 @@ export const createOrder = async (req: Request, res: Response) => {
           const err: any = new Error("NO_MATCHED_SIZE_IN_STORE");
           err.requiredLength = targetLengthRady;
           err.footLengthMm = footLengthMm;
-          err.storeType = isMillingBlock ? "milling_block" : "rady_insole";
+          err.storeType = toUOrderTypeFromStoreType(
+            isMillingBlock ? "milling_block" : "rady_insole",
+          );
           throw err;
         }
         if (!isMillingBlock) {
@@ -727,7 +733,7 @@ export const createOrder = async (req: Request, res: Response) => {
             const err: any = new Error("SIZE_OUT_OF_TOLERANCE");
             err.requiredLength = targetLengthRady;
             err.footLengthMm = footLengthMm;
-            err.storeType = "rady_insole";
+            err.storeType = toUOrderTypeFromStoreType("rady_insole");
             let lowerLen: number | null = null;
             let upperLen: number | null = null;
             for (const [, data] of Object.entries(sizes)) {
@@ -753,7 +759,9 @@ export const createOrder = async (req: Request, res: Response) => {
           err.isMillingBlock = isMillingBlock;
           err.requiredLength = targetLengthRady;
           err.footLengthMm = footLengthMm;
-          err.storeType = isMillingBlock ? "milling_block" : "rady_insole";
+          err.storeType = toUOrderTypeFromStoreType(
+            isMillingBlock ? "milling_block" : "rady_insole",
+          );
           throw err;
         }
         matchedSizeKey = sizeKey;
