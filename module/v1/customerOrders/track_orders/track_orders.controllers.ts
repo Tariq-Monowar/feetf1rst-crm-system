@@ -1538,6 +1538,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
 
+
         insoleStandards: {
           select: {
             name: true,
@@ -1568,8 +1569,8 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            versorgung: true,
-            material: true,
+            // versorgung: true,
+            // material: true,
             supplyStatus: {
               select: {
                 name: true,
@@ -1579,6 +1580,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             },
           },
         },
+ 
         customerOrderInsurances: {
           select: {
             id: true,
@@ -1682,8 +1684,8 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     const subtotalWithoutPrivateShare = Math.max(totalPrice - privatePrice, 0);
     const material =
       order.product?.material ??
-      (Array.isArray(order.Versorgungen?.material)
-        ? order.Versorgungen.material.join(", ")
+      (Array.isArray(order.product?.material)
+        ? order.product?.material.join(", ")
         : null);
     const supplyName =
       order.Versorgungen?.name ??
@@ -1691,7 +1693,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
       order.product?.name ??
       null;
     const versorgungName =
-      order.Versorgungen?.versorgung ?? order.product?.versorgung ?? null;
+      order.product?.versorgung ?? null;
 
     // if (!customerScreenerFile) {
     //   return res.status(404).json({
