@@ -43,6 +43,12 @@ export const createOrder = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
   const toBool = (v: unknown) => v === true || v === "true";
+  const hasNonEmpty = (v: unknown) => v != null && String(v).trim() !== "";
+  const toOptionalNumber = (v: unknown): number | null => {
+    if (!hasNonEmpty(v)) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
 
   /** Fields we need from Versorgungen when loading or creating one. */
   const VERSORGUNG_SELECT = {
@@ -115,6 +121,7 @@ export const createOrder = async (req: Request, res: Response) => {
       halbprobe,
       diagnosisList,
       prescriptionId: prescriptionIdFromBody,
+      customerFootLength: customerFootLengthFromBody,
     } = body;
     const isHalbprobe = toBool(halbprobe);
     // Accept both snake_case and camelCase for Austria price
@@ -324,20 +331,31 @@ export const createOrder = async (req: Request, res: Response) => {
       vat_country = acc.vat_country;
     }
 
-    if (!screenerId) {
-      const hasFoot =
-        customer.fusslange1 != null &&
-        String(customer.fusslange1).trim() !== "" &&
-        customer.fusslange2 != null &&
-        String(customer.fusslange2).trim() !== "";
-      if (!hasFoot)
-        return bad(
-          400,
-          "Either provide screenerId or ensure customer has fusslange1 and fusslange2",
-        );
+    // Resolve foot length priority:
+    // 1) request body.customerFootLength
+    // 2) customer profile fusslange1/fusslange2 (max)
+    const bodyFootLengthMm = toOptionalNumber(customerFootLengthFromBody);
+    if (hasNonEmpty(customerFootLengthFromBody) && bodyFootLengthMm == null) {
+      return bad(400, "customerFootLength must be a valid number");
     }
 
-    if (!customer.fusslange1 || !customer.fusslange2) {
+    const customerFootLengthFromProfileMm =
+      hasNonEmpty(customer.fusslange1) && hasNonEmpty(customer.fusslange2)
+        ? Math.max(Number(customer.fusslange1), Number(customer.fusslange2))
+        : null;
+
+    const resolvedFootLengthMm =
+      bodyFootLengthMm ?? customerFootLengthFromProfileMm;
+
+    if (!screenerId && resolvedFootLengthMm == null) {
+      return bad(
+        400,
+        "Bitte Screener wählen oder Fußlänge angeben.",
+        { requiresManualFootLength: true },
+      );
+    }
+
+    if (resolvedFootLengthMm == null) {
       const msg =
         !customer.fusslange1 && !customer.fusslange2
           ? "Customer fusslange1 and fusslange2 are not found"
@@ -416,11 +434,8 @@ export const createOrder = async (req: Request, res: Response) => {
             400,
             "Store has no sizes configured (groessenMengen). Add sizes to the store first.",
           );
-        if (customer.fusslange1 && customer.fusslange2) {
-          const footMm = Math.max(
-            Number(customer.fusslange1),
-            Number(customer.fusslange2),
-          );
+        if (resolvedFootLengthMm != null) {
+          const footMm = resolvedFootLengthMm;
           const sizes = gm as Record<string, any>;
           const sizeKey =
             storeFromDb.type === "milling_block"
@@ -442,10 +457,8 @@ export const createOrder = async (req: Request, res: Response) => {
     effectiveVersorgungId = versorgung.id;
 
     /** For size matching: longest foot in mm; rady_insole uses foot + 5mm. */
-    const footLengthMm = Math.max(
-      Number(customer.fusslange1),
-      Number(customer.fusslange2),
-    );
+    const footLengthMm = resolvedFootLengthMm;
+    const customerFootLength = resolvedFootLengthMm;
     const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
@@ -568,6 +581,7 @@ export const createOrder = async (req: Request, res: Response) => {
         fußanalyse: null,
         einlagenversorgung: null,
         totalPrice,
+        ...(customerFootLength != null && { customerFootLength }),
         diagnosisList:
           Array.isArray(diagnosisList) && diagnosisList.length > 0
             ? diagnosisList.map((d: any) => String(d))
@@ -661,10 +675,29 @@ export const createOrder = async (req: Request, res: Response) => {
         orderData.kvaNumber = await getNextKvaNumberForPartner(tx, partnerId);
       }
 
-      const newOrder = await tx.customerOrders.create({
-        data: orderData,
-        select: { id: true, employeeId: true },
-      });
+      // Backward compatibility: if runtime Prisma client is older and does not
+      // know `customerFootLength`, retry create without that field.
+      let newOrder: { id: string; employeeId: string | null };
+      try {
+        newOrder = await tx.customerOrders.create({
+          data: orderData,
+          select: { id: true, employeeId: true },
+        });
+      } catch (createErr: any) {
+        const msg = String(createErr?.message || "");
+        if (
+          msg.includes("Unknown argument `customerFootLength`") ||
+          msg.includes("Unknown argument customerFootLength")
+        ) {
+          const { customerFootLength: _omit, ...fallbackOrderData } = orderData;
+          newOrder = await tx.customerOrders.create({
+            data: fallbackOrderData,
+            select: { id: true, employeeId: true },
+          });
+        } else {
+          throw createErr;
+        }
+      }
 
       /** If order is linked to a store, resolve size (block or rady), check tolerance and stock. */
       if (store?.groessenMengen && typeof store.groessenMengen === "object") {
