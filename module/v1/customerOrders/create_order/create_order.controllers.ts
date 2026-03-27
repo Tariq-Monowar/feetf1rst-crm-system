@@ -83,7 +83,6 @@ export const createOrder = async (req: Request, res: Response) => {
     ----------------------------*/
     const partnerId = req.user.id;
     const body = req.body;
-    const privetSupply = body.key as string | undefined;
     const {
       customerId,
       versorgungId,
@@ -119,6 +118,7 @@ export const createOrder = async (req: Request, res: Response) => {
       privatePrice: privatePriceFromBody,
       totalPrice: totalPriceFromClient,
       vat_rate,
+      key,
       austria_price: austriaPriceFromBody,
       werkstattzettel,
       kva,
@@ -128,6 +128,14 @@ export const createOrder = async (req: Request, res: Response) => {
       customerFootLength: customerFootLengthFromBody,
       AppomentEmployeeId,
     } = body;
+    // Keep backward compatibility with old payload style: { key: "..." }
+    // If key exists we use private (shadow) supply flow.
+    const privetSupply =
+      typeof key === "string" && key.trim() !== ""
+        ? key.trim()
+        : typeof body.key === "string" && body.key.trim() !== ""
+          ? body.key.trim()
+          : undefined;
     const isHalbprobe = toBool(halbprobe);
     // Accept both snake_case and camelCase for Austria price
     const austriaPriceInput =
@@ -151,7 +159,10 @@ export const createOrder = async (req: Request, res: Response) => {
     const requiredBase = privetSupply
       ? ["customerId", "geschaeftsstandort"]
       : ["customerId", "versorgungId", "geschaeftsstandort"];
-    const required = isHalbprobe ? requiredBase : [...requiredBase, "bezahlt"];
+    // For normal orders, keep parity with old flow: bezahlt + totalPrice required.
+    const required = isHalbprobe
+      ? requiredBase
+      : [...requiredBase, "bezahlt", "totalPrice"];
     for (const f of required) {
       if (!body[f]) return bad(400, `${f} is required`);
     }
@@ -1344,11 +1355,21 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       werkstattEmployeeId,
       discount,
       vat_rate,
+      key,
       productName,
       u_orderType: uOrderTypeFromBody,
       customerFootLength: customerFootLengthFromBody,
       AppomentEmployeeId,
     } = body;
+
+    // Optional shadow/private supply key (same format as /privet-supply/shadow).
+    // If provided we validate it and can use its name as productName fallback.
+    const privetSupply =
+      typeof key === "string" && key.trim() !== ""
+        ? key.trim()
+        : typeof body.key === "string" && body.key.trim() !== ""
+          ? body.key.trim()
+          : undefined;
 
     const required = ["customerId", "bezahlt", "geschaeftsstandort", "totalPrice"];
     for (const f of required) if (body[f] == null || body[f] === "") return bad(400, `${f} is required`);
@@ -1392,7 +1413,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
     const fourWeeksAgo = new Date();
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
 
-    const [customer, validPrescription, partnerForVat, orderSettings, appomentEmployee] = await Promise.all([
+    const [customer, validPrescription, partnerForVat, orderSettings, appomentEmployee, rawShadow] = await Promise.all([
       prisma.customers.findUnique({
         where: { id: customerId },
         select: { id: true, vorname: true, nachname: true, fusslange1: true, fusslange2: true },
@@ -1418,9 +1439,32 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
             select: { id: true, employeeName: true },
           })
         : Promise.resolve(null),
+      privetSupply ? redis.get(privetSupply) : Promise.resolve(null),
     ]);
 
     if (!customer) return bad(404, "Customer not found");
+
+    let shadow: any = null;
+    if (privetSupply) {
+      if (!rawShadow)
+        return bad(
+          400,
+          "Shadow supply not found or expired. Create a new private supply and try again.",
+        );
+      try {
+        shadow = JSON.parse(rawShadow);
+      } catch {
+        return bad(400, "Invalid shadow supply data");
+      }
+      if (shadow?.partnerId !== partnerId)
+        return bad(403, "Not authorized to use this shadow supply");
+      if (shadow?.customerId && String(shadow.customerId) !== String(customerId))
+        return bad(
+          400,
+          "Shadow supply customer does not match order customerId",
+        );
+    }
+
     let vat_country: string | undefined;
     if (needPartnerVat) {
       if (!partnerForVat) return bad(400, "Partner not found");
@@ -1455,7 +1499,9 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       const [customerProduct, orderNumber, defaultEmployee] = await Promise.all([
         tx.customerProduct.create({
           data: {
-            name: String(productName || resolvedUOrderType).trim() || resolvedUOrderType,
+            name:
+              String(productName || shadow?.name || resolvedUOrderType).trim() ||
+              resolvedUOrderType,
             rohlingHersteller: "-",
             artikelHersteller: "-",
             versorgung: "-",
@@ -1561,6 +1607,8 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       return newOrder;
     });
 
+    if (privetSupply) redis.del(privetSupply).catch(() => {});
+
     const shouldCreateAppointment =
       orderSettings?.order_creation_appomnent ?? true;
     const appointmentMeta: {
@@ -1646,7 +1694,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       success: true,
       message: "Order created without supply or store",
       orderId: order.id,
-      supplyType: "none",
+      supplyType: privetSupply ? "private" : "none",
       appointment: appointmentMeta,
     });
   } catch (err: any) {
