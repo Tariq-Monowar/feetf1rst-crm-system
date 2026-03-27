@@ -1753,7 +1753,18 @@ export const getAppointmentsNextFourDays = async (
       return;
     }
 
-    const parsed = new Date(date as string);
+    const parseLocalDay = (s: string): Date => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s).trim());
+      if (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      }
+      return new Date(s);
+    };
+
+    const formatYmdLocal = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    const parsed = parseLocalDay(String(date));
     if (isNaN(parsed.getTime())) {
       res.status(400).json({
         success: false,
@@ -1791,63 +1802,84 @@ export const getAppointmentsNextFourDays = async (
     };
 
     if (employeeIds.length > 0) {
-      whereCondition.appointmentEmployees = {
-        some: {
-          employeeId: { in: employeeIds },
+      whereCondition.OR = [
+        {
+          appointmentEmployees: {
+            some: {
+              employeeId: { in: employeeIds },
+            },
+          },
         },
-      };
+        { employeId: { in: employeeIds } },
+      ];
     }
 
     const appointments = await prisma.appointment.findMany({
       where: whereCondition,
       orderBy: { date: "asc" },
-      include: {
+      select: {
+        date: true,
+        time: true,
+        employeId: true,
+        assignedTo: true,
         appointmentEmployees: {
-          include: {
-            employee: {
-              select: {
-                id: true,
-                employeeName: true,
-                email: true,
-              },
-            },
+          select: {
+            employeeId: true,
+            employee: { select: { employeeName: true } },
           },
         },
       },
     });
 
-    // Group by date and return only lightweight info for the week view
-    const daysMap: Record<
-      string,
-      {
-        date: string;
-        appointments: {
-          id: string;
-          time: string;
-          employeeName: string | null;
-        }[];
-      }
-    > = {};
+    // Always **4** calendar days: `date` + next 3 days (empty `appointments` if none)
+    type DaySlot = {
+      id: string | null;
+      time: string;
+      employeeName: string | null;
+    };
+    type DayBucket = { date: string; appointments: DaySlot[] };
 
-    for (const appt of appointments) {
-      const d = new Date(appt.date);
-      const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
-      if (!daysMap[key]) {
-        daysMap[key] = { date: key, appointments: [] };
-      }
-
-      const firstEmployee =
-        appt.appointmentEmployees?.[0]?.employee?.employeeName ?? null;
-
-      daysMap[key].appointments.push({
-        id: appt.id,
-        time: appt.time,
-        employeeName: firstEmployee,
-      });
+    const dayKeys: string[] = [];
+    const daysMap: Record<string, DayBucket> = {};
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(
+        startOfDay.getFullYear(),
+        startOfDay.getMonth(),
+        startOfDay.getDate() + i,
+      );
+      const key = formatYmdLocal(d);
+      dayKeys.push(key);
+      daysMap[key] = { date: key, appointments: [] };
     }
 
-    const days = Object.values(daysMap).sort((a, b) =>
-      a.date.localeCompare(b.date),
+    // Group by date; `id` on each row is **employee id** (not appointment id)
+    for (const appt of appointments) {
+      const key = formatYmdLocal(new Date(appt.date));
+      const bucket =
+        daysMap[key] ?? (daysMap[key] = { date: key, appointments: [] });
+
+      const pushRow = (employeeId: string | null, employeeName: string | null) => {
+        bucket.appointments.push({
+          id: employeeId,
+          time: appt.time,
+          employeeName,
+        });
+      };
+
+      const aes = appt.appointmentEmployees;
+      if (aes.length > 0) {
+        for (const ae of aes) {
+          pushRow(ae.employeeId, ae.employee?.employeeName ?? null);
+        }
+      } else if (appt.employeId) {
+        pushRow(appt.employeId, appt.assignedTo || null);
+      } else {
+        pushRow(null, appt.assignedTo || null);
+      }
+    }
+
+    const days: DayBucket[] = dayKeys.map(
+      (key) => daysMap[key] ?? { date: key, appointments: [] },
     );
 
     res.status(200).json({
