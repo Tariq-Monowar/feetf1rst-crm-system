@@ -430,6 +430,17 @@ export const getEmployeeFreeSlotsByCustomer = async (
   }
 };
 
+/** "09:00" → minutes from midnight; invalid → null (shared: employee %, room %) */
+const parseHHMMToMinutes = (s: string | null | undefined): number | null => {
+  if (!s || typeof s !== "string") return null;
+  const parts = s.trim().split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
 // Compute per-employee free percentage over one or more dates
 export const getEmployeeFreePercentage = async (
   req: Request,
@@ -447,7 +458,18 @@ export const getEmployeeFreePercentage = async (
       return;
     }
 
-    const parsedDates = dates.map((d) => new Date(d));
+    const parseLocalDay = (s: string): Date => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s).trim());
+      if (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      }
+      return new Date(s);
+    };
+
+    const formatYmdLocal = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    const parsedDates = dates.map((d) => parseLocalDay(String(d)));
     if (parsedDates.some((d) => isNaN(d.getTime()))) {
       res.status(400).json({
         success: false,
@@ -472,23 +494,35 @@ export const getEmployeeFreePercentage = async (
 
     const employeeIds = employees.map((e) => e.id);
 
-    const dayNumbers = parsedDates.map((d) => d.getDay());
+    const dayNumbers = [...new Set(parsedDates.map((d) => d.getDay()))];
 
     // Get availability for all employees on all requested weekdays
-    const availability = await prisma.employee_availability.findMany({
-      where: {
-        employeeId: { in: employeeIds },
-        partnerId,
-        dayOfWeek: { in: dayNumbers },
-        isActive: true,
-      },
-      include: {
-        availability_time: {
-          where: { isActive: true },
-          orderBy: { startTime: "asc" },
+    const [availability, shopSettings] = await Promise.all([
+      prisma.employee_availability.findMany({
+        where: {
+          employeeId: { in: employeeIds },
+          partnerId,
+          dayOfWeek: { in: dayNumbers },
+          isActive: true,
         },
-      },
-    });
+        include: {
+          availability_time: {
+            where: { isActive: true },
+            orderBy: { startTime: "asc" },
+          },
+        },
+      }),
+      prisma.partners_settings.findUnique({
+        where: { partnerId },
+        select: { shop_open: true, shop_close: true },
+      }),
+    ]);
+
+    const fallbackOpenMin =
+      parseHHMMToMinutes(shopSettings?.shop_open) ?? 9 * 60;
+    const fallbackCloseMin =
+      parseHHMMToMinutes(shopSettings?.shop_close) ?? 18 * 60;
+    const fallbackDutyDayMinutes = Math.max(0, fallbackCloseMin - fallbackOpenMin);
 
     // Date range for appointments query
     const rangeStart = new Date(
@@ -505,17 +539,23 @@ export const getEmployeeFreePercentage = async (
           gte: rangeStart,
           lt: rangeEnd,
         },
-        appointmentEmployees: {
-          some: {
-            employeeId: { in: employeeIds },
+        OR: [
+          {
+            appointmentEmployees: {
+              some: {
+                employeeId: { in: employeeIds },
+              },
+            },
           },
-        },
+          { employeId: { in: employeeIds } },
+        ],
       },
       select: {
         id: true,
         time: true,
         duration: true,
         date: true,
+        employeId: true,
         appointmentEmployees: {
           select: { employeeId: true },
         },
@@ -580,17 +620,24 @@ export const getEmployeeFreePercentage = async (
       }
     }
 
-    // Index appointments by (employeeId, dateKey)
+    // Index appointments by (employeeId, dateKey) — includes legacy employeId-only rows
     const busyByKey = new Map<string, Interval[]>();
+    const pushBusy = (employeeId: string, dateKey: string, interval: Interval) => {
+      const key = `${employeeId}:${dateKey}`;
+      const list = busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
+      list.push(interval);
+    };
     for (const appt of appointments) {
-      const dateKey = new Date(appt.date).toISOString().slice(0, 10);
+      const dateKey = formatYmdLocal(new Date(appt.date));
       const start = toMinutes(appt.time);
       const durMinutes = (appt.duration || 1) * 60;
       const interval = { start, end: start + durMinutes };
-      for (const ae of appt.appointmentEmployees) {
-        const key = `${ae.employeeId}:${dateKey}`;
-        const list = busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
-        list.push(interval);
+      if (appt.appointmentEmployees.length > 0) {
+        for (const ae of appt.appointmentEmployees) {
+          pushBusy(ae.employeeId, dateKey, interval);
+        }
+      } else if (appt.employeId) {
+        pushBusy(appt.employeId, dateKey, interval);
       }
     }
 
@@ -600,19 +647,24 @@ export const getEmployeeFreePercentage = async (
 
       for (const d of parsedDates) {
         const day = d.getDay();
-        const dateKey = d.toISOString().slice(0, 10);
+        const dateKey = formatYmdLocal(d);
         const avKey = `${emp.id}:${day}`;
         const dutySlots = availabilityByKey.get(avKey);
 
-        // If no duty defined for this weekday, skip this day entirely
-        if (!dutySlots || dutySlots.length === 0) {
+        let dutyMerged: Interval[];
+        if (dutySlots && dutySlots.length > 0) {
+          dutyMerged = mergeIntervals(dutySlots);
+        } else if (fallbackDutyDayMinutes > 0) {
+          dutyMerged = mergeIntervals([
+            { start: fallbackOpenMin, end: fallbackCloseMin },
+          ]);
+        } else {
           continue;
         }
 
         const busyKey = `${emp.id}:${dateKey}`;
         const busy = busyByKey.get(busyKey) ?? [];
 
-        const dutyMerged = mergeIntervals(dutySlots);
         const busyMerged = mergeIntervals(busy);
         const dayDuty = dutyMerged.reduce(
           (sum, iv) => sum + (iv.end - iv.start),
@@ -643,7 +695,7 @@ export const getEmployeeFreePercentage = async (
 
     res.status(200).json({
       success: true,
-      dates: parsedDates.map((d) => d.toISOString().slice(0, 10)),
+      dates: parsedDates.map(formatYmdLocal),
       data: result,
     });
   } catch (error: any) {
@@ -654,19 +706,6 @@ export const getEmployeeFreePercentage = async (
       error: error.message,
     });
   }
-};
-
-/** "09:00" → minutes from midnight; invalid → null */
-const parseShopTimeToMinutesForRooms = (
-  s: string | null | undefined,
-): number | null => {
-  if (!s || typeof s !== "string") return null;
-  const parts = s.trim().split(":");
-  if (parts.length < 2) return null;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return h * 60 + m;
 };
 
 const normRoomNameForMatch = (s: string | null | undefined) =>
@@ -736,10 +775,8 @@ export const getRoomOccupancyPercentage = async (
       return;
     }
 
-    const openMin =
-      parseShopTimeToMinutesForRooms(settings?.shop_open) ?? 9 * 60;
-    const closeMin =
-      parseShopTimeToMinutesForRooms(settings?.shop_close) ?? 18 * 60;
+    const openMin = parseHHMMToMinutes(settings?.shop_open) ?? 9 * 60;
+    const closeMin = parseHHMMToMinutes(settings?.shop_close) ?? 18 * 60;
 
     const availablePerDay = Math.max(0, closeMin - openMin);
     const numDays = parsedDates.length;
