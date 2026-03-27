@@ -14,6 +14,7 @@ import {
   getAppointmentsNextFourDays,
   getEmployeeFreeSlotsByCustomer,
   getEmployeeFreePercentage,
+  getRoomOccupancyPercentage,
 } from "./appointment.controllers";
 
 import { verifyUser } from "../../../middleware/verifyUsers";
@@ -30,6 +31,14 @@ router.post(
   "/employee-free-percentage",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getEmployeeFreePercentage,
+);
+
+
+//{{_baseUrl}}v2/appointment/room-occupancy-percentage
+router.post(
+  "/room-occupancy-percentage",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getRoomOccupancyPercentage,
 );
 
 router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);

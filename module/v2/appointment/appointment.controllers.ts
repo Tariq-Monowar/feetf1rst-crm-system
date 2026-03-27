@@ -535,26 +535,35 @@ export const getEmployeeFreePercentage = async (
 
     type Interval = { start: number; end: number };
 
-    const subtractIntervals = (
-      base: Interval[],
-      busy: Interval[],
-    ): Interval[] => {
-      if (!busy.length || !base.length) return base;
-      let result = base.slice();
-      for (const b of busy) {
-        const next: Interval[] = [];
-        for (const f of result) {
-          if (b.end <= f.start || b.start >= f.end) {
-            next.push(f);
-          } else {
-            if (b.start > f.start) next.push({ start: f.start, end: b.start });
-            if (b.end < f.end) next.push({ start: b.end, end: f.end });
-          }
+    /** Merge overlapping / adjacent minute intervals (prevents double-counting busy time). */
+    const mergeIntervals = (intervals: Interval[]): Interval[] => {
+      if (!intervals.length) return [];
+      const sorted = [...intervals].sort((a, b) => a.start - b.start);
+      const out: Interval[] = [{ ...sorted[0] }];
+      for (let i = 1; i < sorted.length; i++) {
+        const cur = sorted[i];
+        const last = out[out.length - 1];
+        if (cur.start <= last.end) {
+          last.end = Math.max(last.end, cur.end);
+        } else {
+          out.push({ ...cur });
         }
-        result = next;
-        if (!result.length) break;
       }
-      return result;
+      return out;
+    };
+
+    /** Minutes of overlap between two disjoint-union interval lists (e.g. merged duty × merged busy). */
+    const overlapMinutes = (a: Interval[], b: Interval[]): number => {
+      if (!a.length || !b.length) return 0;
+      let total = 0;
+      for (const x of a) {
+        for (const y of b) {
+          const s = Math.max(x.start, y.start);
+          const e = Math.min(x.end, y.end);
+          if (s < e) total += e - s;
+        }
+      }
+      return total;
     };
 
     // Index availability by (employeeId, dayOfWeek)
@@ -603,42 +612,32 @@ export const getEmployeeFreePercentage = async (
         const busyKey = `${emp.id}:${dateKey}`;
         const busy = busyByKey.get(busyKey) ?? [];
 
-        // Compute worked intervals as overlaps between duty and busy intervals
-        const workedIntervals: Interval[] = [];
-        if (busy.length) {
-          for (const dSlot of dutySlots) {
-            for (const b of busy) {
-              const start = Math.max(dSlot.start, b.start);
-              const end = Math.min(dSlot.end, b.end);
-              if (start < end) {
-                workedIntervals.push({ start, end });
-              }
-            }
-          }
-        }
-
-        const dayDuty = dutySlots.reduce(
+        const dutyMerged = mergeIntervals(dutySlots);
+        const busyMerged = mergeIntervals(busy);
+        const dayDuty = dutyMerged.reduce(
           (sum, iv) => sum + (iv.end - iv.start),
           0,
         );
-        const dayWorked = workedIntervals.reduce(
-          (sum, iv) => sum + (iv.end - iv.start),
-          0,
-        );
+        const dayWorked = overlapMinutes(dutyMerged, busyMerged);
 
         totalDutyMinutes += dayDuty;
         totalWorkedMinutes += dayWorked;
       }
 
-      const paidPercentage =
-        totalDutyMinutes > 0
-          ? Math.round((totalWorkedMinutes / totalDutyMinutes) * 100)
-          : 0;
+      let freePercentage: number | null = null;
+      let busyPercentage: number | null = null;
+      if (totalDutyMinutes > 0) {
+        const ratio = Math.min(1, totalWorkedMinutes / totalDutyMinutes);
+        busyPercentage = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+        freePercentage = Math.max(0, Math.min(100, 100 - busyPercentage));
+      }
 
       return {
         employeeId: emp.id,
         employeeName: emp.employeeName,
-        paidPercentage,
+        freePercentage,
+        busyPercentage,
+        paidPercentage: busyPercentage ?? 0,
       };
     });
 
@@ -649,6 +648,172 @@ export const getEmployeeFreePercentage = async (
     });
   } catch (error: any) {
     console.error("Get employee free percentage error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
+/** "09:00" → minutes from midnight; invalid → null */
+const parseShopTimeToMinutesForRooms = (
+  s: string | null | undefined,
+): number | null => {
+  if (!s || typeof s !== "string") return null;
+  const parts = s.trim().split(":");
+  if (parts.length < 2) return null;
+  const h = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+
+const normRoomNameForMatch = (s: string | null | undefined) =>
+  (s ?? "").trim().toLowerCase();
+
+/**
+ * Per-room occupancy % (0 = free, 100 = fully booked) vs shop hours.
+ * partners_settings.shop_open / shop_close. appointment.appomnentRoom ↔ appomnent_room.name (case-insensitive).
+ * POST body: optional { dates: string[] }; if omitted or empty, uses **today** (local calendar date).
+ */
+export const getRoomOccupancyPercentage = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id: partnerId } = req.user;
+    const { dates } = req.body as { dates?: string[] };
+
+    const parseLocalDay = (s: string): Date => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s).trim());
+      if (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      }
+      return new Date(s);
+    };
+
+    const formatYmdLocal = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    let dateInputs: string[];
+    if (Array.isArray(dates) && dates.length > 0) {
+      dateInputs = dates.map((d) => String(d));
+    } else {
+      const t = new Date();
+      dateInputs = [
+        `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`,
+      ];
+    }
+
+    const parsedDates = dateInputs.map(parseLocalDay);
+    if (parsedDates.some((d) => isNaN(d.getTime()))) {
+      res.status(400).json({
+        success: false,
+        message: "All dates must be valid date strings",
+      });
+      return;
+    }
+
+    const [rooms, settings] = await Promise.all([
+      prisma.appomnent_room.findMany({
+        where: { partnerId },
+        select: { id: true, name: true, isActive: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.partners_settings.findUnique({
+        where: { partnerId },
+        select: { shop_open: true, shop_close: true },
+      }),
+    ]);
+
+    if (rooms.length === 0) {
+      res.status(200).json({
+        success: true,
+        dates: parsedDates.map(formatYmdLocal),
+        data: [],
+      });
+      return;
+    }
+
+    const openMin =
+      parseShopTimeToMinutesForRooms(settings?.shop_open) ?? 9 * 60;
+    const closeMin =
+      parseShopTimeToMinutesForRooms(settings?.shop_close) ?? 18 * 60;
+
+    const availablePerDay = Math.max(0, closeMin - openMin);
+    const numDays = parsedDates.length;
+    const availableMinutesTotal = availablePerDay * numDays;
+
+    const rangeStart = new Date(
+      Math.min(...parsedDates.map((d) => d.getTime())),
+    );
+    const rangeEnd = new Date(
+      Math.max(...parsedDates.map((d) => d.getTime())) + 24 * 60 * 60 * 1000,
+    );
+
+    const roomByNormName = new Map(
+      rooms
+        .filter((r) => r.name && r.name.trim().length > 0)
+        .map((r) => [normRoomNameForMatch(r.name), r] as const),
+    );
+
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        userId: partnerId,
+        date: { gte: rangeStart, lt: rangeEnd },
+        appomnentRoom: { not: null },
+      },
+      select: {
+        appomnentRoom: true,
+        date: true,
+        duration: true,
+      },
+    });
+
+    const occupiedByRoomId = new Map<string, number>();
+    for (const r of rooms) occupiedByRoomId.set(r.id, 0);
+
+    const dateKeys = new Set(parsedDates.map(formatYmdLocal));
+
+    for (const appt of appointments) {
+      const dk = formatYmdLocal(new Date(appt.date));
+      if (!dateKeys.has(dk)) continue;
+
+      const room = roomByNormName.get(normRoomNameForMatch(appt.appomnentRoom));
+      if (!room) continue;
+
+      const durHours = appt.duration != null ? Number(appt.duration) : 1;
+      const durMin = (Number.isFinite(durHours) ? durHours : 1) * 60;
+      occupiedByRoomId.set(
+        room.id,
+        (occupiedByRoomId.get(room.id) ?? 0) + durMin,
+      );
+    }
+
+    const data = rooms.map((room) => {
+      const occupied = occupiedByRoomId.get(room.id) ?? 0;
+      let occupancy = 0;
+      if (availableMinutesTotal > 0) {
+        const usedRatio = Math.min(1, occupied / availableMinutesTotal);
+        occupancy = Math.round(usedRatio * 100);
+      }
+
+      return {
+        roomId: room.id,
+        roomName: room.name,
+        isActive: room.isActive,
+        occupancy,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      dates: parsedDates.map(formatYmdLocal),
+      data,
+    });
+  } catch (error: any) {
+    console.error("Get room occupancy percentage error:", error);
     res.status(500).json({
       success: false,
       message: "Something went wrong",
