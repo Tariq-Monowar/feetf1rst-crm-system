@@ -3751,8 +3751,13 @@ model sponsor {
 model sponsor_players {
   id String @id @default(cuid())
 
-  title String?
-  names  String[]
+  name     String?
+  position String?
+  number   String?
+  image    String?
 
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([name])
 }

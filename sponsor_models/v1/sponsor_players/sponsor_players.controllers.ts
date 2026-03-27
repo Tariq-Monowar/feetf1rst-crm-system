@@ -1,24 +1,31 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
+import { deleteFileFromS3 } from "../../../utils/s3utils";
 
 export const createSponsorPlayer = async (req: Request, res: Response) => {
   try {
-    const { title, names } = req.body;
-    if (names !== undefined && names !== null && !Array.isArray(names)) {
-      return res.status(400).json({
-        success: false,
-        message: "names must be an array",
-      });
-    }
-
-    const normalizedNames = Array.isArray(names)
-      ? names.map((n: unknown) => String(n ?? "").trim()).filter(Boolean)
-      : [];
+    const { name, position, number } = req.body;
+    const file = req.file as any;
+    const normalizedName = name != null ? String(name).trim() : "";
+    const normalizedPosition = position != null ? String(position).trim() : "";
+    const normalizedNumber = number != null ? String(number).trim() : "";
+    if (!normalizedName)
+      return res.status(400).json({ success: false, message: "name is required" });
+    if (!normalizedPosition)
+      return res
+        .status(400)
+        .json({ success: false, message: "position is required" });
+    if (!normalizedNumber)
+      return res
+        .status(400)
+        .json({ success: false, message: "number is required" });
 
     const created = await prisma.sponsor_players.create({
       data: {
-        title: title != null && String(title).trim() ? String(title).trim() : null,
-        names: normalizedNames,
+        name: normalizedName,
+        position: normalizedPosition,
+        number: normalizedNumber,
+        image: file?.location ? String(file.location) : null,
       },
     });
 
@@ -99,36 +106,55 @@ export const getSponsorPlayerById = async (req: Request, res: Response) => {
 };
 
 export const updateSponsorPlayer = async (req: Request, res: Response) => {
+  const file = req.file as any;
+  const cleanupNewFile = () => {
+    if (file?.location) deleteFileFromS3(String(file.location));
+  };
+
   try {
     const id = String(req.params.id || "").trim();
     if (!id) {
+      cleanupNewFile();
       return res.status(400).json({ success: false, message: "id is required" });
     }
 
-    const existing = await prisma.sponsor_players.findUnique({ where: { id }, select: { id: true } });
+    const existing = await prisma.sponsor_players.findUnique({
+      where: { id },
+      select: { id: true, image: true },
+    });
     if (!existing) {
+      cleanupNewFile();
       return res.status(404).json({ success: false, message: "Sponsor player not found" });
     }
 
-    const { title, names } = req.body;
+    const { name, position, number } = req.body;
     const data: any = {};
-    if (title !== undefined) {
-      data.title = String(title ?? "").trim() || null;
-    }
-    if (names !== undefined) {
-      if (!Array.isArray(names)) {
-        return res.status(400).json({ success: false, message: "names must be an array" });
-      }
-      const normalizedNames = names
-        .map((n: unknown) => String(n ?? "").trim())
-        .filter(Boolean);
-      data.names = normalizedNames;
+    if (name !== undefined) data.name = String(name ?? "").trim();
+    if (position !== undefined) data.position = String(position ?? "").trim();
+    if (number !== undefined) data.number = String(number ?? "").trim();
+
+    if ("name" in data && !data.name)
+      return res.status(400).json({ success: false, message: "name is required" });
+    if ("position" in data && !data.position)
+      return res
+        .status(400)
+        .json({ success: false, message: "position is required" });
+    if ("number" in data && !data.number)
+      return res
+        .status(400)
+        .json({ success: false, message: "number is required" });
+    if (file?.location) {
+      data.image = String(file.location);
     }
 
     const updated = await prisma.sponsor_players.update({
       where: { id },
       data,
     });
+
+    if (file?.location && existing.image && existing.image !== file.location) {
+      deleteFileFromS3(existing.image);
+    }
 
     return res.status(200).json({
       success: true,
@@ -137,6 +163,7 @@ export const updateSponsorPlayer = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Update sponsor player error:", error);
+    cleanupNewFile();
     return res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -152,12 +179,16 @@ export const deleteSponsorPlayer = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "id is required" });
     }
 
-    const existing = await prisma.sponsor_players.findUnique({ where: { id }, select: { id: true } });
+    const existing = await prisma.sponsor_players.findUnique({
+      where: { id },
+      select: { id: true, image: true },
+    });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Sponsor player not found" });
     }
 
     await prisma.sponsor_players.delete({ where: { id } });
+    if (existing.image) deleteFileFromS3(existing.image);
     return res.status(200).json({
       success: true,
       message: "Sponsor player deleted successfully",
