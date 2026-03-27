@@ -39,6 +39,31 @@ const getNextKvaNumberForPartner = async (tx: any, partnerId: string) => {
   return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
 };
 
+const normalizeShadowMaterial = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (item == null ? "" : String(item).trim()))
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const raw = value.trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => (item == null ? "" : String(item).trim()))
+          .filter(Boolean);
+      }
+    } catch {
+      // keep plain string path
+    }
+    return [raw];
+  }
+  if (value == null) return [];
+  return [String(value).trim()].filter(Boolean);
+};
+
 export const createOrder = async (req: Request, res: Response) => {
   const bad = (code: number, message: string, extra?: object) =>
     res.status(code).json({ success: false, message, ...extra });
@@ -434,7 +459,7 @@ export const createOrder = async (req: Request, res: Response) => {
         rohlingHersteller: shadow.rohlingHersteller ?? "",
         artikelHersteller: shadow.artikelHersteller ?? "",
         versorgung: shadow.versorgung,
-        material: Array.isArray(shadow.material) ? shadow.material : [],
+        material: normalizeShadowMaterial(shadow.material),
         diagnosis_status: Array.isArray(shadow.diagnosis_status)
           ? shadow.diagnosis_status
           : [],
@@ -1445,6 +1470,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
     if (!customer) return bad(404, "Customer not found");
 
     let shadow: any = null;
+    let shadowMaterial: string[] = [];
     if (privetSupply) {
       if (!rawShadow)
         return bad(
@@ -1456,6 +1482,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       } catch {
         return bad(400, "Invalid shadow supply data");
       }
+      shadowMaterial = normalizeShadowMaterial(shadow?.material);
       if (shadow?.partnerId !== partnerId)
         return bad(403, "Not authorized to use this shadow supply");
       if (shadow?.customerId && String(shadow.customerId) !== String(customerId))
@@ -1502,13 +1529,17 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
             name:
               String(productName || shadow?.name || resolvedUOrderType).trim() ||
               resolvedUOrderType,
-            rohlingHersteller: "-",
-            artikelHersteller: "-",
-            versorgung: "-",
-            material: "",
+            rohlingHersteller:
+              String(shadow?.rohlingHersteller || "-").trim() || "-",
+            artikelHersteller:
+              String(shadow?.artikelHersteller || "-").trim() || "-",
+            versorgung: String(shadow?.versorgung || "-").trim() || "-",
+            material: materialToDbString(shadowMaterial),
             langenempfehlung: {},
             status: "Alltagseinlagen",
-            diagnosis_status: [],
+            diagnosis_status: Array.isArray(shadow?.diagnosis_status)
+              ? shadow.diagnosis_status
+              : [],
           },
         }),
         getNextOrderNumberForPartner(tx, partnerId),
