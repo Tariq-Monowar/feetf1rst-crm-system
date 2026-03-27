@@ -92,6 +92,7 @@ export const createOrder = async (req: Request, res: Response) => {
     supplyStatus: { select: { vatRate: true } },
   };
 
+  
   /** Allowed values for bezahlt (payment status). */
   const PAYMENT_STATUSES = [
     "Privat_Bezahlt",
@@ -1408,7 +1409,9 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
 
     const resolvedUOrderType: "Rady_Insole" | "Milling_Block" | "Sonstiges" =
       U_ORDER_TYPES.includes(uOrderTypeFromBody) ? uOrderTypeFromBody : "Sonstiges";
-    const resolvedStoreType: "rady_insole" | "milling_block" =
+    // Default order type for truly "no store" flow. If key has a store, we will
+    // override this based on the store.type we load below.
+    let resolvedStoreType: "rady_insole" | "milling_block" =
       resolvedUOrderType === "Milling_Block" ? "milling_block" : "rady_insole";
 
     const isNum = (v: unknown) => v != null && v !== "" && !Number.isNaN(Number(v));
@@ -1471,6 +1474,9 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
 
     let shadow: any = null;
     let shadowMaterial: string[] = [];
+    let keyVersorgungId: string | null = null;
+    let keyStore: { id: string; type: "rady_insole" | "milling_block" } | null =
+      null;
     if (privetSupply) {
       if (!rawShadow)
         return bad(
@@ -1490,6 +1496,57 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
           400,
           "Shadow supply customer does not match order customerId",
         );
+
+      // If the key payload contains storeId/supplyStatusId, we create a real Versorgung
+      // and (optionally) connect the store to the order so the UI can show:
+      // Versorgung + Materialien + Einlagenlager.
+      if (shadow?.storeId && typeof shadow.storeId === "string") {
+        const storeFromDb = await prisma.stores.findUnique({
+          where: { id: String(shadow.storeId) },
+          select: { id: true, type: true },
+        });
+        if (storeFromDb?.id) {
+          keyStore = {
+            id: storeFromDb.id,
+            type: storeFromDb.type as any,
+          };
+          resolvedStoreType = keyStore.type;
+        }
+      }
+
+      if (shadow?.supplyStatusId && typeof shadow.supplyStatusId === "string") {
+        try {
+          const created = await prisma.versorgungen.create({
+            data: {
+              name: String(shadow?.name || resolvedUOrderType).trim() || resolvedUOrderType,
+              rohlingHersteller: String(shadow?.rohlingHersteller || "").trim(),
+              artikelHersteller: String(shadow?.artikelHersteller || "").trim(),
+              versorgung: String(shadow?.versorgung || "-").trim() || "-",
+              material: shadowMaterial,
+              diagnosis_status: Array.isArray(shadow?.diagnosis_status)
+                ? shadow.diagnosis_status
+                : [],
+              supplyType: "private",
+              ...(shadow?.partnerId
+                ? { partner: { connect: { id: shadow.partnerId } } }
+                : { partner: { connect: { id: partnerId } } }),
+              ...(keyStore?.id
+                ? { store: { connect: { id: keyStore.id } } }
+                : {}),
+              supplyStatus: { connect: { id: String(shadow.supplyStatusId) } },
+            } as any,
+            select: { id: true },
+          });
+          keyVersorgungId = created.id;
+        } catch (e) {
+          // If Versorgung creation fails (bad supplyStatusId, etc.), we still allow
+          // the manual order to proceed; UI will show product fields at least.
+          console.error(
+            "[createOrderWithoutSupplyOrStore] key Versorgung create failed:",
+            e,
+          );
+        }
+      }
     }
 
     let vat_country: string | undefined;
@@ -1587,6 +1644,12 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         orderStatus: initialOrderStatus,
         type: resolvedStoreType,
         u_orderType: resolvedUOrderType,
+        ...(keyVersorgungId && {
+          Versorgungen: { connect: { id: keyVersorgungId } },
+        }),
+        ...(keyStore?.id && {
+          store: { connect: { id: keyStore.id } },
+        }),
         ...(finalEmployeeId && { employee: { connect: { id: finalEmployeeId } } }),
         ...(orderVatRate != null && { vatRate: orderVatRate }),
         ...(validPrescription?.id && { prescription: { connect: { id: validPrescription.id } } }),
