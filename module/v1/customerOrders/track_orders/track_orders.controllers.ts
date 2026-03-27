@@ -1682,16 +1682,14 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         : insuranceTotalPrice;
     const insuranceVatAmount = insuranceTotalPrice - insuranceNetPrice;
     const subtotalWithoutPrivateShare = Math.max(totalPrice - privatePrice, 0);
+
+    
     const material =
       order.product?.material ??
       (Array.isArray(order.product?.material)
         ? order.product?.material.join(", ")
         : null);
-    const supplyName =
-      order.Versorgungen?.name ??
-      order.Versorgungen?.supplyStatus?.name ??
-      order.product?.name ??
-      null;
+    const supplyName = order.product?.name ?? null;
     const versorgungName =
       order.product?.versorgung ?? null;
 
@@ -1701,6 +1699,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     //     message: "Customer screener file not found",
     //   });
     // }
+    
 
     return res.status(200).json({
       success: true,
@@ -1722,6 +1721,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
                 })),
               },
         customerName: `${order.customer.vorname} ${order.customer.nachname}`,
+        anamul: "====== eta supplu name==========",
         supplyName,
         versorgungName,
         diagnosisStatus: order.product?.diagnosis_status ?? null,
