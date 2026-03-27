@@ -1384,6 +1384,7 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
       key,
       productName,
       u_orderType: uOrderTypeFromBody,
+      insoleStandards,
       customerFootLength: customerFootLengthFromBody,
       AppomentEmployeeId,
     } = body;
@@ -1435,6 +1436,38 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
           return bad(400, `insurances[${i}] must be an object`);
         if (!("price" in item || "description" in item))
           return bad(400, `insurances[${i}] must contain price or description`);
+      }
+    }
+
+    let normalizedInsoleStandards: any[] = [];
+    if (insoleStandards != null) {
+      if (!Array.isArray(insoleStandards))
+        return bad(400, "insoleStandards must be an array");
+      for (let i = 0; i < insoleStandards.length; i++) {
+        const item = insoleStandards[i];
+        if (!item || typeof item !== "object" || Array.isArray(item))
+          return bad(
+            400,
+            `insoleStandards[${i}] must be an object with name, left, right`,
+          );
+        const name =
+          item.name != null && String(item.name).trim()
+            ? String(item.name).trim()
+            : null;
+        if (!name) return bad(400, `insoleStandards[${i}].name is required`);
+        const left =
+          item.left != null && item.left !== "" ? Number(item.left) : 0;
+        const right =
+          item.right != null && item.right !== "" ? Number(item.right) : 0;
+        normalizedInsoleStandards.push({
+          name,
+          left: Number.isNaN(left) ? 0 : left,
+          right: Number.isNaN(right) ? 0 : right,
+          isFavorite:
+            item.isFavorite === true ||
+            item.isFavorite === "true" ||
+            item.isFavorite === 1,
+        });
       }
     }
 
@@ -1655,6 +1688,9 @@ export const createOrderWithoutSupplyOrStore = async (req: Request, res: Respons
         ...(validPrescription?.id && { prescription: { connect: { id: validPrescription.id } } }),
         ...(privatePriceFromBody != null && privatePriceFromBody !== "" && !Number.isNaN(Number(privatePriceFromBody)) && { privatePrice: Number(privatePriceFromBody) }),
         ...(discount != null && { discount: discountPercent }),
+        ...(normalizedInsoleStandards.length > 0 && {
+          insoleStandards: { create: normalizedInsoleStandards },
+        }),
       };
 
       const newOrder = await tx.customerOrders.create({
