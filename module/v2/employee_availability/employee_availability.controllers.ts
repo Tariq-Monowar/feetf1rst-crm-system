@@ -114,17 +114,14 @@ export const createEmployeeAvailability = async (
       });
     }
 
-    /**
-     * NOTE: Your Prisma schema has `dayOfWeek Int @unique`.
-     * That means there is only ONE employee_availability row per dayOfWeek (globally),
-     * not "per employee".
-     *
-     * So we upsert by dayOfWeek:
-     * - update employeeId/partnerId/isActive
-     * - replace availability_time slots (delete + recreate) when provided
-     */
+    // One row per (employeeId, dayOfWeek)
     const existing = await prisma.employee_availability.findUnique({
-      where: { dayOfWeek },
+      where: {
+        employeeId_dayOfWeek: {
+          employeeId,
+          dayOfWeek,
+        },
+      },
       select: { id: true },
     });
 

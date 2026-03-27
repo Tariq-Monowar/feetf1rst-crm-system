@@ -10,7 +10,8 @@
     "dev": "nodemon --exec ts-node index.ts",
     "db:push": "npx prisma db push",
     "db:generate": "npx prisma generate",
-    "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts"
+    "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
+    "create:ability-if-mt": "ts-node scripts/create-ability-if-mt.ts"
   },
   "keywords": [],
   "author": "",

@@ -13,6 +13,25 @@ const clearActiveRoomsCache = async (partnerId: string) => {
   }
 };
 
+const storeLocationPublicSelect = {
+  id: true,
+  address: true,
+  description: true,
+  isPrimary: true,
+} as const;
+
+/** Returns true if `storeLocationId` exists and belongs to this partner. */
+const isStoreLocationOwnedByPartner = async (
+  partnerId: string,
+  storeLocationId: string,
+) => {
+  const loc = await prisma.store_location.findFirst({
+    where: { id: storeLocationId, partnerId },
+    select: { id: true },
+  });
+  return !!loc;
+};
+
 export const getAllAppomnentRooms = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
@@ -29,6 +48,7 @@ export const getAllAppomnentRooms = async (req: Request, res: Response) => {
         id: true,
         name: true,
         isActive: true,
+        storeLocation: { select: storeLocationPublicSelect },
         createdAt: true,
         updatedAt: true,
       },
@@ -64,7 +84,16 @@ export const getAllAppomnentRoomsActive = async (
     const cacheKey = REDIS_KEY_ACTIVE_ROOMS(partnerId);
     const cached = await redis.get(cacheKey);
     if (cached) {
-      const data = JSON.parse(cached) as { name: string }[];
+      const data = JSON.parse(cached) as {
+        name: string;
+        storeLocationId: string | null;
+        storeLocation: {
+          id: string;
+          address: string | null;
+          description: string | null;
+          isPrimary: boolean;
+        } | null;
+      }[];
       return res.status(200).json({
         success: true,
         data,
@@ -75,6 +104,8 @@ export const getAllAppomnentRoomsActive = async (
       where: { partnerId, isActive: true },
       select: {
         name: true,
+        storeLocationId: true,
+        storeLocation: { select: storeLocationPublicSelect },
       },
     });
 
@@ -111,6 +142,8 @@ export const getAppomnentRoomById = async (req: Request, res: Response) => {
         id: true,
         name: true,
         isActive: true,
+        storeLocationId: true,
+        storeLocation: { select: storeLocationPublicSelect },
         createdAt: true,
         updatedAt: true,
       },
@@ -147,7 +180,7 @@ export const createAppomnentRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, isActive } = req.body;
+    const { name, isActive, storeLocationId } = req.body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return res.status(400).json({
@@ -156,16 +189,44 @@ export const createAppomnentRoom = async (req: Request, res: Response) => {
       });
     }
 
+    let resolvedStoreLocationId: string | undefined;
+    if (
+      storeLocationId !== undefined &&
+      storeLocationId !== null &&
+      storeLocationId !== ""
+    ) {
+      if (typeof storeLocationId !== "string") {
+        return res.status(400).json({
+          success: false,
+          message: "storeLocationId must be a string or null.",
+        });
+      }
+      const ok = await isStoreLocationOwnedByPartner(partnerId, storeLocationId);
+      if (!ok) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "storeLocationId not found or does not belong to this partner.",
+        });
+      }
+      resolvedStoreLocationId = storeLocationId;
+    }
+
     const appomnentRoom = await prisma.appomnent_room.create({
       data: {
         partnerId,
         name: name.trim(),
         isActive: isActive !== undefined ? Boolean(isActive) : true,
+        ...(resolvedStoreLocationId !== undefined && {
+          storeLocationId: resolvedStoreLocationId,
+        }),
       },
       select: {
         id: true,
         name: true,
         isActive: true,
+        storeLocationId: true,
+        storeLocation: { select: storeLocationPublicSelect },
         createdAt: true,
         updatedAt: true,
       },
@@ -198,7 +259,7 @@ export const updateAppomnentRoom = async (req: Request, res: Response) => {
         message: "Unauthorized.",
       });
     }
-    const { name, isActive } = req.body;
+    const { name, isActive, storeLocationId } = req.body;
 
     const existing = await prisma.appomnent_room.findFirst({
       where: { id, partnerId },
@@ -212,7 +273,11 @@ export const updateAppomnentRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const data: { name?: string; isActive?: boolean } = {};
+    const data: {
+      name?: string;
+      isActive?: boolean;
+      storeLocationId?: string | null;
+    } = {};
     if (name !== undefined) {
       if (typeof name !== "string" || !name.trim()) {
         return res.status(400).json({
@@ -224,10 +289,31 @@ export const updateAppomnentRoom = async (req: Request, res: Response) => {
     }
     if (isActive !== undefined) data.isActive = Boolean(isActive);
 
+    if (storeLocationId !== undefined) {
+      if (storeLocationId === null || storeLocationId === "") {
+        data.storeLocationId = null;
+      } else if (typeof storeLocationId === "string") {
+        const ok = await isStoreLocationOwnedByPartner(partnerId, storeLocationId);
+        if (!ok) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "storeLocationId not found or does not belong to this partner.",
+          });
+        }
+        data.storeLocationId = storeLocationId;
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "storeLocationId must be a string or null.",
+        });
+      }
+    }
+
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Provide at least one of: name, isActive.",
+        message: "Provide at least one of: name, isActive, storeLocationId.",
       });
     }
 
@@ -238,6 +324,8 @@ export const updateAppomnentRoom = async (req: Request, res: Response) => {
         id: true,
         name: true,
         isActive: true,
+        storeLocationId: true,
+        storeLocation: { select: storeLocationPublicSelect },
         createdAt: true,
         updatedAt: true,
       },

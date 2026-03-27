@@ -671,7 +671,20 @@ export const getRoomOccupancyPercentage = async (
     const [rooms, settings] = await Promise.all([
       prisma.appomnent_room.findMany({
         where: { partnerId },
-        select: { id: true, name: true, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          storeLocationId: true,
+          storeLocation: {
+            select: {
+              id: true,
+              address: true,
+              description: true,
+              isPrimary: true,
+            },
+          },
+        },
         orderBy: { createdAt: "asc" },
       }),
       prisma.partners_settings.findUnique({
@@ -754,6 +767,8 @@ export const getRoomOccupancyPercentage = async (
         roomId: room.id,
         roomName: room.name,
         isActive: room.isActive,
+        storeLocationId: room.storeLocationId,
+        storeLocation: room.storeLocation,
         occupancy,
       };
     });

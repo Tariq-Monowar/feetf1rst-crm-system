@@ -75,20 +75,33 @@ export const createEmployee = async (req: Request, res: Response) => {
       role: "EMPLOYEE" as const,
     };
 
-    const newEmployee = await prisma.employees.create({
-      data: employeeData,
-      select: {
-        id: true,
-        accountName: true,
-        employeeName: true,
-        email: true,
-        financialAccess: true,
-        jobPosition: true,
-        image: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const newEmployee = await prisma.$transaction(async (tx) => {
+      const createdEmployee = await tx.employees.create({
+        data: employeeData,
+        select: {
+          id: true,
+          accountName: true,
+          employeeName: true,
+          email: true,
+          financialAccess: true,
+          jobPosition: true,
+          image: true,
+          role: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      await tx.employee_availability.createMany({
+        data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
+          employeeId: createdEmployee.id,
+          partnerId: req.user.id,
+          dayOfWeek,
+          isActive: dayOfWeek !== 0 && dayOfWeek !== 6,
+        })),
+      });
+
+      return createdEmployee;
     });
 
     res.status(201).json({
