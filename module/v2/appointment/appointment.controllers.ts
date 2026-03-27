@@ -1,157 +1,14 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
-import { PrismaClient, notificationType } from "@prisma/client";
+import { notificationType } from "@prisma/client";
 import { notificationSend } from "../../../utils/notification.utils";
+import {
+  checkAppointmentOverlap,
+  formatAppointmentResponse,
+  normRoomNameForMatch,
+  parseHHMMToMinutes,
+} from "./appointment.helpers";
 
-// Helper function to format appointment response with clean employee structure
-const formatAppointmentResponse = (appointment: any) => {
-  const employeesArray = appointment.appointmentEmployees
-    ? appointment.appointmentEmployees.map((ae: any) => ({
-        employeId: ae.employee?.id || ae.employeeId,
-        assignedTo: ae.assignedTo,
-      }))
-    : [];
-
-  const formatted = {
-    ...appointment,
-    assignedTo:
-      employeesArray.length > 0 ? employeesArray : appointment.assignedTo,
-  };
-
-  // Remove the raw appointmentEmployees field
-  delete formatted.appointmentEmployees;
-
-  // Remove redundant employeId field since we have assignedTo array
-  delete formatted.employeId;
-
-  return formatted;
-};
-
-/** Shared: "09:00" → minutes from midnight */
-const parseHHMMToMinutes = (s: string | null | undefined): number | null => {
-  if (!s || typeof s !== "string") return null;
-  const parts = s.trim().split(":");
-  if (parts.length < 2) return null;
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return h * 60 + m;
-};
-
-///using ai------------------------------------------------------------------------------------
-// Helper function to check for overlapping appointments
-const checkAppointmentOverlap = async (
-  employeeId: string,
-  date: Date,
-  time: string,
-  duration: number,
-  excludeAppointmentId?: string,
-) => {
-  // Validate date
-  if (!date || isNaN(date.getTime())) {
-    throw new Error("Invalid date provided");
-  }
-
-  // Parse the time string (24h format "HH:MM")
-  const [hoursStr, minutesStr] = time.split(":");
-  const hours = Number(hoursStr);
-  const minutes = Number(minutesStr);
-
-  // Validate time parsing (24h clock)
-  if (
-    !Number.isInteger(hours) ||
-    !Number.isInteger(minutes) ||
-    hours < 0 ||
-    hours > 23 ||
-    minutes < 0 ||
-    minutes > 59
-  ) {
-    throw new Error("Invalid time format, expected 24h 'HH:MM'");
-  }
-
-  const startHour = hours;
-  const startTime = new Date(date);
-  startTime.setHours(startHour, minutes, 0, 0);
-
-  const endTime = new Date(startTime);
-  endTime.setHours(startTime.getHours() + duration);
-
-  // Create date range for query (start of day to end of day)
-  const dateStart = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  );
-  const dateEnd = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + 1,
-  );
-
-  // Validate date range
-  if (isNaN(dateStart.getTime()) || isNaN(dateEnd.getTime())) {
-    throw new Error("Invalid date range");
-  }
-
-  // Check for overlapping appointments
-  const overlappingAppointments = await prisma.appointment.findMany({
-    where: {
-      employeId: employeeId,
-      date: {
-        gte: dateStart,
-        lt: dateEnd,
-      },
-      ...(excludeAppointmentId && { id: { not: excludeAppointmentId } }),
-    },
-  });
-
-  for (const appointment of overlappingAppointments) {
-    const [existingTimeStr, existingPeriod] = appointment.time.includes(" ")
-      ? appointment.time.split(" ")
-      : [appointment.time, ""];
-    const [existingHours, existingMinutes] = existingTimeStr
-      .split(":")
-      .map(Number);
-
-    let existingStartHour = existingHours;
-    if (existingPeriod.toLowerCase() === "pm" && existingHours !== 12) {
-      existingStartHour += 12;
-    } else if (existingPeriod.toLowerCase() === "am" && existingHours === 12) {
-      existingStartHour = 0;
-    }
-
-    const existingStartTime = new Date(appointment.date);
-    existingStartTime.setHours(existingStartHour, existingMinutes, 0, 0);
-
-    const existingEndTime = new Date(existingStartTime);
-    existingEndTime.setHours(
-      existingStartTime.getHours() + (appointment.duration || 1),
-    );
-
-    // Check if appointments overlap
-    if (
-      (startTime < existingEndTime && endTime > existingStartTime) ||
-      startTime.getTime() === existingStartTime.getTime()
-    ) {
-      return {
-        hasOverlap: true,
-        conflictingAppointment: appointment,
-        message: `Employee ${
-          appointment.assignedTo
-        } already has an appointment from ${
-          appointment.time
-        } to ${existingEndTime.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        })} on this date.`,
-      };
-    }
-  }
-
-  return { hasOverlap: false };
-};
-
-// Helper function to get available time slots for an employee on a specific date
 export const getAvailableTimeSlots = async (req: Request, res: Response) => {
   try {
     const { employeId, date } = req.query;
@@ -768,9 +625,6 @@ export const getEmployeeFreePercentage = async (
   }
 };
 
-const normRoomNameForMatch = (s: string | null | undefined) =>
-  (s ?? "").trim().toLowerCase();
-
 /**
  * Per-room occupancy % (0 = free, 100 = fully booked) vs shop hours.
  * partners_settings.shop_open / shop_close. appointment.appomnentRoom ↔ appomnent_room.name (case-insensitive).
@@ -1236,9 +1090,6 @@ export const createAppointment = async (req: Request, res: Response) => {
     });
   }
 };
-///------------------------------------------------------------------------------------
-
-// controllers/appointment.ts
 
 export const getSystemAppointment = async (req: Request, res: Response) => {
   try {
