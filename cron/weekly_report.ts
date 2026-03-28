@@ -8,7 +8,7 @@ const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
   // every 1 m
-  cron.schedule("* * * * *", async () => { // / every friday at 7:00 PM -> "0 19 * * 5"
+  cron.schedule("0 19 * * 5", async () => { // / every friday at 7:00 PM -> "0 19 * * 5" //"* * * * *",
     console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {
