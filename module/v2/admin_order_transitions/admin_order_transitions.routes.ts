@@ -27,9 +27,13 @@ router.get(
   getAllTransitions,
 );
 
-/*
-least one month payment list stated and todat (today to one month before)
-*/
+// Current month: sum of admin_order_transitions prices (partial month). Latest: last request_payout (not a full month).
+router.get(
+  "/last-one-month-payment",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getOneMonthPayment,
+);
+// Typo alias — prefer /last-one-month-payment
 router.get(
   "/least-one-month-payment",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
