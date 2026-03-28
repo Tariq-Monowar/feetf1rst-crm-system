@@ -391,12 +391,196 @@ function transformGroessenMengenForStore(
   return result;
 }
 
+// export const buyStorage = async (req, res) => {
+//   try {
+//     const { id: userId } = req.user;
+    
+//     const {
+//       admin_store_id,
+//       lagerort, // store location (optional)
+//       selling_price,
+//       groessenMengen: bodyGroessenMengen,
+//       price,
+//       prise,
+//       features: bodyFeatures,
+//     } = req.body;
+
+//     const missingField = ["admin_store_id"].find((field) => !req.body[field]);
+
+//     if (missingField) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `${missingField} is required!`,
+//       });
+//     }
+
+//     // Get admin store data (includes type: rady_insole | milling_block)
+//     const adminStore = await prisma.admin_store.findUnique({
+//       where: { id: admin_store_id },
+//     });
+
+//     if (!adminStore) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Admin store not found",
+//       });
+//     }
+
+//     // Validate storeType strictly from admin_store (never trust body).
+//     const storeTypeRaw = adminStore.type as StoreType | null;
+//     if (!storeTypeRaw || !VALID_STORE_TYPES_BUY.includes(storeTypeRaw)) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Admin store has invalid type. Valid types: rady_insole, milling_block",
+//         type: adminStore.type ?? null,
+//         validTypes: VALID_STORE_TYPES_BUY,
+//       });
+//     }
+//     const storeType: StoreType = storeTypeRaw;
+
+//     // Validate required fields from admin_store
+//     if (
+//       !adminStore.productName ||
+//       !adminStore.brand ||
+//       !adminStore.artikelnummer ||
+//       !adminStore.groessenMengen ||
+//       !adminStore.type
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen, type)",
+//       });
+//     }
+
+//     // Use body groessenMengen if provided, else fallback to admin_store.
+//     const sourceGroessenMengen: Record<string, any> =
+//       bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
+//         ? (bodyGroessenMengen as Record<string, any>)
+//         : ((adminStore.groessenMengen as Record<string, any> | null) ?? {});
+
+//     // Normalize length keys for rady_insole, and prevent wrong keys for milling_block.
+//     const normalizeLength = (sizeData: any): number => {
+//       if (!sizeData || typeof sizeData !== "object") return 0;
+//       const obj = sizeData as any;
+//       const candidates = [obj.length, obj.Length, obj.length_mm, obj.lengthMm];
+//       for (const c of candidates) {
+//         const n = Number(c);
+//         if (Number.isFinite(n)) return n;
+//       }
+//       return 0;
+//     };
+
+//     const cleanedGroessenMengen: Record<string, any> = {};
+//     for (const key of Object.keys(sourceGroessenMengen)) {
+//       // milling_block should only have block keys "1"|"2"|"3"
+//       if (
+//         storeType === "milling_block" &&
+//         !["1", "2", "3"].includes(String(key))
+//       )
+//         continue;
+//       const v = sourceGroessenMengen[key];
+//       cleanedGroessenMengen[key] = v;
+//       if (storeType !== "milling_block" && v && typeof v === "object") {
+//         // ensure `length` exists in the expected property
+//         cleanedGroessenMengen[key] = { ...v, length: normalizeLength(v) };
+//       }
+//     }
+
+//     const transformedGroessenMengen = transformGroessenMengenForStore(
+//       cleanedGroessenMengen,
+//       storeType,
+//     );
+
+//     const lagerortFinal: string | null =
+//       lagerort !== undefined ? (lagerort ?? null) : null;
+//     const sellingPriceFinal: number =
+//       selling_price !== undefined ? Number(selling_price ?? 0) : 0;
+//     const priceFinal =
+//       req.body.price !== undefined
+//         ? (price ?? 0)
+//         : req.body.prise !== undefined
+//           ? (prise ?? 0)
+//           : (adminStore.price ?? 0);
+//     const unitPriceFinal = Number(adminStore.price ?? priceFinal ?? 0);
+
+//     // features: body override or fallback to admin_store
+//     const featuresFinal =
+//       bodyFeatures !== undefined && bodyFeatures !== null && bodyFeatures !== ""
+//         ? bodyFeatures
+//         : ((adminStore as any).features ?? null);
+
+//     // Create Stores record: body overrides when provided, else admin_store
+//     const createdStore = await prisma.stores.create({
+//       data: {
+//         produktname: adminStore.productName,
+//         hersteller: adminStore.brand,
+//         artikelnummer: adminStore.artikelnummer,
+//         lagerort: lagerortFinal,
+//         groessenMengen: transformedGroessenMengen,
+//         purchase_price: priceFinal,
+//         selling_price: sellingPriceFinal,
+//         unit_price: unitPriceFinal,
+//         image: adminStore.image,
+//         userId: userId,
+//         adminStoreId: admin_store_id,
+//         type: storeType,
+//         features: featuresFinal,
+//       },
+//     });
+
+//     // Create tracking record (same type, same groessenMengen as store)
+//     await prisma.admin_store_tracking.create({
+//       data: {
+//         storeId: createdStore.id,
+//         partnerId: userId,
+//         produktname: adminStore.productName,
+//         hersteller: adminStore.brand,
+//         artikelnummer: adminStore.artikelnummer,
+//         lagerort: lagerortFinal,
+//         groessenMengen: transformedGroessenMengen,
+//         admin_storeId: admin_store_id,
+//         price: priceFinal,
+//         image: adminStore.image,
+//         type: storeType,
+//         features: featuresFinal,
+//       },
+//     });
+
+//     // // Delete the admin_store record
+//     // await prisma.admin_store.delete({
+//     //   where: {
+//     //     id: admin_store_id,
+//     //   },
+//     // });
+
+//     // Add calculated Status to response
+//     const storeWithStatus = addStatusToStore(createdStore);
+
+//     res.status(201).json({
+//       success: true,
+//       message: "Storage purchased and created successfully",
+//       data: storeWithStatus,
+//     });
+//   } catch (error: any) {
+//     console.error("buyStorage error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Something went wrong",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 export const buyStorage = async (req, res) => {
   try {
     const { id: userId } = req.user;
+
     const {
       admin_store_id,
-      lagerort, // store location (optional)
+      lagerort,
       selling_price,
       groessenMengen: bodyGroessenMengen,
       price,
@@ -404,16 +588,14 @@ export const buyStorage = async (req, res) => {
       features: bodyFeatures,
     } = req.body;
 
-    const missingField = ["admin_store_id"].find((field) => !req.body[field]);
-
-    if (missingField) {
+    if (!admin_store_id) {
       return res.status(400).json({
         success: false,
-        message: `${missingField} is required!`,
+        message: "admin_store_id is required",
       });
     }
 
-    // Get admin store data (includes type: rady_insole | milling_block)
+    // Get admin store
     const adminStore = await prisma.admin_store.findUnique({
       where: { id: admin_store_id },
     });
@@ -425,92 +607,58 @@ export const buyStorage = async (req, res) => {
       });
     }
 
-    // Validate storeType strictly from admin_store (never trust body).
-    const storeTypeRaw = adminStore.type as StoreType | null;
-    if (!storeTypeRaw || !VALID_STORE_TYPES_BUY.includes(storeTypeRaw)) {
+    // Take type directly from admin_store
+    const storeType = adminStore.type;
+
+    if (!storeType) {
       return res.status(400).json({
         success: false,
-        message:
-          "Admin store has invalid type. Valid types: rady_insole, milling_block",
-        type: adminStore.type ?? null,
-        validTypes: VALID_STORE_TYPES_BUY,
+        message: "Admin store type missing",
       });
     }
-    const storeType: StoreType = storeTypeRaw;
 
-    // Validate required fields from admin_store
+    // Required field validation
     if (
       !adminStore.productName ||
       !adminStore.brand ||
       !adminStore.artikelnummer ||
-      !adminStore.groessenMengen ||
-      !adminStore.type
+      !adminStore.groessenMengen
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Admin store is missing required fields (productName, brand, artikelnummer, groessenMengen, type)",
+        message: "Admin store missing required fields",
       });
     }
 
-    // Use body groessenMengen if provided, else fallback to admin_store.
-    const sourceGroessenMengen: Record<string, any> =
-      bodyGroessenMengen != null && typeof bodyGroessenMengen === "object"
-        ? (bodyGroessenMengen as Record<string, any>)
-        : ((adminStore.groessenMengen as Record<string, any> | null) ?? {});
-
-    // Normalize length keys for rady_insole, and prevent wrong keys for milling_block.
-    const normalizeLength = (sizeData: any): number => {
-      if (!sizeData || typeof sizeData !== "object") return 0;
-      const obj = sizeData as any;
-      const candidates = [obj.length, obj.Length, obj.length_mm, obj.lengthMm];
-      for (const c of candidates) {
-        const n = Number(c);
-        if (Number.isFinite(n)) return n;
-      }
-      return 0;
-    };
-
-    const cleanedGroessenMengen: Record<string, any> = {};
-    for (const key of Object.keys(sourceGroessenMengen)) {
-      // milling_block should only have block keys "1"|"2"|"3"
-      if (
-        storeType === "milling_block" &&
-        !["1", "2", "3"].includes(String(key))
-      )
-        continue;
-      const v = sourceGroessenMengen[key];
-      cleanedGroessenMengen[key] = v;
-      if (storeType !== "milling_block" && v && typeof v === "object") {
-        // ensure `length` exists in the expected property
-        cleanedGroessenMengen[key] = { ...v, length: normalizeLength(v) };
-      }
-    }
+    // Always use groessenMengen from body if provided else from admin store
+    const sourceGroessenMengen =
+      bodyGroessenMengen && typeof bodyGroessenMengen === "object"
+        ? bodyGroessenMengen
+        : adminStore.groessenMengen;
 
     const transformedGroessenMengen = transformGroessenMengenForStore(
-      cleanedGroessenMengen,
-      storeType,
+      sourceGroessenMengen,
+      storeType
     );
 
-    const lagerortFinal: string | null =
-      lagerort !== undefined ? (lagerort ?? null) : null;
-    const sellingPriceFinal: number =
-      selling_price !== undefined ? Number(selling_price ?? 0) : 0;
+    const lagerortFinal = lagerort ?? null;
+    const sellingPriceFinal = Number(selling_price ?? 0);
+
     const priceFinal =
-      req.body.price !== undefined
-        ? (price ?? 0)
-        : req.body.prise !== undefined
-          ? (prise ?? 0)
-          : (adminStore.price ?? 0);
+      price !== undefined
+        ? price
+        : prise !== undefined
+        ? prise
+        : adminStore.price ?? 0;
+
     const unitPriceFinal = Number(adminStore.price ?? priceFinal ?? 0);
 
-    // features: body override or fallback to admin_store
     const featuresFinal =
-      bodyFeatures !== undefined && bodyFeatures !== null && bodyFeatures !== ""
+      bodyFeatures !== undefined && bodyFeatures !== ""
         ? bodyFeatures
-        : ((adminStore as any).features ?? null);
+        : adminStore.features ?? null;
 
-    // Create Stores record: body overrides when provided, else admin_store
+    // Create local store
     const createdStore = await prisma.stores.create({
       data: {
         produktname: adminStore.productName,
@@ -524,12 +672,12 @@ export const buyStorage = async (req, res) => {
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
-        type: storeType,
+        type: storeType, // directly from admin_store
         features: featuresFinal,
       },
     });
 
-    // Create tracking record (same type, same groessenMengen as store)
+    // Create tracking
     await prisma.admin_store_tracking.create({
       data: {
         storeId: createdStore.id,
@@ -547,23 +695,16 @@ export const buyStorage = async (req, res) => {
       },
     });
 
-    // // Delete the admin_store record
-    // await prisma.admin_store.delete({
-    //   where: {
-    //     id: admin_store_id,
-    //   },
-    // });
-
-    // Add calculated Status to response
     const storeWithStatus = addStatusToStore(createdStore);
 
     res.status(201).json({
       success: true,
-      message: "Storage purchased and created successfully",
+      message: "Storage purchased successfully",
       data: storeWithStatus,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("buyStorage error:", error);
+
     res.status(500).json({
       success: false,
       message: "Something went wrong",
@@ -571,6 +712,7 @@ export const buyStorage = async (req, res) => {
     });
   }
 };
+
 
 export const addStorage = async (req: Request, res: Response) => {
   try {
