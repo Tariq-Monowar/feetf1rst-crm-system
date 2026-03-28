@@ -440,7 +440,7 @@ const formatDateReadable = (date: Date): string => {
   return `${day} ${month} ${year}`;
 };
 
-// API 4: Current month (transition totals) + latest payout request (request_payout)
+// API 4: Current calendar month (sum of transition prices) + latest payout (request_payout — single request, not a full month)
 export const getOneMonthPayment = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
@@ -492,17 +492,18 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
       },
     });
 
-    const payoutAmount = Number(lastPayout?.totalAmount ?? 0);
-    let lastPaymentPeriod = "";
-    let lastPaymentDateRange: { from: string; to: string } | null = null;
+    const payoutAmountNum = Number(lastPayout?.totalAmount ?? 0);
+    const payoutAmount = parseFloat(payoutAmountNum.toFixed(2));
+    let payoutPeriodLabel = "";
+    let payoutDateRange: { from: string; to: string } | null = null;
 
     if (lastPayout) {
       const from = new Date(lastPayout.createdAt);
       from.setHours(0, 0, 0, 0);
       const to = new Date(lastPayout.createdAt);
       to.setHours(23, 59, 59, 999);
-      lastPaymentPeriod = formatDateReadable(from);
-      lastPaymentDateRange = {
+      payoutPeriodLabel = formatDateReadable(from);
+      payoutDateRange = {
         from: from.toISOString(),
         to: to.toISOString(),
       };
@@ -510,15 +511,16 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      message: "One month payment calculated successfully",
+      message:
+        "Current month transition total and latest payout request loaded successfully",
       data: {
         lastMonth: {
-          totalPrice: parseFloat(payoutAmount.toFixed(2)),
-          period:
-            lastPaymentPeriod ||
-            "No payout requests yet",
-          dateRange: lastPaymentDateRange,
-          payoutId: lastPayout?.id ?? null,
+          totalAmount: payoutAmount,
+          totalPrice: payoutAmount,
+          createdAt: lastPayout?.createdAt?.toISOString() ?? null,
+          period: payoutPeriodLabel || "No payout requests yet",
+          dateRange: payoutDateRange,
+          id: lastPayout?.id ?? null,
           status: lastPayout?.status ?? null,
         },
         currentMonth: {
