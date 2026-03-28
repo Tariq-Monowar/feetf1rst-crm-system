@@ -1076,8 +1076,6 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
 
 export const getStorePrice = async (req: Request, res: Response) => {
   try {
-    const partnerId = req.user.id;
-
     const storeOrderOverviewId = String(
       req.params.storeOrderOverviewId ?? "",
     ).trim();
@@ -1093,6 +1091,7 @@ export const getStorePrice = async (req: Request, res: Response) => {
     const priceSelect = {
       delivered_quantity: true,
       id: true,
+      partnerId: true,
       store: {
         select: {
           id: true,
@@ -1121,16 +1120,15 @@ export const getStorePrice = async (req: Request, res: Response) => {
       },
     } as const;
 
-    // 1) Path param is StoreOrderOverview.id (canonical)
+    // ADMIN: no partner filter — any overview row (or latest by Stores.id)
     let store = await prisma.storeOrderOverview.findFirst({
-      where: { id: storeOrderOverviewId, partnerId },
+      where: { id: storeOrderOverviewId },
       select: priceSelect,
     });
 
-    // 2) Same param may be Stores.id (inventory) — use latest overview for that store + partner
     if (!store) {
       store = await prisma.storeOrderOverview.findFirst({
-        where: { storeId: storeOrderOverviewId, partnerId },
+        where: { storeId: storeOrderOverviewId },
         orderBy: { createdAt: "desc" },
         select: priceSelect,
       });
@@ -1140,7 +1138,7 @@ export const getStorePrice = async (req: Request, res: Response) => {
       return res.status(404).json({
         success: false,
         message:
-          "Store order overview not found for this partner, or id does not match StoreOrderOverview.id / Stores.id",
+          "Store order overview not found, or id does not match StoreOrderOverview.id / Stores.id",
       });
     }
 
@@ -1149,6 +1147,7 @@ export const getStorePrice = async (req: Request, res: Response) => {
       message: "Store price fetched successfully",
       data: {
         storeOrderOverviewId: store.id,
+        partnerId: store.partnerId,
         groessenMengen: store.delivered_quantity,
         mainStore: store.store,
         price: store.adminOrderTransitions?.[0]?.price ?? null,
