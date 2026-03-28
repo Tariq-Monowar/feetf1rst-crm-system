@@ -299,9 +299,9 @@ export const getAllTransitions = async (req: Request, res: Response) => {
           LOWER(COALESCE(c.nachname, '')::text) LIKE LOWER(${term}::text) OR
           LOWER(COALESCE(aot."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
           LOWER(COALESCE(cs."orderNumber"::text, '')) LIKE LOWER(${term}::text) OR
-          LOWER(COALESCE(s.produktname, '')::text) LIKE LOWER(${term}::text) OR
-          LOWER(COALESCE(s.hersteller, '')::text) LIKE LOWER(${term}::text) OR
-          LOWER(COALESCE(s.artikelnummer, '')::text) LIKE LOWER(${term}::text)
+          LOWER(COALESCE(soo.produktname, s.produktname, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(soo.hersteller, s.hersteller, '')::text) LIKE LOWER(${term}::text) OR
+          LOWER(COALESCE(soo.artikelnummer, s.artikelnummer, '')::text) LIKE LOWER(${term}::text)
         )`;
       });
       if (searchConditions.length) {
@@ -325,7 +325,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       SELECT
         aot.id,
         aot."orderNumber",
-        aot.status,
+        aot.status AS "aot_status",
         aot."orderFor",
         aot.price,
         aot.note,
@@ -345,9 +345,10 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         cs."createdAt" AS "cs_createdAt",
         c.vorname,
         c.nachname,
-        s.produktname AS "store_produktname",
-        s.hersteller AS "store_hersteller",
-        s.artikelnummer AS "store_artikelnummer"
+        COALESCE(soo.produktname, s.produktname) AS "store_produktname",
+        COALESCE(soo.hersteller, s.hersteller) AS "store_hersteller",
+        COALESCE(soo.artikelnummer, s.artikelnummer) AS "store_artikelnummer",
+        soo."status"::text AS "storeOrderOverviewStatus"
       FROM "admin_order_transitions" aot
       LEFT JOIN "customers" c ON c.id = aot."customerId"
       LEFT JOIN "custom_shafts" cs ON cs.id = aot."custom_shafts_id"
@@ -379,19 +380,20 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       return {
         id: row.id,
         orderNumber: row.orderNumber,
-        status: row.status,
+        status: row.aot_status ?? row.aotStatus,
         orderFor: row.orderFor,
         price: row.price,
         note: row.note,
         custom_shafts_catagoary: row.custom_shafts_catagoary,
         customer: { vorname: row.vorname, nachname: row.nachname },
-        storeOrderOverviewId: row.storeOrderOverviewId ?? null,
-        store: row.storeId
+        storeOrderOverview: row.storeOrderOverviewId
           ? {
-              id: row.storeId,
-              produktname: row.store_produktname,
-              hersteller: row.store_hersteller,
-              artikelnummer: row.store_artikelnummer,
+              id: row.storeOrderOverviewId,
+              storeId: row.storeId ?? null,
+              produktname: row.store_produktname ?? null,
+              hersteller: row.store_hersteller ?? null,
+              artikelnummer: row.store_artikelnummer ?? null,
+              status: row.storeOrderOverviewStatus ?? null,
             }
           : null,
         createdAt: row.createdAt,

@@ -98,16 +98,19 @@ router.get(
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   getSingleBrandStore,
 );
+
 router.patch(
   "/update-brand-store/:id",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   updateBrandStore,
 );
+
 router.delete(
   "/delete-brand-store",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
   deleteBrandStore,
 );
+
 //get single brand store by admin
 router.get(
   "/get-single-brand/:id",
