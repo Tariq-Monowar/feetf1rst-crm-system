@@ -391,6 +391,52 @@ function transformGroessenMengenForStore(
   return result;
 }
 
+/** Sum ordered quantities across all sizes in a groessenMengen object. */
+function sumQuantityFromGroessenMengen(value: any): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+
+  let total = 0;
+  for (const entry of Object.values(value as Record<string, any>)) {
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      total += Number((entry as any).quantity ?? 0);
+    } else if (typeof entry === "number") {
+      total += entry;
+    }
+  }
+  return total;
+}
+
+/** Same keys as the order, but every size has quantity 0 (stock not received yet). */
+function zeroQuantitiesInGroessenMengen(
+  groessenMengen: Record<string, any>,
+): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(groessenMengen)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      out[k] = { ...v, quantity: 0 };
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/** Mirrors overview rows; quantities start at 0 until delivery (partner-confirmation / Geliefert flow). */
+function buildDeliveredQuantityShell(
+  overviewGroessenMengen: Record<string, any>,
+): Record<string, any> {
+  const delivered_quantity: Record<string, any> = {};
+  for (const [size, sizeData] of Object.entries(overviewGroessenMengen)) {
+    const item = sizeData as any;
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    delivered_quantity[size] = {
+      ...item,
+      quantity: 0,
+    };
+  }
+  return delivered_quantity;
+}
+
 // export const buyStorage = async (req, res) => {
 //   try {
 //     const { id: userId } = req.user;
@@ -638,7 +684,15 @@ export const buyStorage = async (req, res) => {
 
     const transformedGroessenMengen = transformGroessenMengenForStore(
       sourceGroessenMengen,
-      storeType
+      storeType as StoreType,
+    );
+
+    // Ordered quantities live on StoreOrderOverview until delivery; store stock starts at 0 per size.
+    const storeGroessenMengen = zeroQuantitiesInGroessenMengen(
+      transformedGroessenMengen,
+    );
+    const delivered_quantity = buildDeliveredQuantityShell(
+      transformedGroessenMengen,
     );
 
     const lagerortFinal = lagerort ?? null;
@@ -658,26 +712,85 @@ export const buyStorage = async (req, res) => {
         ? bodyFeatures
         : adminStore.features ?? null;
 
-    // Create local store
     const createdStore = await prisma.stores.create({
       data: {
         produktname: adminStore.productName,
         hersteller: adminStore.brand,
         artikelnummer: adminStore.artikelnummer,
         lagerort: lagerortFinal,
-        groessenMengen: transformedGroessenMengen,
+        groessenMengen: storeGroessenMengen,
         purchase_price: priceFinal,
         selling_price: sellingPriceFinal,
         unit_price: unitPriceFinal,
         image: adminStore.image,
         userId: userId,
         adminStoreId: admin_store_id,
-        type: storeType, // directly from admin_store
+        type: storeType as StoreType,
         features: featuresFinal,
       },
     });
 
-    // Create tracking
+    const unitPrice = Number(adminStore.price ?? 0);
+    let createdOverview: any = null;
+
+    if (unitPrice > 0) {
+      const totalQuantity = sumQuantityFromGroessenMengen(
+        transformedGroessenMengen,
+      );
+      const totalPrice = totalQuantity * unitPrice;
+
+      if (totalPrice > 0) {
+        const orderNumber = await generateNextOrderNumber(userId);
+
+        createdOverview = await prisma.storeOrderOverview.create({
+          data: {
+            storeId: createdStore.id,
+            partnerId: userId,
+            artikelnummer: createdStore.artikelnummer,
+            produktname: createdStore.produktname,
+            hersteller: createdStore.hersteller,
+            groessenMengen: transformedGroessenMengen,
+            delivered_quantity,
+            type: storeType as StoreType,
+            status: "In_bearbeitung",
+          },
+        });
+
+        await prisma.admin_order_transitions.create({
+          data: {
+            orderNumber,
+            orderFor: "store",
+            partnerId: userId,
+            storeOrderOverviewId: createdOverview.id,
+            price: totalPrice,
+            note: "Einlagenbestellung",
+          },
+        });
+
+        await prisma.partner_total_amount.upsert({
+          where: { partnerId: userId },
+          update: { totalAmount: { increment: totalPrice } },
+          create: { partnerId: userId, totalAmount: totalPrice },
+        });
+      }
+    }
+
+    if (!createdOverview) {
+      createdOverview = await prisma.storeOrderOverview.create({
+        data: {
+          storeId: createdStore.id,
+          partnerId: userId,
+          artikelnummer: createdStore.artikelnummer,
+          produktname: createdStore.produktname,
+          hersteller: createdStore.hersteller,
+          groessenMengen: transformedGroessenMengen,
+          delivered_quantity,
+          type: storeType as StoreType,
+          status: "In_bearbeitung",
+        },
+      });
+    }
+
     await prisma.admin_store_tracking.create({
       data: {
         storeId: createdStore.id,
@@ -690,7 +803,7 @@ export const buyStorage = async (req, res) => {
         admin_storeId: admin_store_id,
         price: priceFinal,
         image: adminStore.image,
-        type: storeType,
+        type: storeType as StoreType,
         features: featuresFinal,
       },
     });
@@ -700,7 +813,10 @@ export const buyStorage = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Storage purchased successfully",
-      data: storeWithStatus,
+      data: {
+        store: storeWithStatus,
+        storeOrderOverview: createdOverview,
+      },
     });
   } catch (error) {
     console.error("buyStorage error:", error);
@@ -1111,30 +1227,10 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       storeType,
     );
 
-    // Same as weekly_report: delivered_quantity mirrors rows but quantity starts from 0.
-    const delivered_quantity: Record<string, any> = {};
-    for (const [size, sizeData] of Object.entries(overviewGroessenMengen)) {
-      const item = sizeData as any;
-      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-      delivered_quantity[size] = {
-        ...item,
-        quantity: 0,
-      };
-    }
+    const delivered_quantity = buildDeliveredQuantityShell(
+      overviewGroessenMengen,
+    );
 
-    const sumQuantityFromGroessenMengen = (value: any): number => {
-      if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
-
-      let total = 0;
-      for (const entry of Object.values(value as Record<string, any>)) {
-        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
-          total += Number((entry as any).quantity ?? 0);
-        } else if (typeof entry === "number") {
-          total += entry;
-        }
-      }
-      return total;
-    };
     let createdOverview: any = null;
 
     if (admin_store_id) {

@@ -45,7 +45,8 @@ router.post(
 );
 
 // POST _baseurl/store/buy
-//  - Partner buys a model from admin (creates store from admin_store)
+//  - Partner buys from admin_store: creates Stores row (quantities start at 0) + StoreOrderOverview
+//    with ordered groessenMengen (same flow as send-order-to-admin). Response: { store, storeOrderOverview }.
 /*
  * /create এর পরিবর্তে এখন /buy ব্যবহার হয়
  */
@@ -191,5 +192,7 @@ router.post(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   partnerConfirmation,
 );
+
+
 
 export default router;
