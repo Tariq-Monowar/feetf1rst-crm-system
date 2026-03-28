@@ -1484,6 +1484,10 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       base.paintImage = formatImg(shaftData.paintImage);
       base.invoice2 = formatImg(shaftData.invoice2);
       base.maßschaftKollektionId = shaftData.maßschaftKollektionId ?? null;
+      base.threeDFile =
+        cat === "Komplettfertigung"
+          ? formatImg(shaftData.threeDFile)
+          : null;
     } else if (cat === "Bodenkonstruktion") {
       base.bodenkonstruktion_json = shaftData.bodenkonstruktion_json ?? null;
       base.staticImage = formatImg(shaftData.staticImage);
