@@ -1076,11 +1076,9 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
 
 export const getStorePrice = async (req: Request, res: Response) => {
   try {
-    const storeOrderOverviewId = String(
-      req.params.storeOrderOverviewId ?? "",
-    ).trim();
+    const paramId = String(req.params.storeOrderOverviewId ?? "").trim();
 
-    if (!storeOrderOverviewId) {
+    if (!paramId) {
       return res.status(400).json({
         success: false,
         message:
@@ -1088,16 +1086,19 @@ export const getStorePrice = async (req: Request, res: Response) => {
       });
     }
 
-    const priceSelect = {
-      delivered_quantity: true,
+    const overviewSelect = {
       id: true,
       partnerId: true,
+      createdAt: true,
+      type: true,
+      delivered_quantity: true,
       store: {
         select: {
           id: true,
           produktname: true,
           image: true,
           hersteller: true,
+          type: true,
         },
       },
       adminOrderTransitions: {
@@ -1120,21 +1121,20 @@ export const getStorePrice = async (req: Request, res: Response) => {
       },
     } as const;
 
-    // ADMIN: no partner filter — any overview row (or latest by Stores.id)
-    let store = await prisma.storeOrderOverview.findFirst({
-      where: { id: storeOrderOverviewId },
-      select: priceSelect,
+    let overview = await prisma.storeOrderOverview.findFirst({
+      where: { id: paramId },
+      select: overviewSelect,
     });
 
-    if (!store) {
-      store = await prisma.storeOrderOverview.findFirst({
-        where: { storeId: storeOrderOverviewId },
+    if (!overview) {
+      overview = await prisma.storeOrderOverview.findFirst({
+        where: { storeId: paramId },
         orderBy: { createdAt: "desc" },
-        select: priceSelect,
+        select: overviewSelect,
       });
     }
 
-    if (!store) {
+    if (!overview) {
       return res.status(404).json({
         success: false,
         message:
@@ -1142,16 +1142,32 @@ export const getStorePrice = async (req: Request, res: Response) => {
       });
     }
 
+    const inv = overview.store;
+    const mainStore = inv
+      ? {
+          id: inv.id,
+          produktname: inv.produktname,
+          image: inv.image,
+          type: inv.type,
+          brand: inv.hersteller,
+        }
+      : null;
+
+    const transitionPrice = overview.adminOrderTransitions?.[0]?.price ?? null;
+    const primaryLocation = overview.partner?.storeLocations?.[0] ?? null;
+
     return res.status(200).json({
       success: true,
       message: "Store price fetched successfully",
       data: {
-        storeOrderOverviewId: store.id,
-        partnerId: store.partnerId,
-        groessenMengen: store.delivered_quantity,
-        mainStore: store.store,
-        price: store.adminOrderTransitions?.[0]?.price ?? null,
-        primaryStoreLocation: store.partner?.storeLocations?.[0] ?? null,
+        storeOrderOverviewId: overview.id,
+        partnerId: overview.partnerId,
+        createdAt: overview.createdAt,
+        overviewType: overview.type,
+        groessenMengen: overview.delivered_quantity,
+        mainStore,
+        price: transitionPrice,
+        primaryStoreLocation: primaryLocation,
       },
     });
   } catch (error: any) {
