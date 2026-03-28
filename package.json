@@ -12,7 +12,8 @@
     "db:generate": "npx prisma generate",
     "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
     "create:ability-if-mt": "ts-node scripts/create-ability-if-mt.ts",
-    "adjest:footleagth-for-all-order": "ts-node scripts/adjest-footleagth-for-all-order.ts"
+    "adjest:footleagth-for-all-order": "ts-node scripts/adjest-footleagth-for-all-order.ts",
+    "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts"
   },
   "keywords": [],
   "author": "",

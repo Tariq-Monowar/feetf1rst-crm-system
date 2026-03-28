@@ -73,7 +73,7 @@ router.post(
 // Body:
 //  - `storeId` (string)
 //  - `groessenMengen` (object with sizes + quantities)
-//  - `admin_store_id` (string) [needed to calculate transition price + link adminOrderTransitionId]
+//  - `admin_store_id` (string) [needed to calculate transition price; transition links via storeOrderOverviewId]
 // eta diye admin er kache order pathano jabe
 
 /*

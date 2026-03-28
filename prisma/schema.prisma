@@ -1646,7 +1646,6 @@ model Stores {
   customerVersorgungens customer_versorgungen[]
   storeOrderOverviews   StoreOrderOverview[]
   adminStoreTrackings   admin_store_tracking[]
-  adminOrderTransitions admin_order_transitions[]
 
   @@index([id, produktname])
   @@map("stores")
@@ -1672,9 +1671,9 @@ model StoreOrderOverview {
   partnerId String
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
-  //admin order transition id
-  adminOrderTransitionId String?
-  adminOrderTransition   admin_order_transitions? @relation(fields: [adminOrderTransitionId], references: [id], onDelete: SetNull)
+  // //admin order transition id
+  // adminOrderTransitionId String?
+  // adminOrderTransition   admin_order_transitions? @relation(fields: [adminOrderTransitionId], references: [id], onDelete: SetNull)
 
   //airticle number
   artikelnummer String?
@@ -1693,10 +1692,11 @@ model StoreOrderOverview {
   status StoreOrderOverviewStatus?
   type   StoreType?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  adminOrderTransitions admin_order_transitions[]
 
-  @@index([adminOrderTransitionId])
+  // @@index([adminOrderTransitionId])
   @@index([partnerId, createdAt(sort: Desc)])
 }
 
@@ -2485,6 +2485,10 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2508,6 +2512,10 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -2828,10 +2836,10 @@ model admin_order_transitions {
   customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   /**
-   * if transitions for store
+   * if transitions for store — link via overview (store lives on StoreOrderOverview)
    */
-  storeId String?
-  store   Stores? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  storeOrderOverviewId String?
+  storeOrderOverview   StoreOrderOverview? @relation(fields: [storeOrderOverviewId], references: [id], onDelete: SetNull)
 
   price Float?
   note  String?
@@ -2839,12 +2847,12 @@ model admin_order_transitions {
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  storeOrderOverviews StoreOrderOverview[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // storeOrderOverviews StoreOrderOverview[]
 
   @@index([custom_shafts_id])
-  @@index([storeId])
+  @@index([storeOrderOverviewId])
   @@index([partnerId])
   @@index([orderFor])
   @@index([createdAt])

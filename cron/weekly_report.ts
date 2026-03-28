@@ -267,18 +267,6 @@ export const dailyReport = () => {
             }),
           );
 
-          // Always create transition so StoreOrderOverview keeps adminOrderTransitionId.
-          const transition = await (prisma as any).admin_order_transitions.create({
-            data: {
-              orderNumber,
-              orderFor: "store",
-              storeId: store.id,
-              partnerId: store.userId,
-              price: totalPrice,
-              note: "Einlagenbestellung",
-            },
-          });
-
           const createdOverview = await storeOrderOverviewModel.create({
             data: {
               storeId: store.id,
@@ -290,7 +278,17 @@ export const dailyReport = () => {
               delivered_quantity: deliveredQuantity,
               type: store.type ?? "rady_insole",
               status: "In_bearbeitung",
-              adminOrderTransitionId: transition.id,
+            },
+          });
+
+          const transition = await (prisma as any).admin_order_transitions.create({
+            data: {
+              orderNumber,
+              orderFor: "store",
+              storeOrderOverviewId: createdOverview.id,
+              partnerId: store.userId,
+              price: totalPrice,
+              note: "Einlagenbestellung",
             },
           });
 
@@ -300,7 +298,8 @@ export const dailyReport = () => {
               storeId: store.id,
               partnerId: store.userId,
               overviewId: createdOverview.id ?? null,
-              adminOrderTransitionId: transition.id,
+              storeOrderOverviewId: createdOverview.id,
+              transitionId: transition.id,
               orderNumber,
               // helpful for tracking how quantities "go there"
               overviewGroessenMengen,

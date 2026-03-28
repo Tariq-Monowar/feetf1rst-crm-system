@@ -332,7 +332,8 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         aot."custom_shafts_catagoary",
         aot."createdAt",
         aot."customerId",
-        aot."storeId",
+        aot."storeOrderOverviewId",
+        soo."storeId" AS "storeId",
         cs.id AS "cs_id",
         cs."orderNumber" AS "cs_orderNumber",
         cs.invoice AS "cs_invoice",
@@ -350,7 +351,8 @@ export const getAllTransitions = async (req: Request, res: Response) => {
       FROM "admin_order_transitions" aot
       LEFT JOIN "customers" c ON c.id = aot."customerId"
       LEFT JOIN "custom_shafts" cs ON cs.id = aot."custom_shafts_id"
-      LEFT JOIN "stores" s ON s.id = aot."storeId"
+      LEFT JOIN "StoreOrderOverview" soo ON soo.id = aot."storeOrderOverviewId"
+      LEFT JOIN "stores" s ON s.id = soo."storeId"
       WHERE ${whereClause}
       ORDER BY aot."createdAt" DESC, aot.id DESC
       LIMIT ${limit + 1}
@@ -383,6 +385,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         note: row.note,
         custom_shafts_catagoary: row.custom_shafts_catagoary,
         customer: { vorname: row.vorname, nachname: row.nachname },
+        storeOrderOverviewId: row.storeOrderOverviewId ?? null,
         store: row.storeId
           ? {
               id: row.storeId,

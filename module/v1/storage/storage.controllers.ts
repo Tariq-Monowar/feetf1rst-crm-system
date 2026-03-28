@@ -1008,24 +1008,6 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
         if (totalPrice) {
           const orderNumber = await generateNextOrderNumber(userId);
 
-          // Create transition first, then create overview with FK already set
-          const transition = await prisma.admin_order_transitions.create({
-            data: {
-              orderNumber,
-              orderFor: "store",
-              partnerId: userId,
-              storeId: store.id,
-              price: totalPrice,
-              note: "Einlagenbestellung",
-            },
-          });
-
-          await prisma.partner_total_amount.upsert({
-            where: { partnerId: userId },
-            update: { totalAmount: { increment: totalPrice } },
-            create: { partnerId: userId, totalAmount: totalPrice },
-          });
-
           createdOverview = await (prisma as any).storeOrderOverview.create({
             data: {
               storeId: store.id,
@@ -1037,8 +1019,24 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
               delivered_quantity,
               type: storeType,
               status: "In_bearbeitung",
-              adminOrderTransitionId: transition.id,
             },
+          });
+
+          await prisma.admin_order_transitions.create({
+            data: {
+              orderNumber,
+              orderFor: "store",
+              partnerId: userId,
+              storeOrderOverviewId: createdOverview.id,
+              price: totalPrice,
+              note: "Einlagenbestellung",
+            },
+          });
+
+          await prisma.partner_total_amount.upsert({
+            where: { partnerId: userId },
+            update: { totalAmount: { increment: totalPrice } },
+            create: { partnerId: userId, totalAmount: totalPrice },
           });
         }
       }
@@ -1112,8 +1110,10 @@ export const getStorePrice = async (req: Request, res: Response) => {
             hersteller: true,
           },
         }, // main store
-        adminOrderTransition: {
+        adminOrderTransitions: {
           select: { price: true },
+          take: 1,
+          orderBy: { createdAt: "desc" },
         },
         partner: {
           select: {
@@ -1145,7 +1145,7 @@ export const getStorePrice = async (req: Request, res: Response) => {
         storeOrderOverviewId: store.id,
         groessenMengen: store.delivered_quantity,
         mainStore: store.store,
-        price: store.adminOrderTransition?.price ?? null,
+        price: store.adminOrderTransitions?.[0]?.price ?? null,
         primaryStoreLocation: store.partner?.storeLocations?.[0] ?? null,
       },
     });
@@ -1970,7 +1970,16 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
         type: true,
         status: true,
         createdAt: true,
-        adminOrderTransitionId: true,
+        adminOrderTransitions: {
+          select: {
+            id: true,
+            orderNumber: true,
+            status: true,
+            price: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        },
 
         partner: {
           select: {
