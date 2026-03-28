@@ -1091,6 +1091,7 @@ export const getStorePrice = async (req: Request, res: Response) => {
       partnerId: true,
       createdAt: true,
       type: true,
+      groessenMengen: true,
       delivered_quantity: true,
       store: {
         select: {
@@ -1164,7 +1165,8 @@ export const getStorePrice = async (req: Request, res: Response) => {
         partnerId: overview.partnerId,
         createdAt: overview.createdAt,
         overviewType: overview.type,
-        groessenMengen: overview.delivered_quantity,
+        groessenMengen: overview.groessenMengen,
+        delivered_quantity: overview.delivered_quantity,
         mainStore,
         price: transitionPrice,
         primaryStoreLocation: primaryLocation,
