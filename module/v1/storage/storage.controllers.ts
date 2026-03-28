@@ -1085,48 +1085,62 @@ export const getStorePrice = async (req: Request, res: Response) => {
     if (!storeOrderOverviewId) {
       return res.status(400).json({
         success: false,
-        message: "storeOrderOverviewId is required (StoreOrderOverview.id)",
+        message:
+          "storeOrderOverviewId is required (StoreOrderOverview.id, or Stores.id for latest overview)",
       });
     }
 
-    const store = await prisma.storeOrderOverview.findFirst({
-      where: { id: storeOrderOverviewId, partnerId },
-      select: {
-        delivered_quantity: true,
-        id: true,
-        store: {
-          select: {
-            id: true,
-            produktname: true,
-            image: true,
-            hersteller: true,
-          },
-        }, // main store
-        adminOrderTransitions: {
-          select: { price: true },
-          take: 1,
-          orderBy: { createdAt: "desc" },
+    const priceSelect = {
+      delivered_quantity: true,
+      id: true,
+      store: {
+        select: {
+          id: true,
+          produktname: true,
+          image: true,
+          hersteller: true,
         },
-        partner: {
-          select: {
-            storeLocations: {
-              where: { isPrimary: true },
-              take: 1,
-              orderBy: { createdAt: "desc" },
-              select: {
-                address: true,
-                description: true,
-              },
+      },
+      adminOrderTransitions: {
+        select: { price: true },
+        take: 1,
+        orderBy: { createdAt: "desc" as const },
+      },
+      partner: {
+        select: {
+          storeLocations: {
+            where: { isPrimary: true },
+            take: 1,
+            orderBy: { createdAt: "desc" as const },
+            select: {
+              address: true,
+              description: true,
             },
           },
         },
       },
+    } as const;
+
+    // 1) Path param is StoreOrderOverview.id (canonical)
+    let store = await prisma.storeOrderOverview.findFirst({
+      where: { id: storeOrderOverviewId, partnerId },
+      select: priceSelect,
     });
+
+    // 2) Same param may be Stores.id (inventory) — use latest overview for that store + partner
+    if (!store) {
+      store = await prisma.storeOrderOverview.findFirst({
+        where: { storeId: storeOrderOverviewId, partnerId },
+        orderBy: { createdAt: "desc" },
+        select: priceSelect,
+      });
+    }
 
     if (!store) {
       return res.status(404).json({
         success: false,
-        message: "Store not found",
+        message:
+          "Store order overview not found for this partner, or id does not match StoreOrderOverview.id / Stores.id",
       });
     }
 
