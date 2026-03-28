@@ -440,7 +440,7 @@ const formatDateReadable = (date: Date): string => {
   return `${day} ${month} ${year}`;
 };
 
-// API 4: Get one month payment (last month + current month)
+// API 4: Current month (transition totals) + latest payout request (request_payout)
 export const getOneMonthPayment = async (req: Request, res: Response) => {
   try {
     const { id } = req.user;
@@ -450,7 +450,6 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
     const currentMonth = now.getMonth();
     const currentDay = now.getDate();
 
-    // Current month: from 1st of current month to today
     const currentMonthStart = new Date(
       currentYear,
       currentMonth,
@@ -470,27 +469,6 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
       999,
     );
 
-    // Last month: from 1st to last day of previous month
-    const lastMonthStart = new Date(
-      currentYear,
-      currentMonth - 1,
-      1,
-      0,
-      0,
-      0,
-      0,
-    );
-    const lastMonthEnd = new Date(
-      currentYear,
-      currentMonth,
-      0,
-      23,
-      59,
-      59,
-      999,
-    ); // Last day of previous month
-
-    // Get current month payment
     const currentMonthResult = await prisma.$queryRaw<
       Array<{ total_price: number }>
     >`
@@ -501,34 +479,50 @@ export const getOneMonthPayment = async (req: Request, res: Response) => {
           AND "createdAt" <= ${currentMonthEnd}::timestamp
       `;
 
-    // Get last month payment
-    const lastMonthResult = await prisma.$queryRaw<
-      Array<{ total_price: number }>
-    >`
-        SELECT COALESCE(SUM(price), 0)::float as total_price
-        FROM "admin_order_transitions"
-        WHERE "partnerId" = ${id}::text
-          AND "createdAt" >= ${lastMonthStart}::timestamp
-          AND "createdAt" <= ${lastMonthEnd}::timestamp
-      `;
-
     const currentMonthTotal = currentMonthResult[0]?.total_price || 0;
-    const lastMonthTotal = lastMonthResult[0]?.total_price || 0;
+
+    const lastPayout = await prisma.request_payout.findFirst({
+      where: { partnerId: id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    const payoutAmount = Number(lastPayout?.totalAmount ?? 0);
+    let lastPaymentPeriod = "";
+    let lastPaymentDateRange: { from: string; to: string } | null = null;
+
+    if (lastPayout) {
+      const from = new Date(lastPayout.createdAt);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(lastPayout.createdAt);
+      to.setHours(23, 59, 59, 999);
+      lastPaymentPeriod = formatDateReadable(from);
+      lastPaymentDateRange = {
+        from: from.toISOString(),
+        to: to.toISOString(),
+      };
+    }
 
     return res.status(200).json({
       success: true,
       message: "One month payment calculated successfully",
       data: {
         lastMonth: {
-          totalPrice: parseFloat(lastMonthTotal.toFixed(2)),
-          period: `${formatDateReadable(lastMonthStart)} - ${formatDateReadable(lastMonthEnd)}`,
-          dateRange: {
-            from: lastMonthStart.toISOString(),
-            to: lastMonthEnd.toISOString(),
-          },
+          totalPrice: parseFloat(payoutAmount.toFixed(2)),
+          period:
+            lastPaymentPeriod ||
+            "No payout requests yet",
+          dateRange: lastPaymentDateRange,
+          payoutId: lastPayout?.id ?? null,
+          status: lastPayout?.status ?? null,
         },
         currentMonth: {
-          totalPrice: parseFloat(currentMonthTotal.toFixed(2)),
+          totalPrice: parseFloat(Number(currentMonthTotal).toFixed(2)),
           period: `${formatDateReadable(currentMonthStart)} - ${formatDateReadable(currentMonthEnd)}`,
           dateRange: {
             from: currentMonthStart.toISOString(),
