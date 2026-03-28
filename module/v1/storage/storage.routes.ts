@@ -75,7 +75,7 @@ router.post(
 // Body:
 //  - `storeId` (string)
 //  - `groessenMengen` (object with sizes + quantities)
-//  - `admin_store_id` (string) [needed to calculate transition price; transition links via storeOrderOverviewId]
+//  - `admin_store_id` (string, optional) — if omitted, uses linked `store.adminStoreId` for unit price / admin_order_transitions (same idea as POST /buy)
 // eta diye admin er kache order pathano jabe
 
 /*

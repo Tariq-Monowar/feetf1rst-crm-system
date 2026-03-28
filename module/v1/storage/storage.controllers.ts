@@ -1155,7 +1155,7 @@ export const addStorageFromAdmin = async (req: any, res: any) => {
 
 /**
  * Create StoreOrderOverview from admin-style quantity input (without directly increasing stock).
- * Body: storeId (required), groessenMengen (required), admin_store_id (optional).
+ * Body: storeId (required), groessenMengen (required), admin_store_id (optional; falls back to store.adminStoreId for pricing / admin_order_transitions like POST /buy).
  */
 export const addStorageFromAdminToOverview = async (req: any, res: any) => {
   try {
@@ -1187,28 +1187,16 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       });
     }
 
-    let adminStore = null as any;
-    if (admin_store_id) {
-      adminStore = await prisma.admin_store.findUnique({
-        where: { id: admin_store_id },
-        select: {
-          id: true,
-          price: true,
-          groessenMengen: true,
-          type: true,
-        },
-      });
-
-      if (!adminStore) {
-        return res.status(404).json({
-          success: false,
-          message: "Admin store not found",
-        });
-      }
-    }
-
     const store = await prisma.stores.findFirst({
       where: { id: storeId, userId },
+      select: {
+        id: true,
+        artikelnummer: true,
+        produktname: true,
+        hersteller: true,
+        type: true,
+        adminStoreId: true,
+      },
     });
     if (!store) {
       return res.status(404).json({
@@ -1218,8 +1206,34 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
     }
 
     const storeType = (store.type as StoreType) ?? "rady_insole";
-    if (adminStore && (adminStore.type as StoreType) !== storeType) {
-      adminStore = null;
+
+    const requestedAdminId =
+      admin_store_id != null && String(admin_store_id).trim() !== ""
+        ? String(admin_store_id).trim()
+        : null;
+    const effectiveAdminStoreId =
+      requestedAdminId ?? store.adminStoreId ?? null;
+
+    let adminForPricing: { id: string; price: number | null; type: StoreType | null } | null =
+      null;
+    if (effectiveAdminStoreId) {
+      const adminRow = await prisma.admin_store.findUnique({
+        where: { id: effectiveAdminStoreId },
+        select: { id: true, price: true, type: true },
+      });
+      if (requestedAdminId && !adminRow) {
+        return res.status(404).json({
+          success: false,
+          message: "Admin store not found",
+        });
+      }
+      if (adminRow && (adminRow.type as StoreType) === storeType) {
+        adminForPricing = {
+          id: adminRow.id,
+          price: adminRow.price != null ? Number(adminRow.price) : null,
+          type: adminRow.type as StoreType,
+        };
+      }
     }
 
     const overviewGroessenMengen = transformGroessenMengenForStore(
@@ -1233,59 +1247,52 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
 
     let createdOverview: any = null;
 
-    if (admin_store_id) {
-      const admin = await prisma.admin_store.findUnique({
-        where: { id: admin_store_id },
-        select: { price: true },
-      });
+    const unitPrice = Number(adminForPricing?.price ?? 0);
+    if (unitPrice > 0) {
+      const totalQuantity = sumQuantityFromGroessenMengen(
+        overviewGroessenMengen,
+      );
+      const totalPrice = totalQuantity * unitPrice;
 
-      const unitPrice = Number(admin?.price ?? 0);
-      if (unitPrice) {
-        const totalQuantity = sumQuantityFromGroessenMengen(
-          overviewGroessenMengen,
-        );
-        const totalPrice = totalQuantity * unitPrice;
+      if (totalPrice > 0) {
+        const orderNumber = await generateNextOrderNumber(userId);
 
-        if (totalPrice) {
-          const orderNumber = await generateNextOrderNumber(userId);
+        createdOverview = await prisma.storeOrderOverview.create({
+          data: {
+            storeId: store.id,
+            partnerId: userId,
+            artikelnummer: store.artikelnummer,
+            produktname: store.produktname,
+            hersteller: store.hersteller,
+            groessenMengen: overviewGroessenMengen,
+            delivered_quantity,
+            type: storeType,
+            status: "In_bearbeitung",
+          },
+        });
 
-          createdOverview = await (prisma as any).storeOrderOverview.create({
-            data: {
-              storeId: store.id,
-              partnerId: userId,
-              artikelnummer: store.artikelnummer,
-              produktname: store.produktname,
-              hersteller: store.hersteller,
-              groessenMengen: overviewGroessenMengen,
-              delivered_quantity,
-              type: storeType,
-              status: "In_bearbeitung",
-            },
-          });
+        await prisma.admin_order_transitions.create({
+          data: {
+            orderNumber,
+            orderFor: "store",
+            partnerId: userId,
+            storeOrderOverviewId: createdOverview.id,
+            price: totalPrice,
+            note: "Einlagenbestellung",
+          },
+        });
 
-          await prisma.admin_order_transitions.create({
-            data: {
-              orderNumber,
-              orderFor: "store",
-              partnerId: userId,
-              storeOrderOverviewId: createdOverview.id,
-              price: totalPrice,
-              note: "Einlagenbestellung",
-            },
-          });
-
-          await prisma.partner_total_amount.upsert({
-            where: { partnerId: userId },
-            update: { totalAmount: { increment: totalPrice } },
-            create: { partnerId: userId, totalAmount: totalPrice },
-          });
-        }
+        await prisma.partner_total_amount.upsert({
+          where: { partnerId: userId },
+          update: { totalAmount: { increment: totalPrice } },
+          create: { partnerId: userId, totalAmount: totalPrice },
+        });
       }
     }
 
-    // If we didn't create transition (no price), still create the overview row.
+    // If we didn't create transition (no price / zero qty), still create the overview row.
     if (!createdOverview) {
-      createdOverview = await (prisma as any).storeOrderOverview.create({
+      createdOverview = await prisma.storeOrderOverview.create({
         data: {
           storeId: store.id,
           partnerId: userId,
