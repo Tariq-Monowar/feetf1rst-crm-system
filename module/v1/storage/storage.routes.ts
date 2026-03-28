@@ -85,9 +85,9 @@ router.post(
   addStorageFromAdminToOverview,
 );
 
-// GET _baseurl/store/get-store-price/:storeId
+// GET _baseurl/store/get-store-price/:storeOrderOverviewId — StoreOrderOverview.id (not Stores.id)
 router.get(
-  "/get-store-price/:storeId",
+  "/get-store-price/:storeOrderOverviewId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getStorePrice,
 );

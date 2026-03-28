@@ -1078,27 +1078,19 @@ export const getStorePrice = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
 
-    const rawStoreId = req.params.storeId;
-    // `req.query.storeId` can be string | ParsedQs | (string | ParsedQs)[]
-    const storeId =
-      typeof rawStoreId === "string"
-        ? rawStoreId
-        : Array.isArray(rawStoreId)
-          ? String(rawStoreId[0] ?? "")
-          : typeof rawStoreId === "undefined"
-            ? ""
-            : String((rawStoreId as any)?.toString?.() ?? "");
+    const storeOrderOverviewId = String(
+      req.params.storeOrderOverviewId ?? "",
+    ).trim();
 
-    if (!storeId) {
+    if (!storeOrderOverviewId) {
       return res.status(400).json({
         success: false,
-        message: "storeId is required",
+        message: "storeOrderOverviewId is required (StoreOrderOverview.id)",
       });
     }
 
-    // Select only: transition price + main store id.
     const store = await prisma.storeOrderOverview.findFirst({
-      where: { id: storeId, partnerId },
+      where: { id: storeOrderOverviewId, partnerId },
       select: {
         delivered_quantity: true,
         id: true,
