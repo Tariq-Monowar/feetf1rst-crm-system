@@ -891,6 +891,7 @@ export const createCustomBodenkonstruktionOrder = async (
 
     const invoice = files?.invoice?.[0]?.location || null;
     const staticImage = files?.staticImage?.[0]?.location || null;
+    const threeDFile = files?.threeDFile?.[0]?.location || null;
 
     const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
     // Create custom shaft order without customer or order connections
@@ -905,6 +906,7 @@ export const createCustomBodenkonstruktionOrder = async (
         deliveryDate: parsedDeliveryDate,
         invoice,
         staticImage: staticImage || null,
+        threeDFile: threeDFile || null,
         isCustomBodenkonstruktion: true,
         orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
@@ -915,6 +917,7 @@ export const createCustomBodenkonstruktionOrder = async (
         totalPrice: true,
         invoice: true,
         staticImage: true,
+        threeDFile: true,
         orderNumber: true,
         catagoary: true,
         status: true,
@@ -970,6 +973,7 @@ export const createCustomBodenkonstruktionOrder = async (
           day: "numeric",
         })
       : null;
+
     const partnerUser = (data as any).user;
     sendCustomShaftOrderNotification({
       orderId: (data as any).id,

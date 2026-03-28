@@ -78,6 +78,7 @@ router.post(
   upload.fields([
     { name: "invoice", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
+    { name: "threeDFile", maxCount: 1 },
   ]),
   createCustomBodenkonstruktionOrder
 );

@@ -18,6 +18,7 @@ import {
   getAllMyStoreOverview,
   deleteStoreOverview,
   getStorePrice,
+  partnerConfirmation,
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -181,6 +182,13 @@ router.delete(
   "/delete-store-overview",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   deleteStoreOverview,
+);
+
+// Partner: Confirmation → Geliefert + inventory sync (body: { status: "Geliefert" })
+router.post(
+  "/partner-confirmation/:id",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  partnerConfirmation,
 );
 
 export default router;

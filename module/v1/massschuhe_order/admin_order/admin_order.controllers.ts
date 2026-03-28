@@ -1346,6 +1346,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       customerName: true,
       deliveryDate: true,
       isCustomBodenkonstruktion: true,
+      threeDFile: true,
       customer: {
         select: {
           id: true,
@@ -1486,6 +1487,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
     } else if (cat === "Bodenkonstruktion") {
       base.bodenkonstruktion_json = shaftData.bodenkonstruktion_json ?? null;
       base.staticImage = formatImg(shaftData.staticImage);
+      base.threeDFile = formatImg(shaftData.threeDFile);
       base.customerName = shaftData.customerName ?? null;
       base.deliveryDate = shaftData.deliveryDate ?? null;
       base.isCustomBodenkonstruktion =
@@ -1507,6 +1509,7 @@ export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
       base.maßschaftKollektionId = shaftData.maßschaftKollektionId ?? null;
       base.bodenkonstruktion_json = shaftData.bodenkonstruktion_json ?? null;
       base.staticImage = formatImg(shaftData.staticImage);
+      base.threeDFile = formatImg(shaftData.threeDFile);
       base.customerName = shaftData.customerName ?? null;
       base.deliveryDate = shaftData.deliveryDate ?? null;
       base.isCustomBodenkonstruktion =
