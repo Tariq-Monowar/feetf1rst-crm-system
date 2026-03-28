@@ -102,7 +102,7 @@ export const customShaftOrderEmailTemplate = (
                             </tr>
                             <tr>
                               <td class="header-text" style="padding: 4px 0; color: #ffffff; font-family: 'Segoe UI', 'Roboto', 'Open Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; line-height: 1.5; text-align: left;">
-                                <strong style="color: #ffffff; font-weight: 600;">Address:</strong> <span style="color: #ffffff; font-weight: 400;">demo state!, 123 hous</span>
+                                <strong style="color: #ffffff; font-weight: 600;">Address:</strong> <span style="color: #ffffff; font-weight: 400;">Pipen 5, Bruneck 39031 Italien</span>
                               </td>
                             </tr>
                           </table>
