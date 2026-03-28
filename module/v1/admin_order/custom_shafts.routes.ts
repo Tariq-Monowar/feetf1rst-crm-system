@@ -68,6 +68,7 @@ router.post(
     { name: "ledertyp_image", maxCount: 1 },
     { name: "custom_models_image", maxCount: 1 },
     { name: "staticImage", maxCount: 1 },
+    { name: "threeDFile", maxCount: 1 },
   ]),
   createTustomShafts
 );

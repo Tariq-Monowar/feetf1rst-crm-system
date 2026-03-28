@@ -590,6 +590,7 @@ export const createTustomShafts = async (req, res) => {
     user: { connect: { id } },
     image3d_1: getFile("image3d_1"),
     image3d_2: getFile("image3d_2"),
+    threeDFile: getFile("threeDFile"),
     paintImage: getFile("paintImage"),
     invoice2: getFile("invoice2"),
     invoice: getFile("invoice"),
@@ -628,6 +629,7 @@ export const createTustomShafts = async (req, res) => {
     image3d_1: true,
     image3d_2: true,
     paintImage: true,
+    threeDFile: true,
     invoice2: true,
     invoice: true,
     zipper_image: true,
@@ -771,6 +773,7 @@ export const createTustomShafts = async (req, res) => {
         allowedFields: [
           "image3d_1",
           "image3d_2",
+          "threeDFile",
           "invoice",
           "paintImage",
           "invoice2",
@@ -1322,11 +1325,16 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
     // Extract user first
     const { user, ...shaftWithoutUser } = customShaft;
 
+    const cat = customShaft.catagoary;
+    const showThreeDFile =
+      cat === "Komplettfertigung" || cat === "Bodenkonstruktion";
+
     // Format the response
     const formattedShaft = {
       ...shaftWithoutUser,
       image3d_1: customShaft.image3d_1 || null,
       image3d_2: customShaft.image3d_2 || null,
+      threeDFile: showThreeDFile ? customShaft.threeDFile || null : null,
       customer: customShaft.customer
         ? {
             ...customShaft.customer,

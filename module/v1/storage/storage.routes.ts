@@ -184,7 +184,8 @@ router.delete(
   deleteStoreOverview,
 );
 
-// Partner: Confirmation → Geliefert + inventory sync (body: { status: "Geliefert" })
+// Partner: Confirmation → Geliefert + inventory sync (no body required)
+// POST {{_baseurl}}store/partner-confirmation/:id
 router.post(
   "/partner-confirmation/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

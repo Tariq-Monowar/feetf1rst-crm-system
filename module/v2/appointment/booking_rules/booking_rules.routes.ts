@@ -7,6 +7,7 @@ const router = express.Router();
 // Create or update rules for current partner
 router.post("/manage", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), manageBookingRules);
 // Get current partner's rules
+//{{baseUrl}}v2/appointment/booking-rules/get
 router.get("/get", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), getBookingRules);
 
 export default router;

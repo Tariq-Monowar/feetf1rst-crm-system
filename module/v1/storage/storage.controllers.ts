@@ -2048,9 +2048,7 @@ const normalizeOverviewSizesForDelivery = (value: any) => {
 const hasPositiveDeliveryQuantity = (
   value: Record<string, { quantity?: number; length?: number }>,
 ) => {
-  return Object.values(value).some(
-    (entry) => Number(entry?.quantity ?? 0) > 0,
-  );
+  return Object.values(value).some((entry) => Number(entry?.quantity ?? 0) > 0);
 };
 
 /** Merges delivered quantities into store stock when an overview becomes Geliefert (partner confirmation flow only). */
@@ -2148,11 +2146,17 @@ export const updateOverview = async (req: Request, res: Response) => {
       });
     }
 
+    if (status === "Geliefert") {
+      return res.status(400).json({
+        success: false,
+        message: "aap yea Geliefert status ko update kar nahi paoge",
+      });
+    }
+
     const validStatuses = [
       "In_bearbeitung",
       "Versendet",
       "Confirmation",
-      "Geliefert",
       "Storniert",
     ];
 
@@ -2189,14 +2193,10 @@ export const updateOverview = async (req: Request, res: Response) => {
         .json({ success: false, message: "Already delivered" });
     }
 
-    if (
-      status === "Geliefert" &&
-      existingOverview.status === "Confirmation"
-    ) {
+    if (existingOverview.status === "Confirmation") {
       return res.status(400).json({
         success: false,
-        message:
-          "Use POST /store/partner-confirmation/:id with body { status: \"Geliefert\" } to confirm delivery from Confirmation",
+        message: "partner need to confirm delivery!",
       });
     }
 
@@ -2449,9 +2449,6 @@ export const deleteStoreOverview = async (req: Request, res: Response) => {
 export const partnerConfirmation = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
-    const userId = req.user.id;
-    const userRole = String(req.user?.role || "");
 
     if (!id || !String(id).trim()) {
       return res.status(400).json({
@@ -2460,51 +2457,14 @@ export const partnerConfirmation = async (req: Request, res: Response) => {
       });
     }
 
-    if (status !== "Geliefert") {
-      return res.status(400).json({
-        success: false,
-        message: 'Body must include status: "Geliefert" to confirm delivery',
-      });
-    }
-
-    let scopedPartnerId: string | null = null;
-    if (userRole === "PARTNER") {
-      scopedPartnerId = String(userId);
-    } else if (userRole === "EMPLOYEE") {
-      const employeeId =
-        req.user?.employeeId != null
-          ? String(req.user.employeeId)
-          : String(userId);
-
-      const employee = await prisma.employees.findUnique({
-        where: { id: employeeId },
-        select: { partnerId: true },
-      });
-
-      scopedPartnerId = String(employee?.partnerId ?? userId);
-    }
-
-    const whereOverview: {
-      id: string;
-      status: "Confirmation";
-      partnerId?: string;
-    } = {
-      id,
-      status: "Confirmation",
-    };
-    if (scopedPartnerId) {
-      whereOverview.partnerId = scopedPartnerId;
-    }
-
     const existing = await prisma.storeOrderOverview.findFirst({
-      where: whereOverview,
+      where: { id, status: "Confirmation" },
     });
 
     if (!existing) {
       return res.status(404).json({
         success: false,
-        message:
-          "Store order overview not found, not in Confirmation status, or not yours",
+        message: "Store order overview not found or not in Confirmation status",
       });
     }
 
