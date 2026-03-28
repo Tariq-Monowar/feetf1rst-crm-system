@@ -50,11 +50,13 @@ router.post(
 /*
  * /create এর পরিবর্তে এখন /buy ব্যবহার হয়
  */
+// POST {{_baseurl}}store/buy
 router.post("/buy", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), buyStorage);
 
 // POST _baseurl/store/add-storage
 //  - Add stock from admin_store definition without price
 // এখনে পার্টনার স্টক অ্যাাড কতে পারবে কিনা ছাড়া
+// POST {{_baseurl}}store/add-storage
 router.post(
   "/add-storage",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -64,6 +66,7 @@ router.post(
 // POST _baseurl/store/add-storage-from-admin
 //  - Add quantity from admin store to existing partner store (by_admin only); creates tracking
 //admin er tai kinche
+// POST {{_baseurl}}store/add-storage-from-admin
 router.post(
   "/add-storage-from-admin",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -81,6 +84,7 @@ router.post(
 /*
    ETA NAKI????___________--
 */
+// POST {{_baseurl}}store/send-order-to-admin
 router.post(
   "/send-order-to-admin",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -96,6 +100,7 @@ router.get(
 
 // GET _baseurl/store/my/get
 //  - Get all my stores with overview data
+// GET {{_baseurl}}store/my/get
 router.get(
   "/my/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -103,6 +108,7 @@ router.get(
 );
 // GET _baseurl/store/get/:id
 //  - Get single store by id (must belong to user)
+// GET {{_baseurl}}store/get/:id
 router.get(
   "/get/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -110,6 +116,7 @@ router.get(
 );
 // PATCH _baseurl/store/update/:id
 //  - Update store fields
+// PATCH {{_baseurl}}store/update/:id
 router.patch(
   "/update/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -117,6 +124,7 @@ router.patch(
 );
 // DELETE _baseurl/store/delete/:id
 //  - Delete single store by id
+// DELETE {{_baseurl}}store/delete/:id
 router.delete(
   "/delete/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -131,6 +139,7 @@ router.get(
 );
 // GET _baseurl/store/history/:id
 //  - Stock movement history for a single store
+// GET {{_baseurl}}store/history/:id
 router.get(
   "/history/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -138,6 +147,7 @@ router.get(
 );
 // GET _baseurl/store/performer
 //  - Top/low performer models
+// GET {{_baseurl}}store/performer
 router.get(
   "/performer",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -146,6 +156,7 @@ router.get(
 // GET _baseurl/store/store-overview
 //  - Admin: paginated list of all storeOrderOverview
 //store overviwe
+// GET {{_baseurl}}store/store-overview
 router.get(
   "/store-overview",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -154,6 +165,7 @@ router.get(
 
 // PATCH _baseurl/store/update-overview/:id
 //  - Update status or delivered_quantity of a storeOrderOverview
+// PATCH {{_baseurl}}store/update-overview/:id
 router.patch(
   "/update-overview/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -161,6 +173,7 @@ router.patch(
 );
 // GET _baseurl/store/get-store-overview-by-id/:id
 //  - Get single storeOrderOverview by id
+// GET {{_baseurl}}store/get-store-overview-by-id/:id
 router.get(
   "/get-store-overview-by-id/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -170,6 +183,7 @@ router.get(
 // GET _baseurl/store/get-all-my-store-overview
 //  - Partner: list my own storeOrderOverview
 //get all my store overview
+// GET {{_baseurl}}store/get-all-my-store-overview
 router.get(
   "/get-all-my-store-overview",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -179,6 +193,7 @@ router.get(
 // DELETE _baseurl/store/delete-store-overview
 //  - Partner: delete list of own storeOrderOverview by ids (in body)
 //delete store overview
+// DELETE {{_baseurl}}store/delete-store-overview
 router.delete(
   "/delete-store-overview",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

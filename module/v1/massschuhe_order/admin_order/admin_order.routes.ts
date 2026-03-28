@@ -18,6 +18,8 @@ import {
 //make send to admin a order by partner it's first step
 const router = express.Router();
 
+//send to admin 1 order
+// POST {{_baseurl}}admin_order/send-to-admin-1/:orderId
 router.post(
   "/send-to-admin-1/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
@@ -30,6 +32,8 @@ router.post(
   sendToAdminOrder_1,
 );
 
+//create halbprobenerstellung order
+// POST {{_baseurl}}admin_order/halbprobenerstellung/create
 router.post(
   "/halbprobenerstellung/create",
   verifyUser("PARTNER", "EMPLOYEE"),
@@ -43,12 +47,15 @@ router.post(
 );
 
 //uploade set checkliste_halbprobe
+// POST {{_baseurl}}admin_order/halbprobenerstellung/upload-checkliste/:orderId
 router.post(
   "/halbprobenerstellung/upload-checkliste/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   uploadChecklisteHalbprobenerstellung,
 );
 
+//get checkliste halbprobenerstellung
+// GET {{_baseurl}}admin_order/halbprobenerstellung/get-checkliste/:orderId
 router.get(
   "/halbprobenerstellung/get-checkliste/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
@@ -79,6 +86,8 @@ router.post(
   sendToAdminOrder_2,
 );
 
+//send to admin 3 order
+// POST {{_baseurl}}admin_order/send-to-admin-3-order/:orderId
 router.post(
   "/send-to-admin-3-order/:orderId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
@@ -89,25 +98,32 @@ router.post(
   sendToAdminOrder_3,
 );
 
+//get all admin orders
+// GET {{_baseurl}}admin_order/get
 router.get(
   "/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllAdminOrders,
 );
 
+//get single admin order
+// GET {{_baseurl}}admin_order/get/:id
 router.get(
   "/get/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getSingleAllAdminOrders,
 );
 
-// courier contact
+// create courier contact
+// POST {{_baseurl}}admin_order/courier-contact/create
 router.post(
   "/courier-contact/create",
   verifyUser("PARTNER", "EMPLOYEE"),
   createCourierContact,
 );
 
+// get customer list order contact
+// GET {{_baseurl}}admin_order/courier-contact/customer-list-order-contact/:customerId
 router.get(
   "/courier-contact/customer-list-order-contact/:customerId",
   verifyUser("PARTNER", "EMPLOYEE"),
