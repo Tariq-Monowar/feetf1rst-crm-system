@@ -2130,6 +2130,7 @@ export const getWerkstattzettelSheetPdfData = async (
         fussanalysePreis: true,
         werkstattzettel: true,
         foorSize: true,
+        customerFootLength: true,
         employee: {
           select: {
             employeeName: true,
@@ -2159,6 +2160,12 @@ export const getWerkstattzettelSheetPdfData = async (
             rohlingHersteller: true,
             artikelHersteller: true,
             status: true,
+          },
+        },
+        screenerFile: {
+          select: {
+            picture_23: true,
+            picture_24: true,
           },
         },
         customer: {
@@ -2264,6 +2271,15 @@ export const getWerkstattzettelSheetPdfData = async (
         überzug: order?.überzug,
         employee: order?.employee,
         foorSize: order?.foorSize,
+        otherPdfPrint: settings?.printFootScans,
+        otherPdfData: settings?.printFootScans
+          ? {
+              //foot image 10 and 11 (order-linked screener_file)
+              footImage23: order?.screenerFile?.picture_23,
+              footImage24: order?.screenerFile?.picture_24,
+              footLength: order?.customerFootLength,
+            }
+          : null,
       },
     });
   } catch (error) {
