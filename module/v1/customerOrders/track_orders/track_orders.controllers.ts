@@ -2164,6 +2164,7 @@ export const getWerkstattzettelSheetPdfData = async (
         },
         customer: {
           select: {
+            id: true,
             vorname: true,
             nachname: true,
             wohnort: true,
@@ -2205,6 +2206,20 @@ export const getWerkstattzettelSheetPdfData = async (
         message: "Order not found",
       });
     }
+
+    // Same resolution as getPicture2324ByOrderId: order screener, else latest customer screener.
+    const werkstattScreenerFile =
+      order.screenerFile ??
+      (order.customer
+        ? await prisma.screener_file.findFirst({
+            where: { customerId: order.customer.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+              picture_23: true,
+              picture_24: true,
+            },
+          })
+        : null);
 
     return res.status(200).json({
       success: true,
@@ -2274,9 +2289,8 @@ export const getWerkstattzettelSheetPdfData = async (
         otherPdfPrint: settings?.printFootScans,
         otherPdfData: settings?.printFootScans
           ? {
-              // Order-linked screener_file (always send keys; use null when missing)
-              footImage23: order?.screenerFile?.[0]?.picture_23 ?? null,
-              footImage24: order?.screenerFile?.[0]?.picture_24 ?? null,
+              footImage23: werkstattScreenerFile?.picture_23 ?? null,
+              footImage24: werkstattScreenerFile?.picture_24 ?? null,
               footLength: order?.customerFootLength ?? null,
             }
           : null,
