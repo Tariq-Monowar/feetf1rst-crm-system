@@ -32,7 +32,19 @@ export const createMaßschaftKollektion = async (
   const files = req.files as any;
 
   try {
-    const { name, price, catagoary, gender, description, verschlussart } =
+    const parseOptionalBool = (v: unknown): boolean | undefined => {
+      if (v === undefined || v === null || v === "") return undefined;
+      if (typeof v === "boolean") return v;
+      if (typeof v === "number") return v !== 0;
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase();
+        if (["true", "1", "yes", "on"].includes(s)) return true;
+        if (["false", "0", "no", "off"].includes(s)) return false;
+      }
+      return undefined;
+    };
+
+    const { name, price, catagoary, gender, description, verschlussart, is_zipper, ziernaht } =
       req.body;
 
     const missingField = [
@@ -67,6 +79,8 @@ export const createMaßschaftKollektion = async (
         description,
         image: imageUrl || "",
         verschlussart: verschlussart || null,
+        is_zipper: parseOptionalBool(is_zipper) ?? true,
+        ziernaht: parseOptionalBool(ziernaht) ?? true,
       },
     });
 
@@ -215,7 +229,19 @@ export const updateMaßschaftKollektion = async (
       return;
     }
 
-    const { name, price, catagoary, gender, description, verschlussart } =
+    const parseOptionalBool = (v: unknown): boolean | undefined => {
+      if (v === undefined || v === null || v === "") return undefined;
+      if (typeof v === "boolean") return v;
+      if (typeof v === "number") return v !== 0;
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase();
+        if (["true", "1", "yes", "on"].includes(s)) return true;
+        if (["false", "0", "no", "off"].includes(s)) return false;
+      }
+      return undefined;
+    };
+
+    const { name, price, catagoary, gender, description, verschlussart, is_zipper, ziernaht } =
       req.body;
 
     const updateData: any = {};
@@ -226,6 +252,14 @@ export const updateMaßschaftKollektion = async (
     if (gender !== undefined) updateData.gender = gender;
     if (description !== undefined) updateData.description = description;
     if (verschlussart !== undefined) updateData.verschlussart = verschlussart;
+    if (is_zipper !== undefined) {
+      const b = parseOptionalBool(is_zipper);
+      if (b !== undefined) updateData.is_zipper = b;
+    }
+    if (ziernaht !== undefined) {
+      const b = parseOptionalBool(ziernaht);
+      if (b !== undefined) updateData.ziernaht = b;
+    }
 
     // Handle new image upload
     if (files?.image?.[0]?.location) {

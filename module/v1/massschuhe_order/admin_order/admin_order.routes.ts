@@ -7,6 +7,7 @@ import {
   sendToAdminOrder_2,
   sendToAdminOrder_3,
   getAllAdminOrders,
+  getAllAdminOrdersByPartner,
   getSingleAllAdminOrders,
   createCourierContact,
   customerListOrderContact,
@@ -104,6 +105,14 @@ router.get(
   "/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllAdminOrders,
+);
+
+// Same filters as /get. Partner pagination: `page`+`limit` (offset) or `partnerId`/`cursor` (keyset, ignores page). No-search path uses indexed SQL.
+// GET .../get/by-partner?page=1&limit=2&partnerId=&search=&status=&catagoary=
+router.get(
+  "/get/by-partner",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getAllAdminOrdersByPartner,
 );
 
 //get single admin order
