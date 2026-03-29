@@ -1477,8 +1477,6 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       return summedGroessenMengen;
     };
 
-    console.log(userId);
-
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const skip = (page - 1) * limit;
@@ -1534,23 +1532,60 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       },
     });
 
-    const inactiveBrandSettings = await prisma.store_brand_settings.findMany({
-      where: {
-        partnerId: userId,
-        isActive: false,
-      },
+    const partnerBrandSettings = await prisma.store_brand_settings.findMany({
+      where: { partnerId: userId },
       select: {
         brand: true,
+        type: true,
+        isActive: true,
+        isPdf: true,
       },
     });
+
+    const settingsByBrandLower = new Map<
+      string,
+      { brand: string; type: StoreType; isActive: boolean; isPdf: boolean }[]
+    >();
+    for (const row of partnerBrandSettings) {
+      const key = row.brand.trim().toLowerCase();
+      const list = settingsByBrandLower.get(key) ?? [];
+      list.push(row);
+      settingsByBrandLower.set(key, list);
+    }
+
+    const inactiveBrandSet = new Set<string>();
+    for (const row of partnerBrandSettings) {
+      if (!row.isActive) {
+        inactiveBrandSet.add(row.brand.trim().toLowerCase());
+      }
+    }
+
+    const pickBrandSettingForStore = (
+      brandKeyLower: string,
+      storeType: StoreType,
+    ): {
+      brand: string;
+      type: StoreType;
+      isActive: boolean;
+      isPdf: boolean;
+    } | null => {
+      const list = settingsByBrandLower.get(brandKeyLower);
+      if (!list?.length) return null;
+      const pick =
+        list.find((x) => x.type === storeType) ??
+        list.find((x) => x.type === "rady_insole") ??
+        list[0];
+      return {
+        brand: pick.brand,
+        type: pick.type,
+        isActive: pick.isActive,
+        isPdf: pick.isPdf,
+      };
+    };
 
     const totalPages = Math.ceil(totalItems / limit);
 
     // Add calculated Status to all stores
-    const inactiveBrandSet = new Set(
-      inactiveBrandSettings.map((item) => item.brand.trim().toLowerCase()),
-    );
-
     const storageWithStatus = addStatusToStores(allStorage).map(
       (store: any) => {
         const overviewGroessenMengen = sumOverviewGroessenMengen(
@@ -1570,10 +1605,25 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
           inactiveBrandSet.has(candidate),
         );
 
+        let store_brand_settings: {
+          brand: string;
+          type: StoreType;
+          isActive: boolean;
+          isPdf: boolean;
+        } | null = null;
+        for (const cand of brandCandidates) {
+          const picked = pickBrandSettingForStore(cand, store.type);
+          if (picked) {
+            store_brand_settings = picked;
+            break;
+          }
+        }
+
         return {
           ...store,
           storeOrderOverviews: undefined,
           able_auto_order: isAutoOrderDisabled ? "disable" : "enable",
+          store_brand_settings,
           overview_groessenMengen: overviewGroessenMengen,
         };
       },

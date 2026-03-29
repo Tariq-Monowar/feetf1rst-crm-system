@@ -107,8 +107,8 @@ router.get(
   getAllAdminOrders,
 );
 
-// Same filters as /get. Partner pagination: `page`+`limit` (offset) or `partnerId`/`cursor` (keyset, ignores page). No-search path uses indexed SQL.
-// GET .../get/by-partner?page=1&limit=2&partnerId=&search=&status=&catagoary=
+// Partners: page, limit, partnerId/cursor. Orders per partner: orderPage, orderLimit. Single partner: partnerUserId + orderPage/orderLimit. Filters: search, status, catagoary.
+// GET .../get/by-partner?partnerUserId=<userId>&orderPage=2&orderLimit=50&status=&catagoary=
 router.get(
   "/get/by-partner",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

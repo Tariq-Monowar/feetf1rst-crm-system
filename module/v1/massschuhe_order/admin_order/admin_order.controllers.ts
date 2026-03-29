@@ -1311,11 +1311,11 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
 };
 
 /**
- * Partner pagination (not order rows):
- * - `page` (default 1) + `limit` — offset pagination (lightweight, good for moderate page numbers).
- * - `partnerId` or `cursor` (partner User id) — keyset pagination (faster for deep pages); if set, `page` is ignored.
- * Filters: `search`, `status`, `catagoary` (same as GET /get).
- * Each item: `{ partner, summary, orders }`; summary = all non-canceled orders per partner; orders = filtered list.
+ * Partner pagination: `page` + `limit` (or `partnerId` / `cursor` keyset). Filters: `search`, `status`, `catagoary`.
+ * Order pagination (per partner, same for every partner on the page): `orderPage` + `orderLimit`.
+ * **Single partner:** pass `partnerUserId` = partner's User id → returns only that partner; use `orderPage` / `orderLimit`
+ * to page their orders without loading the partner list. Ignores `page`, `limit`, `partnerId` cursor for partners.
+ * Each item: `{ partner, summary, orders, ordersPagination }`.
  */
 export const getAllAdminOrdersByPartner = async (
   req: Request,
@@ -1547,28 +1547,85 @@ export const getAllAdminOrdersByPartner = async (
     return null;
   }
 
-  function summarizePartnerOrdersForDashboard(orders: any[]) {
-    let totalAmount = 0;
-    const payment: Record<string, number> = {};
-    const workflowStatus: Record<string, number> = {};
-    for (const k of DASHBOARD_WORKFLOW_KEYS) workflowStatus[k] = 0;
+  function emptyWorkflowStatus(): Record<string, number> {
+    const o: Record<string, number> = {};
+    for (const k of DASHBOARD_WORKFLOW_KEYS) o[k] = 0;
+    return o;
+  }
 
-    for (const o of orders) {
-      totalAmount += Number(o.totalPrice) || 0;
-      const pay = o.payment_status ?? "unknown";
-      payment[pay] = (payment[pay] ?? 0) + 1;
-      const key = mapDbWorkflowStatusToSummaryKey(o.status);
-      if (key) workflowStatus[key] += 1;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  /** Scales to large datasets: uses DB aggregates, not loading all order rows. */
+  async function loadPartnerSummariesAggregated(partnerIds: string[]) {
+    const empty = (): {
+      orderCount: number;
+      totalAmount: number;
+      payment: Record<string, number>;
+      workflowStatus: Record<string, number>;
+    } => ({
+      orderCount: 0,
+      totalAmount: 0,
+      payment: {},
+      workflowStatus: emptyWorkflowStatus(),
+    });
+
+    const map = new Map<string, ReturnType<typeof empty>>();
+    for (const id of partnerIds) map.set(id, empty());
+
+    if (partnerIds.length === 0) return map;
+
+    const baseWhere = {
+      order_status: { not: "canceled" as const },
+      partnerId: { in: partnerIds },
+    };
+
+    const [totals, byPayment, byWorkflow] = await Promise.all([
+      prisma.custom_shafts.groupBy({
+        by: ["partnerId"],
+        where: baseWhere,
+        _count: { _all: true },
+        _sum: { totalPrice: true },
+      }),
+      prisma.custom_shafts.groupBy({
+        by: ["partnerId", "payment_status"],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
+      prisma.custom_shafts.groupBy({
+        by: ["partnerId", "status"],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
+    ]);
+
+    for (const row of totals) {
+      const pid = row.partnerId;
+      if (!pid) continue;
+      const s = map.get(pid);
+      if (!s) continue;
+      s.orderCount = row._count._all;
+      s.totalAmount = round2(Number(row._sum.totalPrice) || 0);
     }
 
-    const round2 = (n: number) => Math.round(n * 100) / 100;
+    for (const row of byPayment) {
+      const pid = row.partnerId;
+      if (!pid) continue;
+      const s = map.get(pid);
+      if (!s) continue;
+      const pay = (row.payment_status ?? "unknown") as string;
+      s.payment[pay] = (s.payment[pay] ?? 0) + row._count._all;
+    }
 
-    return {
-      orderCount: orders.length,
-      totalAmount: round2(totalAmount),
-      payment,
-      workflowStatus,
-    };
+    for (const row of byWorkflow) {
+      const pid = row.partnerId;
+      if (!pid) continue;
+      const s = map.get(pid);
+      if (!s) continue;
+      const key = mapDbWorkflowStatusToSummaryKey(row.status as string);
+      if (key) s.workflowStatus[key] += row._count._all;
+    }
+
+    return map;
   }
 
   function shapePartnerForDashboard(p: any) {
@@ -1614,6 +1671,15 @@ export const getAllAdminOrdersByPartner = async (
     const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
     const useKeysetPagination = Boolean(cursorPartnerId);
 
+    const orderLimitRaw = parseInt(String(req.query.orderLimit ?? "20"), 10);
+    const orderLimit = Number.isFinite(orderLimitRaw)
+      ? Math.min(100, Math.max(1, orderLimitRaw))
+      : 20;
+    const orderPageRaw = parseInt(String(req.query.orderPage ?? "1"), 10);
+    const orderPage =
+      Number.isFinite(orderPageRaw) && orderPageRaw >= 1 ? orderPageRaw : 1;
+    const orderSkip = (orderPage - 1) * orderLimit;
+
     if (limit < 1 || limit > 100) {
       return res
         .status(400)
@@ -1626,10 +1692,29 @@ export const getAllAdminOrdersByPartner = async (
     }
     const orderWhere = built.where;
 
+    const partnerUserIdFocus = (
+      (req.query.partnerUserId as string)?.trim() || undefined
+    ) as string | undefined;
+
     let partnerSlice: any[] = [];
     let hasNextPage = false;
+    let partnerPaginationMode: "list" | "singlePartner" = "list";
 
-    if (!search) {
+    if (partnerUserIdFocus) {
+      partnerPaginationMode = "singlePartner";
+      const singlePartner = await prisma.user.findFirst({
+        where: { id: partnerUserIdFocus, role: "PARTNER" },
+        select: PARTNER_CARD_SELECT as any,
+      });
+      if (!singlePartner) {
+        return res.status(404).json({
+          success: false,
+          message: "Partner not found",
+        });
+      }
+      partnerSlice = [singlePartner];
+      hasNextPage = false;
+    } else if (!search) {
       const idPage = await fetchPartnerIdsPageByPartnerFastPath({
         limit,
         page: useKeysetPagination ? 1 : page,
@@ -1658,7 +1743,7 @@ export const getAllAdminOrdersByPartner = async (
           .map((id) => byId.get(id))
           .filter(Boolean) as any[];
       }
-    } else {
+    } else if (search) {
       const userWhere: Record<string, unknown> = {
         role: "PARTNER",
         custom_shafts: { some: orderWhere as object },
@@ -1689,63 +1774,84 @@ export const getAllAdminOrdersByPartner = async (
 
     const partnerIds = partnerSlice.map((p) => p.id);
 
-    /** List rows: respect query filters (status, catagoary, search). */
-    let ordersAll: any[] = [];
-    /** Summary aggregates: all non-canceled orders per partner on this page (ignores list filters). */
-    let ordersAllForSummary: any[] = [];
+    let summaryByPartner = new Map<
+      string,
+      {
+        orderCount: number;
+        totalAmount: number;
+        payment: Record<string, number>;
+        workflowStatus: Record<string, number>;
+      }
+    >();
+    /** Per-partner filtered order counts (for order pagination metadata). */
+    let filteredOrderCountByPartner = new Map<string, number>();
+    /** One page of orders per partner (same filters as before). */
+    let orderListsByPartnerIndex: any[][] = [];
+
     if (partnerIds.length > 0) {
-      const [listRows, summaryRows] = await Promise.all([
-        prisma.custom_shafts.findMany({
-          where: {
-            ...(orderWhere as object),
-            partnerId: { in: partnerIds },
-          } as any,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
-        }),
-        prisma.custom_shafts.findMany({
-          where: {
-            order_status: { not: "canceled" },
-            partnerId: { in: partnerIds },
-          } as any,
-          select: {
-            partnerId: true,
-            totalPrice: true,
-            payment_status: true,
-            status: true,
-          },
-        }),
+      const [summaryMap, countRows, orderPageRows] = await Promise.all([
+        loadPartnerSummariesAggregated(partnerIds),
+        Promise.all(
+          partnerIds.map((pid) =>
+            prisma.custom_shafts.count({
+              where: {
+                ...(orderWhere as object),
+                partnerId: pid,
+              } as any,
+            }),
+          ),
+        ),
+        Promise.all(
+          partnerIds.map((pid) =>
+            prisma.custom_shafts.findMany({
+              where: {
+                ...(orderWhere as object),
+                partnerId: pid,
+              } as any,
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              skip: orderSkip,
+              take: orderLimit + 1,
+              select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
+            }),
+          ),
+        ),
       ]);
-      ordersAll = listRows;
-      ordersAllForSummary = summaryRows;
+      summaryByPartner = summaryMap;
+      partnerIds.forEach((pid, i) => {
+        filteredOrderCountByPartner.set(pid, countRows[i]);
+      });
+      orderListsByPartnerIndex = orderPageRows;
     }
 
-    const byPartner = new Map<string, any[]>();
-    for (const row of ordersAll) {
-      const pid = row.partnerId;
-      if (!pid) continue;
-      if (!byPartner.has(pid)) byPartner.set(pid, []);
-      byPartner.get(pid)!.push(row);
-    }
-
-    const byPartnerSummary = new Map<string, any[]>();
-    for (const row of ordersAllForSummary) {
-      const pid = row.partnerId;
-      if (!pid) continue;
-      if (!byPartnerSummary.has(pid)) byPartnerSummary.set(pid, []);
-      byPartnerSummary.get(pid)!.push(row);
-    }
-
-    const data = partnerSlice.map((p) => {
-      const rawOrders = (byPartner.get(p.id) ?? []).filter(
-        (o) => o.order_status !== "canceled",
-      );
+    const data = partnerSlice.map((p, idx) => {
+      const pid = p.id;
+      const rawPage = orderListsByPartnerIndex[idx] ?? [];
+      const rawOrders = (
+        rawPage.length > orderLimit ? rawPage.slice(0, orderLimit) : rawPage
+      ).filter((o) => o.order_status !== "canceled");
       const orders = rawOrders.map(shapeOrderForPartnerDashboard);
-      const summarySource = byPartnerSummary.get(p.id) ?? [];
+      const totalFilteredOrders = filteredOrderCountByPartner.get(pid) ?? 0;
+      const totalOrderPages = Math.max(
+        1,
+        Math.ceil(totalFilteredOrders / orderLimit),
+      );
       return {
         partner: shapePartnerForDashboard(p),
-        summary: summarizePartnerOrdersForDashboard(summarySource),
+        summary: summaryByPartner.get(pid) ?? {
+          orderCount: 0,
+          totalAmount: 0,
+          payment: {},
+          workflowStatus: emptyWorkflowStatus(),
+        },
         orders,
+        ordersPagination: {
+          page: orderPage,
+          limit: orderLimit,
+          totalOrders: totalFilteredOrders,
+          totalPages: totalOrderPages,
+          hasNextPage: orderPage < totalOrderPages,
+          hasPreviousPage: orderPage > 1,
+        },
       };
     });
 
@@ -1756,17 +1862,25 @@ export const getAllAdminOrdersByPartner = async (
       success: true,
       message: "Admin orders by partner fetched successfully",
       data,
-      pagination: {
-        limit,
-        hasNextPage,
-        mode: useKeysetPagination ? "cursor" : "page",
-        page: useKeysetPagination ? null : page,
-        hasPreviousPage: useKeysetPagination ? false : page > 1,
-        nextPage:
-          !useKeysetPagination && hasNextPage ? page + 1 : null,
-        /** Pass as `partnerId` or `cursor` on the next request (keyset; stable for large datasets). */
-        nextCursor: hasNextPage && lastPartnerId ? lastPartnerId : null,
-      },
+      pagination:
+        partnerPaginationMode === "singlePartner"
+          ? {
+              mode: "singlePartner" as const,
+              partnerUserId: partnerUserIdFocus,
+              /** Partner list fields N/A — use `orderPage` / `orderLimit` for this partner's orders only. */
+              hasNextPage: false,
+            }
+          : {
+              limit,
+              hasNextPage,
+              mode: useKeysetPagination ? ("cursor" as const) : ("page" as const),
+              page: useKeysetPagination ? null : page,
+              hasPreviousPage: useKeysetPagination ? false : page > 1,
+              nextPage:
+                !useKeysetPagination && hasNextPage ? page + 1 : null,
+              nextCursor:
+                hasNextPage && lastPartnerId ? lastPartnerId : null,
+            },
     });
   } catch (error: any) {
     console.error("Get Admin Orders By Partner Error:", error);
