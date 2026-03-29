@@ -1,881 +1,227 @@
-getAllAdminOrders api responce: {
+{
     "success": true,
-    "message": "Admin orders fetched successfully",
+    "message": "Admin orders by partner fetched successfully",
     "data": [
         {
-            "id": "397d6c20-f1e8-4a45-b6b1-666bce3fb76e",
-            "orderNumber": "10010",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 410.96,
-            "other_customer_number": null,
-            "createdAt": "2026-03-27T13:31:45.933Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-15T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
+            "partner": {
+                "id": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
                 "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
+                "busnessName": "partner 1",
+                "partnerId": "002",
+                "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
+                "email": "partner1@gmail.com",
+                "phone": "",
                 "storeLocations": [
                     {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
+                        "id": "3f3727d8-97c9-491f-9233-92c48609621e",
+                        "address": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany",
+                        "description": "test"
                     }
                 ],
                 "accountInfos": [
                     {
-                        "vat_number": null,
-                        "bankInfo": null
+                        "vat_number": "666",
+                        "bankInfo": {
+                            "bic": "CODR",
+                            "bankName": "MacKenzie Fitzgerald",
+                            "bankNumber": "DE0355656454564"
+                        }
                     }
                 ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
+                "businessName": "ekmatro vibahito bekti",
+                "contactName": null,
+                "note": "test",
+                "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
+            },
+            "summary": {
+                "orderCount": 27,
+                "totalAmount": 23415.31,
+                "payment": {
+                    "Paid": 26,
+                    "Unclear": 1
+                },
+                "workflowStatus": {
+                    "Neu": 27,
+                    "Bestellung_eingegangen": 0,
+                    "In_Produktion": 0,
+                    "Qualitätskontrolle": 0,
+                    "Versandt": 0,
+                    "Ausgeführt": 0,
+                    "problem": 0
                 }
             },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "8d069f43-3066-4424-a640-cd62b1199b5e",
-                "name": "Larissa"
+            "orders": [
+                {
+                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                    "orderNumber": "10026",
+                    "catagoary": "Halbprobenerstellung",
+                    "status": "Neu",
+                    "order_status": "active",
+                    "payment_status": "Unclear",
+                    "totalPrice": 3000,
+                    "other_customer_number": null,
+                    "createdAt": "2026-03-19T10:39:56.920Z",
+                    "isCustomeModels": false,
+                    "deliveryDate": null,
+                    "customer": null,
+                    "maßschaft_kollektion": null,
+                    "customModels": [],
+                    "product": "Halbprobenerstellung",
+                    "productName": null,
+                    "modelName": null,
+                    "price": 3000,
+                    "isWorkflowComplete": false
+                },
+                                {
+                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                    "orderNumber": "10026",
+                    "catagoary": "Halbprobenerstellung",
+                    "status": "Neu",
+                    "order_status": "active",
+                    "payment_status": "Unclear",
+                    "totalPrice": 3000,
+                    "other_customer_number": null,
+                    "createdAt": "2026-03-19T10:39:56.920Z",
+                    "isCustomeModels": false,
+                    "deliveryDate": null,
+                    "customer": null,
+                    "maßschaft_kollektion": null,
+                    "customModels": [],
+                    "product": "Halbprobenerstellung",
+                    "productName": null,
+                    "modelName": null,
+                    "price": 3000,
+                    "isWorkflowComplete": false
+                },
+                                {
+                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                    "orderNumber": "10026",
+                    "catagoary": "Halbprobenerstellung",
+                    "status": "Neu",
+                    "order_status": "active",
+                    "payment_status": "Unclear",
+                    "totalPrice": 3000,
+                    "other_customer_number": null,
+                    "createdAt": "2026-03-19T10:39:56.920Z",
+                    "isCustomeModels": false,
+                    "deliveryDate": null,
+                    "customer": null,
+                    "maßschaft_kollektion": null,
+                    "customModels": [],
+                    "product": "Halbprobenerstellung",
+                    "productName": null,
+                    "modelName": null,
+                    "price": 3000,
+                    "isWorkflowComplete": false
+                }
+            ],
+            "ordersPagination": {
+                "page": 1,
+                "limit": 1,
+                "totalOrders": 27,
+                "totalPages": 27,
+                "hasNextPage": true,
+                "hasPreviousPage": false
             }
         },
-        {
-            "id": "3ecaa11d-51d3-482e-86f3-825a3d18797f",
-            "orderNumber": "10009",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 424.45,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T16:34:14.278Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
+                {
+            "partner": {
+                "id": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
                 "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
+                "busnessName": "partner 2",
+                "partnerId": "002",
+                "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
+                "email": "partner@gmail.com",
+                "phone": "",
                 "storeLocations": [
                     {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
+                        "id": "3f3727d8-97c9-491f-9233-92c48609621e",
+                        "address": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany",
+                        "description": "test"
                     }
                 ],
                 "accountInfos": [
                     {
-                        "vat_number": null,
-                        "bankInfo": null
+                        "vat_number": "666",
+                        "bankInfo": {
+                            "bic": "CODR",
+                            "bankName": "MacKenzie Fitzgerald",
+                            "bankNumber": "DE0355656454564"
+                        }
                     }
                 ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
+                "businessName": "ekmatro vibahito bekti",
+                "contactName": null,
+                "note": "test",
+                "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
+            },
+            "summary": {
+                "orderCount": 27,
+                "totalAmount": 23415.31,
+                "payment": {
+                    "Paid": 26,
+                    "Unclear": 1
+                },
+                "workflowStatus": {
+                    "Neu": 27,
+                    "Bestellung_eingegangen": 0,
+                    "In_Produktion": 0,
+                    "Qualitätskontrolle": 0,
+                    "Versandt": 0,
+                    "Ausgeführt": 0,
+                    "problem": 0
                 }
             },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "410b4d71-b7aa-4c8b-9cf3-6614d9014246",
-            "orderNumber": "10001",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 464.43,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T16:21:53.453Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "89178302-47fd-4778-b949-424bf446c3f3",
-                "name": null,
-                "busnessName": "Engelhart Schuhe - Orthopädie",
-                "partnerId": "011",
-                "image": null,
-                "email": "office@engelhart-schuhe.at",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "58afae1b-e627-4151-875d-dee0e43f2771",
-                        "address": "45, Lindauer Straße, Hörbranz, Bezirk Bregenz, Vorarlberg, 6912, Österreich"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
+            "orders": [
+                {
+                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                    "orderNumber": "10026",
+                    "catagoary": "Halbprobenerstellung",
+                    "status": "Neu",
+                    "order_status": "active",
+                    "payment_status": "Unclear",
+                    "totalPrice": 3000,
+                    "other_customer_number": null,
+                    "createdAt": "2026-03-19T10:39:56.920Z",
+                    "isCustomeModels": false,
+                    "deliveryDate": null,
+                    "customer": null,
+                    "maßschaft_kollektion": null,
+                    "customModels": [],
+                    "product": "Halbprobenerstellung",
+                    "productName": null,
+                    "modelName": null,
+                    "price": 3000,
+                    "isWorkflowComplete": false
                 }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "485e8d35-4a80-401b-957a-33778119e69c",
-            "orderNumber": "10008",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 564.43,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T15:17:02.266Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "0b57435e-9d75-4864-9911-e5128b0a5e38",
-            "orderNumber": "10007",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 395.96,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T15:02:11.095Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "4990d02c-b358-4508-96a8-a3ae0fcffd1f",
-            "orderNumber": "10006",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 439.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:46:56.583Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "ab059b02-c7fa-4492-a106-96c3d6150ee3",
-                "name": "Veria (blau)"
+            ],
+            "ordersPagination": {
+                "page": 1,
+                "limit": 1,
+                "totalOrders": 27,
+                "totalPages": 27,
+                "hasNextPage": true,
+                "hasPreviousPage": false
             }
-        },
-        {
-            "id": "2d2d6f9b-4ecb-40b4-9676-ff66ba37b369",
-            "orderNumber": "10005",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 429.45,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:37:47.669Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "60b2fbda-9288-4b30-8acd-b8ccfff64973",
-                "name": "Brixen"
-            }
-        },
-        {
-            "id": "2515adb1-4eb6-4bc7-a159-47ab8c084d32",
-            "orderNumber": "10004",
-            "catagoary": "Komplettfertigung",
-            "status": "Neu",
-            "order_status": "active",
-            "totalPrice": 462.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:28:56.651Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "3eb76c7b-a62a-47a6-91c7-e47f4410a325",
-                "name": "Tarvisio"
-            }
-        },
-        {
-            "id": "98c70180-2978-4f52-b43e-a452948c1824",
-            "orderNumber": "10003",
-            "catagoary": "Halbprobenerstellung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 219.97000000000003,
-            "other_customer_number": null,
-            "createdAt": "2026-03-24T16:20:18.484Z",
-            "isCustomeModels": false,
-            "deliveryDate": null,
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "8de4450a-ebd1-4e28-b222-97047861c18f",
-            "orderNumber": "10002",
-            "catagoary": "Halbprobenerstellung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 219.97000000000003,
-            "other_customer_number": null,
-            "createdAt": "2026-03-24T16:18:37.200Z",
-            "isCustomeModels": false,
-            "deliveryDate": null,
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
         }
     ],
     "pagination": {
-        "limit": 10,
-        "hasNextPage": true
-    }
-}
-
-new api responce: {
-    "success": true,
-    "message": "Admin orders fetched successfully",
-    "data": [
-      {
-
-               "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                data:  [
-
-
-        {
-            "id": "3ecaa11d-51d3-482e-86f3-825a3d18797f",
-            "orderNumber": "10009",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 424.45,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T16:34:14.278Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "410b4d71-b7aa-4c8b-9cf3-6614d9014246",
-            "orderNumber": "10001",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 464.43,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T16:21:53.453Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "89178302-47fd-4778-b949-424bf446c3f3",
-                "name": null,
-                "busnessName": "Engelhart Schuhe - Orthopädie",
-                "partnerId": "011",
-                "image": null,
-                "email": "office@engelhart-schuhe.at",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "58afae1b-e627-4151-875d-dee0e43f2771",
-                        "address": "45, Lindauer Straße, Hörbranz, Bezirk Bregenz, Vorarlberg, 6912, Österreich"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "485e8d35-4a80-401b-957a-33778119e69c",
-            "orderNumber": "10008",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 564.43,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T15:17:02.266Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "0b57435e-9d75-4864-9911-e5128b0a5e38",
-            "orderNumber": "10007",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 395.96,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T15:02:11.095Z",
-            "isCustomeModels": true,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": null
-        },
-        {
-            "id": "4990d02c-b358-4508-96a8-a3ae0fcffd1f",
-            "orderNumber": "10006",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 439.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:46:56.583Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "ab059b02-c7fa-4492-a106-96c3d6150ee3",
-                "name": "Veria (blau)"
-            }
-        },
-        {
-            "id": "2d2d6f9b-4ecb-40b4-9676-ff66ba37b369",
-            "orderNumber": "10005",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 429.45,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:37:47.669Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "60b2fbda-9288-4b30-8acd-b8ccfff64973",
-                "name": "Brixen"
-            }
-        },
-        {
-            "id": "2515adb1-4eb6-4bc7-a159-47ab8c084d32",
-            "orderNumber": "10004",
-            "catagoary": "Komplettfertigung",
-            "status": "Neu",
-            "order_status": "active",
-            "totalPrice": 462.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:28:56.651Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "3eb76c7b-a62a-47a6-91c7-e47f4410a325",
-                "name": "Tarvisio"
-            }
-        },
-
-
-        {
-
-    "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-     "name": null,
-     "busnessName": "Engelhart Schuhe Orthopädie Service",
-     "partnerId": "010",
-     "image": null,
-     "email": "office@engelhart-orthopaedie.de",
-     "phone": null,
-     data:  [
-
-
-        {
-            "id": "4990d02c-b358-4508-96a8-a3ae0fcffd1f",
-            "orderNumber": "10006",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 439.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:46:56.583Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "ab059b02-c7fa-4492-a106-96c3d6150ee3",
-                "name": "Veria (blau)"
-            }
-        },
-        {
-            "id": "2d2d6f9b-4ecb-40b4-9676-ff66ba37b369",
-            "orderNumber": "10005",
-            "catagoary": "Komplettfertigung",
-            "status": "In_Produktiony",
-            "order_status": "active",
-            "totalPrice": 429.45,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:37:47.669Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "60b2fbda-9288-4b30-8acd-b8ccfff64973",
-                "name": "Brixen"
-            }
-        },
-        {
-            "id": "2515adb1-4eb6-4bc7-a159-47ab8c084d32",
-            "orderNumber": "10004",
-            "catagoary": "Komplettfertigung",
-            "status": "Neu",
-            "order_status": "active",
-            "totalPrice": 462.44,
-            "other_customer_number": null,
-            "createdAt": "2026-03-26T07:28:56.651Z",
-            "isCustomeModels": false,
-            "deliveryDate": "2026-04-14T22:00:00.000Z",
-            "user": {
-                "id": "d36b75da-22e0-42a0-a40c-a7cecacccd66",
-                "name": null,
-                "busnessName": "Engelhart Schuhe Orthopädie Service",
-                "partnerId": "010",
-                "image": null,
-                "email": "office@engelhart-orthopaedie.de",
-                "phone": null,
-                "storeLocations": [
-                    {
-                        "id": "86450b24-5184-47b2-827d-b567b6bd01f7",
-                        "address": "14, Freihofstraße, Münchhof Areal, Reutin, Oberreutin, Lindau (Bodensee), Landkreis Lindau, Bayern, 88131, Deutschland"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": null,
-                        "bankInfo": null
-                    }
-                ],
-                "mentor": {
-                    "name": "Michael Maier",
-                    "email": "m.maier@feetf1rst.com",
-                    "phone": "+43 660 295 1239"
-                }
-            },
-            "customer": null,
-            "maßschaft_kollektion": {
-                "id": "3eb76c7b-a62a-47a6-91c7-e47f4410a325",
-                "name": "Tarvisio"
-            }
-        },
-
-     ] 
-                
-    }
-    ],
-    "pagination": {
-        "limit": 10,
-        "hasNextPage": true
+        "limit": 1,
+        "hasNextPage": false,
+        "hasMorePartners": false,
+        "totalPartners": 1,
+        "totalPartnerPages": 1,
+        "partnerPage": 1,
+        "lastPartnerPage": 1,
+        "partnerPageOutOfRange": false,
+        "mode": "page",
+        "page": 1,
+        "hasPreviousPage": false,
+        "nextPage": null,
+        "nextCursor": null
     }
 }

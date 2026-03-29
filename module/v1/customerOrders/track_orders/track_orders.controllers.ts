@@ -1538,7 +1538,6 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
         fussanalysePreis: true,
         einlagenversorgungPreis: true,
 
-
         insoleStandards: {
           select: {
             name: true,
@@ -1580,7 +1579,7 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
             },
           },
         },
- 
+
         customerOrderInsurances: {
           select: {
             id: true,
@@ -1683,15 +1682,13 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     const insuranceVatAmount = insuranceTotalPrice - insuranceNetPrice;
     const subtotalWithoutPrivateShare = Math.max(totalPrice - privatePrice, 0);
 
-    
     const material =
       order.product?.material ??
       (Array.isArray(order.product?.material)
         ? order.product?.material.join(", ")
         : null);
     const supplyName = order.product?.name ?? null;
-    const versorgungName =
-      order.product?.versorgung ?? null;
+    const versorgungName = order.product?.versorgung ?? null;
 
     // if (!customerScreenerFile) {
     //   return res.status(404).json({
@@ -1699,7 +1696,6 @@ export const getPicture2324ByOrderId = async (req: Request, res: Response) => {
     //     message: "Customer screener file not found",
     //   });
     // }
-    
 
     return res.status(200).json({
       success: true,
@@ -2189,6 +2185,13 @@ export const getWerkstattzettelSheetPdfData = async (
       },
     });
 
+    const settings = await prisma.order_settings.findUnique({
+      where: { partnerId },
+      select: {
+        printFootScans: true,
+      },
+    });
+
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -2392,7 +2395,6 @@ export const getKvaData = async (req: Request, res: Response) => {
           doctorName: order?.prescription?.doctor_name,
           doctorLocation: order?.prescription?.doctor_location,
         },
-        
       },
     });
   } catch (error) {

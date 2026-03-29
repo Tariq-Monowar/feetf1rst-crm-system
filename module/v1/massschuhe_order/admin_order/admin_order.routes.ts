@@ -107,8 +107,8 @@ router.get(
   getAllAdminOrders,
 );
 
-// Partners: page, limit, partnerId/cursor. Orders per partner: orderPage, orderLimit. Single partner: partnerUserId + orderPage/orderLimit. Filters: search, status, catagoary.
-// GET .../get/by-partner?partnerUserId=<userId>&orderPage=2&orderLimit=50&status=&catagoary=
+// Orders cursor: limit = max orders in response; cursor = previous nextCursor (order id). Optional partnerUserId, search, status, catagoary.
+// GET .../get/by-partner?limit=5&cursor=<orderId>
 router.get(
   "/get/by-partner",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

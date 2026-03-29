@@ -1311,11 +1311,18 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
 };
 
 /**
- * Partner pagination: `page` + `limit` (or `partnerId` / `cursor` keyset). Filters: `search`, `status`, `catagoary`.
- * Order pagination (per partner, same for every partner on the page): `orderPage` + `orderLimit`.
- * **Single partner:** pass `partnerUserId` = partner's User id → returns only that partner; use `orderPage` / `orderLimit`
- * to page their orders without loading the partner list. Ignores `page`, `limit`, `partnerId` cursor for partners.
+ * **Order cursor pagination (primary):** `limit` = max **orders** in this response (default 20, max 100).
+ * `cursor` = `nextCursor` from the previous response (last order **id** in the stream). Orders are sorted globally
+ * by `createdAt` desc, `id` desc; the response is **grouped by partner** (same shape as before).
+ * **`pagination.nextCursor`** — pass as **`cursor`** on the next request. When `null`, no more orders.
+ * **Summary** (`orderCount`, `totalAmount`, `payment`, `workflowStatus`) is always **full aggregates** for that partner
+ * (all non-canceled orders), not just the orders in this slice.
+ * **Optional:** `partnerUserId` — only orders for that partner; summary still full for that partner.
+ * Filters: `search`, `status`, `catagoary`.
  * Each item: `{ partner, summary, orders, ordersPagination }`.
+ *
+ * **Performance:** cursor validation runs `totalPartners` in parallel with anchor lookup; main path uses one
+ * `groupBy` for per-partner filtered counts (not N× `count`); partner list + summaries + counts load in one round-trip.
  */
 export const getAllAdminOrdersByPartner = async (
   req: Request,
@@ -1414,19 +1421,22 @@ export const getAllAdminOrdersByPartner = async (
     return { ok: true, where };
   }
 
-  /** Partner id page: keyset (`cursorPartnerId`) or OFFSET (`page` + `limit`). */
-  async function fetchPartnerIdsPageByPartnerFastPath(args: {
-    limit: number;
-    page: number;
-    cursorPartnerId: string | undefined;
+  /** Count PARTNER users that have ≥1 matching order (same rules as list: no-search = EXISTS; search = Prisma `some`). */
+  async function countPartnersWithOrders(args: {
     status: unknown;
     catagoary: unknown;
-  }): Promise<string[] | null> {
-    const { limit, page, cursorPartnerId, status, catagoary } = args;
-    const take = limit + 1;
-    const useKeyset = Boolean(cursorPartnerId);
-    const offset = useKeyset ? 0 : Math.max(0, (Math.max(1, page) - 1) * limit);
-
+    search: string;
+    orderWhere: Record<string, unknown>;
+  }): Promise<number> {
+    const { status, catagoary, search, orderWhere } = args;
+    if (search) {
+      return prisma.user.count({
+        where: {
+          role: "PARTNER",
+          custom_shafts: { some: orderWhere as object },
+        } as any,
+      });
+    }
     const existsInner = [
       Prisma.sql`(cs."order_status" IS NULL OR cs."order_status" <> 'canceled'::"admin_order_status")`,
     ];
@@ -1443,43 +1453,19 @@ export const getAllAdminOrdersByPartner = async (
       );
     }
     const existsAnd = Prisma.join(existsInner, " AND ");
-
-    let keysetSql: Prisma.Sql = Prisma.sql``;
-    if (useKeyset && cursorPartnerId) {
-      const anchor = await prisma.user.findUnique({
-        where: { id: cursorPartnerId },
-        select: { createdAt: true, id: true },
-      });
-      if (!anchor) {
-        return null;
-      }
-      keysetSql = Prisma.sql`AND (
-        (u.created_at < ${anchor.createdAt})
-        OR (u.created_at = ${anchor.createdAt} AND u.id < ${anchor.id})
-      )`;
-    }
-
-    const offsetSql = useKeyset
-      ? Prisma.sql``
-      : Prisma.sql`OFFSET ${offset}`;
-
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>(
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
       Prisma.sql`
-      SELECT u.id
+      SELECT COUNT(*)::bigint AS count
       FROM users u
       WHERE u.role = 'PARTNER'::"Role"
-      ${keysetSql}
       AND EXISTS (
         SELECT 1 FROM custom_shafts cs
         WHERE cs."partnerId" = u.id
         AND ${existsAnd}
       )
-      ORDER BY u.created_at DESC, u.id DESC
-      ${offsetSql}
-      LIMIT ${take}
     `,
     );
-    return rows.map((r) => r.id);
+    return Number(rows[0]?.count ?? 0);
   }
 
   const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT = {
@@ -1657,230 +1643,257 @@ export const getAllAdminOrdersByPartner = async (
   }
 
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
+    const orderBatchLimitRaw = parseInt(String(req.query.limit ?? "20"), 10);
+    const orderBatchLimit = Number.isFinite(orderBatchLimitRaw)
+      ? Math.min(100, Math.max(1, orderBatchLimitRaw))
+      : 20;
     const search = (req.query.search as string)?.trim() || "";
     const status = req.query.status;
     const catagoary = req.query.catagoary;
-
-    const cursorPartnerId = (
-      (req.query.partnerId as string)?.trim() ||
-      (req.query.cursor as string)?.trim() ||
-      undefined
-    ) as string | undefined;
-    const pageRaw = parseInt(String(req.query.page ?? "1"), 10);
-    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
-    const useKeysetPagination = Boolean(cursorPartnerId);
-
-    const orderLimitRaw = parseInt(String(req.query.orderLimit ?? "20"), 10);
-    const orderLimit = Number.isFinite(orderLimitRaw)
-      ? Math.min(100, Math.max(1, orderLimitRaw))
-      : 20;
-    const orderPageRaw = parseInt(String(req.query.orderPage ?? "1"), 10);
-    const orderPage =
-      Number.isFinite(orderPageRaw) && orderPageRaw >= 1 ? orderPageRaw : 1;
-    const orderSkip = (orderPage - 1) * orderLimit;
-
-    if (limit < 1 || limit > 100) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Limit must be between 1 and 100" });
-    }
+    const orderCursorId = (req.query.cursor as string)?.trim() || undefined;
 
     const built = buildAdminOrdersWhereClause(status, catagoary, search);
     if (built.ok === false) {
       return res.status(built.status).json(built.body);
     }
-    const orderWhere = built.where;
 
+    const baseOrderWhere: Record<string, unknown> = { ...built.where };
     const partnerUserIdFocus = (
       (req.query.partnerUserId as string)?.trim() || undefined
     ) as string | undefined;
 
-    let partnerSlice: any[] = [];
-    let hasNextPage = false;
-    let partnerPaginationMode: "list" | "singlePartner" = "list";
-
     if (partnerUserIdFocus) {
-      partnerPaginationMode = "singlePartner";
-      const singlePartner = await prisma.user.findFirst({
+      (baseOrderWhere as { partnerId?: string }).partnerId = partnerUserIdFocus;
+    }
+
+    let focusPartnerRow: any = null;
+    if (partnerUserIdFocus) {
+      focusPartnerRow = await prisma.user.findFirst({
         where: { id: partnerUserIdFocus, role: "PARTNER" },
         select: PARTNER_CARD_SELECT as any,
       });
-      if (!singlePartner) {
+      if (!focusPartnerRow) {
         return res.status(404).json({
           success: false,
           message: "Partner not found",
         });
       }
-      partnerSlice = [singlePartner];
-      hasNextPage = false;
-    } else if (!search) {
-      const idPage = await fetchPartnerIdsPageByPartnerFastPath({
-        limit,
-        page: useKeysetPagination ? 1 : page,
-        cursorPartnerId,
-        status,
-        catagoary,
-      });
-      if (idPage === null) {
+    }
+
+    const countArgs = {
+      status,
+      catagoary,
+      search,
+      orderWhere: built.where,
+    };
+
+    const totalPartnersPromise = partnerUserIdFocus
+      ? Promise.resolve(1)
+      : countPartnersWithOrders(countArgs);
+
+    let keysetExtra: Record<string, unknown> | undefined;
+    let totalPartners: number;
+
+    if (orderCursorId) {
+      const [anchor, tp] = await Promise.all([
+        prisma.custom_shafts.findUnique({
+          where: { id: orderCursorId },
+          select: { createdAt: true, id: true },
+        }),
+        totalPartnersPromise,
+      ]);
+      if (!anchor) {
         return res.status(400).json({
           success: false,
-          message: "Invalid partnerId / cursor (user not found)",
+          message: "Invalid cursor (order not found)",
         });
       }
-      hasNextPage = idPage.length > limit;
-      const orderedIds = hasNextPage ? idPage.slice(0, limit) : idPage;
-      if (orderedIds.length > 0) {
-        const fetched = (await prisma.user.findMany({
-          where: { id: { in: orderedIds } },
-          select: PARTNER_CARD_SELECT as any,
-        })) as any[];
-        const byId = new Map<string, any>();
-        for (const row of fetched) {
-          byId.set(row.id as string, row);
-        }
-        partnerSlice = orderedIds
-          .map((id) => byId.get(id))
-          .filter(Boolean) as any[];
-      }
-    } else if (search) {
-      const userWhere: Record<string, unknown> = {
-        role: "PARTNER",
-        custom_shafts: { some: orderWhere as object },
+      totalPartners = tp;
+      keysetExtra = {
+        OR: [
+          { createdAt: { lt: anchor.createdAt } },
+          {
+            AND: [
+              { createdAt: anchor.createdAt },
+              { id: { lt: anchor.id } },
+            ],
+          },
+        ],
       };
-      let partners: any[] = [];
-      try {
-        partners = await prisma.user.findMany({
-          where: userWhere as any,
-          ...(useKeysetPagination
-            ? { cursor: { id: cursorPartnerId! }, skip: 1 }
-            : { skip: (page - 1) * limit }),
-          take: limit + 1,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          select: PARTNER_CARD_SELECT as any,
-        });
-      } catch (e: any) {
-        if (e?.code === "P2025") {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid partnerId / cursor",
-          });
-        }
-        throw e;
-      }
-      hasNextPage = partners.length > limit;
-      partnerSlice = hasNextPage ? partners.slice(0, limit) : partners;
     }
 
-    const partnerIds = partnerSlice.map((p) => p.id);
+    const orderWhereFinal: Record<string, unknown> = keysetExtra
+      ? { AND: [baseOrderWhere, keysetExtra] }
+      : baseOrderWhere;
 
-    let summaryByPartner = new Map<
-      string,
-      {
-        orderCount: number;
-        totalAmount: number;
-        payment: Record<string, number>;
-        workflowStatus: Record<string, number>;
-      }
-    >();
-    /** Per-partner filtered order counts (for order pagination metadata). */
-    let filteredOrderCountByPartner = new Map<string, number>();
-    /** One page of orders per partner (same filters as before). */
-    let orderListsByPartnerIndex: any[][] = [];
-
-    if (partnerIds.length > 0) {
-      const [summaryMap, countRows, orderPageRows] = await Promise.all([
-        loadPartnerSummariesAggregated(partnerIds),
-        Promise.all(
-          partnerIds.map((pid) =>
-            prisma.custom_shafts.count({
-              where: {
-                ...(orderWhere as object),
-                partnerId: pid,
-              } as any,
-            }),
-          ),
-        ),
-        Promise.all(
-          partnerIds.map((pid) =>
-            prisma.custom_shafts.findMany({
-              where: {
-                ...(orderWhere as object),
-                partnerId: pid,
-              } as any,
-              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-              skip: orderSkip,
-              take: orderLimit + 1,
-              select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
-            }),
-          ),
-        ),
-      ]);
-      summaryByPartner = summaryMap;
-      partnerIds.forEach((pid, i) => {
-        filteredOrderCountByPartner.set(pid, countRows[i]);
+    let rawOrderRows: any[];
+    if (orderCursorId) {
+      rawOrderRows = await prisma.custom_shafts.findMany({
+        where: orderWhereFinal as any,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: orderBatchLimit + 1,
+        select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
       });
-      orderListsByPartnerIndex = orderPageRows;
+    } else {
+      const [rows, tp] = (await Promise.all([
+        prisma.custom_shafts.findMany({
+          where: orderWhereFinal as any,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: orderBatchLimit + 1,
+          select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
+        }),
+        totalPartnersPromise,
+      ])) as [any[], number];
+      rawOrderRows = rows;
+      totalPartners = tp;
     }
 
-    const data = partnerSlice.map((p, idx) => {
-      const pid = p.id;
-      const rawPage = orderListsByPartnerIndex[idx] ?? [];
-      const rawOrders = (
-        rawPage.length > orderLimit ? rawPage.slice(0, orderLimit) : rawPage
-      ).filter((o) => o.order_status !== "canceled");
-      const orders = rawOrders.map(shapeOrderForPartnerDashboard);
-      const totalFilteredOrders = filteredOrderCountByPartner.get(pid) ?? 0;
-      const totalOrderPages = Math.max(
-        1,
-        Math.ceil(totalFilteredOrders / orderLimit),
-      );
-      return {
-        partner: shapePartnerForDashboard(p),
-        summary: summaryByPartner.get(pid) ?? {
-          orderCount: 0,
-          totalAmount: 0,
-          payment: {},
-          workflowStatus: emptyWorkflowStatus(),
+    const hasMoreOrders = rawOrderRows.length > orderBatchLimit;
+    const sliceRows = hasMoreOrders
+      ? rawOrderRows.slice(0, orderBatchLimit)
+      : rawOrderRows;
+
+    /** `orderWhere` already excludes canceled; no extra filter (saves per-row work). */
+    const byPartnerOrder = new Map<string, any[]>();
+    for (const o of sliceRows) {
+      const pid = o.partnerId as string | undefined;
+      if (!pid) continue;
+      const list = byPartnerOrder.get(pid) ?? [];
+      list.push(o);
+      byPartnerOrder.set(pid, list);
+    }
+    const orderedPartnerIds = [...byPartnerOrder.keys()];
+
+    const emptySummary = () => ({
+      orderCount: 0,
+      totalAmount: 0,
+      payment: {} as Record<string, number>,
+      workflowStatus: emptyWorkflowStatus(),
+    });
+
+    if (
+      partnerUserIdFocus &&
+      sliceRows.length === 0 &&
+      focusPartnerRow
+    ) {
+      const [summaryMap, totalFiltered] = await Promise.all([
+        loadPartnerSummariesAggregated([partnerUserIdFocus]),
+        prisma.custom_shafts.count({
+          where: baseOrderWhere as any,
+        }),
+      ]);
+      return res.status(200).json({
+        success: true,
+        message: "Admin orders by partner fetched successfully",
+        data: [
+          {
+            partner: shapePartnerForDashboard(focusPartnerRow),
+            summary:
+              summaryMap.get(partnerUserIdFocus) ?? emptySummary(),
+            orders: [],
+            ordersPagination: {
+              mode: "orders_cursor" as const,
+              totalOrders: totalFiltered,
+              returnedHere: 0,
+            },
+          },
+        ],
+        pagination: {
+          mode: "orders_cursor" as const,
+          limit: orderBatchLimit,
+          nextCursor: null,
+          hasNextPage: false,
+          totalPartners,
         },
-        orders,
+      });
+    }
+
+    if (orderedPartnerIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Admin orders by partner fetched successfully",
+        data: [],
+        pagination: {
+          mode: "orders_cursor" as const,
+          limit: orderBatchLimit,
+          nextCursor: null,
+          hasNextPage: false,
+          totalPartners,
+        },
+      });
+    }
+
+    const [partnerRows, summaryByPartner, filteredCountRows] =
+      await Promise.all([
+        prisma.user.findMany({
+          where: { id: { in: orderedPartnerIds } },
+          select: PARTNER_CARD_SELECT as any,
+        }),
+        loadPartnerSummariesAggregated(orderedPartnerIds),
+        prisma.custom_shafts.groupBy({
+          by: ["partnerId"],
+          where: {
+            ...(built.where as object),
+            partnerId: { in: orderedPartnerIds },
+          } as any,
+          _count: { _all: true },
+        }),
+      ]);
+
+    const partnerById = new Map(
+      (partnerRows as any[]).map((p) => [p.id as string, p]),
+    );
+
+    const filteredCountByPartner = new Map<string, number>();
+    for (const r of filteredCountRows) {
+      if (r.partnerId)
+        filteredCountByPartner.set(r.partnerId, r._count._all);
+    }
+    for (const pid of orderedPartnerIds) {
+      if (!filteredCountByPartner.has(pid))
+        filteredCountByPartner.set(pid, 0);
+    }
+
+    /** Keyset anchor must be the last row from the DB slice (before client-side filters). */
+    const lastOrderIdInBatch =
+      hasMoreOrders && sliceRows.length > 0
+        ? sliceRows[sliceRows.length - 1].id
+        : null;
+    const nextCursor = lastOrderIdInBatch;
+
+    const data = orderedPartnerIds.map((pid) => {
+      const p = partnerById.get(pid);
+      const rawOrders = (byPartnerOrder.get(pid) ?? []).map(
+        shapeOrderForPartnerDashboard,
+      );
+      const totalFilteredOrders = filteredCountByPartner.get(pid) ?? 0;
+      return {
+        partner: shapePartnerForDashboard(
+          p ?? { id: pid, storeLocations: [], accountInfos: [] },
+        ),
+        summary: summaryByPartner.get(pid) ?? emptySummary(),
+        orders: rawOrders,
         ordersPagination: {
-          page: orderPage,
-          limit: orderLimit,
+          mode: "orders_cursor" as const,
           totalOrders: totalFilteredOrders,
-          totalPages: totalOrderPages,
-          hasNextPage: orderPage < totalOrderPages,
-          hasPreviousPage: orderPage > 1,
+          returnedHere: rawOrders.length,
         },
       };
     });
-
-    const lastPartnerId =
-      partnerSlice.length > 0 ? partnerSlice[partnerSlice.length - 1].id : null;
 
     res.status(200).json({
       success: true,
       message: "Admin orders by partner fetched successfully",
       data,
-      pagination:
-        partnerPaginationMode === "singlePartner"
-          ? {
-              mode: "singlePartner" as const,
-              partnerUserId: partnerUserIdFocus,
-              /** Partner list fields N/A — use `orderPage` / `orderLimit` for this partner's orders only. */
-              hasNextPage: false,
-            }
-          : {
-              limit,
-              hasNextPage,
-              mode: useKeysetPagination ? ("cursor" as const) : ("page" as const),
-              page: useKeysetPagination ? null : page,
-              hasPreviousPage: useKeysetPagination ? false : page > 1,
-              nextPage:
-                !useKeysetPagination && hasNextPage ? page + 1 : null,
-              nextCursor:
-                hasNextPage && lastPartnerId ? lastPartnerId : null,
-            },
+      pagination: {
+        mode: "orders_cursor" as const,
+        limit: orderBatchLimit,
+        /** Next request: `?cursor=<nextCursor>&limit=...` (same filters). */
+        nextCursor,
+        hasNextPage: hasMoreOrders,
+        totalPartners,
+        ...(partnerUserIdFocus ? { partnerUserId: partnerUserIdFocus } : {}),
+      },
     });
   } catch (error: any) {
     console.error("Get Admin Orders By Partner Error:", error);
