@@ -9,7 +9,7 @@ const router = express.Router();
 // GET {{_baseurl}}store/settings/get-all-brand
 router.get("/get-all-brand", verifyUser("PARTNER", "ADMIN"), getAllBrandStore);
 
-//toggle brand
+// toggle brand (body: { brand, field? } or { brand, isActive?, isPdf? } — see controller)
 // POST {{_baseurl}}store/settings/toggle-brand
 router.post(
   "/toggle-brand",

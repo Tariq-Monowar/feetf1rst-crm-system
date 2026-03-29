@@ -22,20 +22,41 @@ export const getAllBrandStore = async (req: Request, res: Response) => {
             },
             select: {
               brand: true,
+              type: true,
               isActive: true,
+              isPdf: true,
             },
           })
         : [];
 
-    const statusByBrand = new Map<string, boolean>();
+    const rowsByBrand = new Map<string, typeof settings>();
     for (const s of settings) {
-      statusByBrand.set(s.brand, s.isActive);
+      const list = rowsByBrand.get(s.brand) ?? [];
+      list.push(s);
+      rowsByBrand.set(s.brand, list);
     }
 
-    const data = brands.map(({ brand }) => ({
-      brand,
-      isActive: statusByBrand.get(brand ?? "") ?? false,
-    }));
+    const rowByBrand = new Map<
+      string,
+      { isActive: boolean; isPdf: boolean }
+    >();
+    for (const [b, list] of rowsByBrand) {
+      const pick =
+        list.find((x) => x.type === "rady_insole") ?? list[0];
+      rowByBrand.set(b, {
+        isActive: Boolean(pick.isActive),
+        isPdf: Boolean(pick.isPdf),
+      });
+    }
+
+    const data = brands.map(({ brand }) => {
+      const row = rowByBrand.get(brand ?? "");
+      return {
+        brand,
+        isActive: row ? row.isActive : false,
+        isPdf: row ? row.isPdf : false,
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -53,7 +74,14 @@ export const getAllBrandStore = async (req: Request, res: Response) => {
 export const toggleBrandStore = async (req: Request, res: Response) => {
   try {
     const partnerId = String(req.user.id);
-    const { brand } = req.body as { brand?: string };
+    const body = req.body as {
+      brand?: string;
+      /** "active" | "pdf" single flip; "both" flips isActive and isPdf together. Ignored if isActive/isPdf sent. */
+      field?: string;
+      isActive?: boolean;
+      isPdf?: boolean;
+    };
+    const { brand, field } = body;
 
     if (!brand || !brand.trim()) {
       return res.status(400).json({
@@ -79,21 +107,134 @@ export const toggleBrandStore = async (req: Request, res: Response) => {
       where: { partnerId, brand: cleanBrand },
     });
 
-    const nextIsActive = existing ? !existing.isActive : true;
+    const selectOut = {
+      brand: true,
+      isActive: true,
+      isPdf: true,
+    } as const;
+
+    const hasExplicitIsActive = Object.prototype.hasOwnProperty.call(
+      body,
+      "isActive",
+    );
+    const hasExplicitIsPdf = Object.prototype.hasOwnProperty.call(
+      body,
+      "isPdf",
+    );
+
+    // Together: set explicit booleans in one request (any combination).
+    if (hasExplicitIsActive || hasExplicitIsPdf) {
+      const nextIsActive = hasExplicitIsActive
+        ? Boolean(body.isActive)
+        : (existing?.isActive ?? true);
+      const nextIsPdf = hasExplicitIsPdf
+        ? Boolean(body.isPdf)
+        : (existing?.isPdf ?? false);
+
+      const result = existing
+        ? await prisma.store_brand_settings.update({
+            where: { id: existing.id },
+            data: { isActive: nextIsActive, isPdf: nextIsPdf },
+            select: selectOut,
+          })
+        : await prisma.store_brand_settings.create({
+            data: {
+              partnerId,
+              brand: cleanBrand,
+              isActive: nextIsActive,
+              isPdf: nextIsPdf,
+            },
+            select: selectOut,
+          });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    const mode =
+      field === "both"
+        ? "both"
+        : field === "pdf"
+          ? "pdf"
+          : field === "active" || field == null || field === ""
+            ? "active"
+            : null;
+
+    if (mode === null) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'field must be "active", "pdf", or "both" (or send isActive / isPdf to set values)',
+      });
+    }
+
+    if (mode === "both") {
+      const nextIsActive = existing ? !existing.isActive : true;
+      const nextIsPdf = existing ? !existing.isPdf : true;
+
+      const result = existing
+        ? await prisma.store_brand_settings.update({
+            where: { id: existing.id },
+            data: { isActive: nextIsActive, isPdf: nextIsPdf },
+            select: selectOut,
+          })
+        : await prisma.store_brand_settings.create({
+            data: {
+              partnerId,
+              brand: cleanBrand,
+              isActive: nextIsActive,
+              isPdf: nextIsPdf,
+            },
+            select: selectOut,
+          });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    if (mode === "active") {
+      const nextIsActive = existing ? !existing.isActive : true;
+
+      const result = existing
+        ? await prisma.store_brand_settings.update({
+            where: { id: existing.id },
+            data: { isActive: nextIsActive },
+            select: selectOut,
+          })
+        : await prisma.store_brand_settings.create({
+            data: {
+              partnerId,
+              brand: cleanBrand,
+              isActive: nextIsActive,
+            },
+            select: selectOut,
+          });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    }
+
+    const nextIsPdf = existing ? !existing.isPdf : true;
 
     const result = existing
       ? await prisma.store_brand_settings.update({
           where: { id: existing.id },
-          data: { isActive: nextIsActive },
-          select: { brand: true, isActive: true },
+          data: { isPdf: nextIsPdf },
+          select: selectOut,
         })
       : await prisma.store_brand_settings.create({
           data: {
             partnerId,
             brand: cleanBrand,
-            isActive: nextIsActive,
+            isPdf: nextIsPdf,
           },
-          select: { brand: true, isActive: true },
+          select: selectOut,
         });
 
     return res.status(200).json({
