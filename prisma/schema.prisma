@@ -2543,6 +2543,8 @@ enum custom_shafts_status {
   Qualitätskontrolle
   Versandt
   Ausgeführt
+
+  problem
 }
 
 // deleveary date or finish date (one row per category — upsert by category)
