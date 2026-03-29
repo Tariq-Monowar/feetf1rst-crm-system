@@ -48,6 +48,7 @@ import inventory_management from "./inventory_management/inventory_management.ro
 import documents_claims from "./inventory_management/documents_claims/documents_claims.routes";
 import employee_availability from "./employee_availability/employee_availability.routes";
 import inventory_supplier from "./inventory_management/inventory_supplier/inventory_supplier.routes";
+import database_backup from "./database_backup/database_backup.route";
 
 const router = express.Router();
 
@@ -101,6 +102,8 @@ const moduleRoutes = [
   { path: "/inventory-management/documents-claims", route: documents_claims },
   { path: "/employee-availability", route: employee_availability },
   { path: "/inventory-supplier", route: inventory_supplier },
+
+  { path: "/database-backup", route: database_backup },
 ];
 
 moduleRoutes.forEach(({ path, route }) => {
