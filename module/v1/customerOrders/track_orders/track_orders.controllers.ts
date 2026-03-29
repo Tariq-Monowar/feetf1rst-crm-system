@@ -2275,8 +2275,8 @@ export const getWerkstattzettelSheetPdfData = async (
         otherPdfData: settings?.printFootScans
           ? {
               // Order-linked screener_file (always send keys; use null when missing)
-              footImage23: order?.screenerFile?.picture_23 ?? null,
-              footImage24: order?.screenerFile?.picture_24 ?? null,
+              footImage23: order?.screenerFile?.[0]?.picture_23 ?? null,
+              footImage24: order?.screenerFile?.[0]?.picture_24 ?? null,
               footLength: order?.customerFootLength ?? null,
             }
           : null,
