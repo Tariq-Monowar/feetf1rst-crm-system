@@ -178,13 +178,28 @@ export async function runDatabaseBackup() {
 
 export function scheduleDailyDatabaseBackup() {
   if (process.env.DATABASE_BACKUP?.toLowerCase() !== "enabled") {
-    return;
-  }
-  if (process.env.NODE_ENV !== "production") {
     console.log(
-      "[database_backup] cron not scheduled (requires NODE_ENV=production and DATABASE_BACKUP=enabled)",
+      "[database_backup] cron not scheduled (DATABASE_BACKUP is not enabled)",
     );
     return;
+  }
+
+  const isProd = process.env.NODE_ENV === "production";
+  const allowInDev =
+    process.env.DATABASE_BACKUP_IN_DEV?.toLowerCase() === "true";
+  if (!isProd && !allowInDev) {
+    console.log(
+      "[database_backup] cron not scheduled: NODE_ENV is not production (got " +
+        JSON.stringify(process.env.NODE_ENV ?? "(unset)") +
+        "). For production deploys use NODE_ENV=production. " +
+        "To test locally, set DATABASE_BACKUP_IN_DEV=true in .env.",
+    );
+    return;
+  }
+  if (!isProd && allowInDev) {
+    console.warn(
+      "[database_backup] cron scheduling in non-production (DATABASE_BACKUP_IN_DEV=true) — every-minute pg_dump will run.",
+    );
   }
 
   cron.schedule(
