@@ -2197,6 +2197,7 @@ export const getWerkstattzettelSheetPdfData = async (
       where: { partnerId },
       select: {
         printFootScans: true,
+        autoSendToProd: true,
       },
     });
 
@@ -2287,11 +2288,14 @@ export const getWerkstattzettelSheetPdfData = async (
         employee: order?.employee,
         foorSize: order?.foorSize,
         otherPdfPrint: settings?.printFootScans,
+        autoSendToProd: settings?.autoSendToProd,
         otherPdfData: settings?.printFootScans
           ? {
               footImage23: werkstattScreenerFile?.picture_23 ?? null,
               footImage24: werkstattScreenerFile?.picture_24 ?? null,
-              footLength: order?.customerFootLength ?? null,
+              footLength: settings?.autoSendToProd
+                ? (order?.customerFootLength ?? null)
+                : null,
             }
           : null,
       },
