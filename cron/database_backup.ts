@@ -190,6 +190,7 @@ export function scheduleDailyDatabaseBackup() {
   cron.schedule(
     "* * * * *",
     async () => {
+      console.log("cron-tick=======================");
       try {
         await runDatabaseBackup();
       } catch (e) {
