@@ -18,7 +18,8 @@ import {
   cancelAdminOrder,
   getDamianCount,
   manageDamianCount,
-  updateDeliveryDateByAdmin
+  updateDeliveryDateByAdmin,
+  updatePaymentStatus
 } from "./custom_shafts.controllers";
 
 const router = express.Router();
@@ -35,6 +36,7 @@ const router = express.Router();
  * | GET | /custom_shafts/get |
  * | GET | /custom_shafts/get/:id |
  * | PATCH | /custom_shafts/update-status/:id |
+ * | PATCH | /custom_shafts/update-payment-status |
  * | DELETE | /custom_shafts/delete/:id |
  * | GET | /custom_shafts/total-price-resio |
  * | POST | /custom_shafts/cancel-order/:orderId |
@@ -129,6 +131,13 @@ router.patch(
   "/update-status/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateCustomShaftStatus
+);
+
+// PATCH /custom_shafts/update-payment-status
+router.patch(
+  "/update-payment-status",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  updatePaymentStatus
 );
 
 // DELETE /custom_shafts/delete/:id

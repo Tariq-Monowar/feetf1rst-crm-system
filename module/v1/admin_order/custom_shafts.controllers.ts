@@ -1461,6 +1461,86 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
   }
 };
 
+
+export const updatePaymentStatus = async (req: Request, res: Response) => {
+  try {
+    // ids: string[] — custom_shafts ids, e.g. ["id1", "id2"]
+    const { payment_status, ids } = req.body;
+
+    if (ids === undefined || ids === null) {
+      return res.status(400).json({
+        success: false,
+        message: "IDs are required",
+      });
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "IDs must be a non-empty array",
+      });
+    }
+    if (
+      payment_status === undefined ||
+      payment_status === null ||
+      payment_status === ""
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment status is required",
+      });
+    }
+
+    const validPaymentStatuses = ["Paid", "Unpaid", "Unclear"] as const;
+    if (!validPaymentStatuses.includes(payment_status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment status",
+        validStatuses: validPaymentStatuses,
+      });
+    }
+
+    const uniqueIds = [...new Set(ids as string[])];
+
+    const result = await prisma.custom_shafts.updateMany({
+      where: { id: { in: uniqueIds } },
+      data: { payment_status },
+    });
+
+    if (result.count === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Custom shafts not found",
+      });
+    }
+
+    if (result.count !== uniqueIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Some custom shaft IDs were not found",
+        updatedCount: result.count,
+        requestedUniqueCount: uniqueIds.length,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Payment status updated successfully",
+      data: {
+        payment_status,
+        updatedCount: result.count,
+        ids: uniqueIds,
+      },
+    });
+  } catch (error: any) {
+    console.error("Update Payment Status Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating payment status",
+      error: error.message,
+    });
+  }
+};
+
 export const deleteCustomShaft = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
