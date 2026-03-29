@@ -2162,12 +2162,6 @@ export const getWerkstattzettelSheetPdfData = async (
             status: true,
           },
         },
-        screenerFile: {
-          select: {
-            picture_23: true,
-            picture_24: true,
-          },
-        },
         customer: {
           select: {
             vorname: true,
@@ -2177,6 +2171,12 @@ export const getWerkstattzettelSheetPdfData = async (
             email: true,
             fusslange1: true,
             fusslange2: true,
+          },
+        },
+        screenerFile: {
+          select: {
+            picture_23: true,
+            picture_24: true,
           },
         },
       },
@@ -2274,10 +2274,10 @@ export const getWerkstattzettelSheetPdfData = async (
         otherPdfPrint: settings?.printFootScans,
         otherPdfData: settings?.printFootScans
           ? {
-              //foot image 10 and 11 (order-linked screener_file)
-              footImage23: order?.screenerFile?.picture_23,
-              footImage24: order?.screenerFile?.picture_24,
-              footLength: order?.customerFootLength,
+              // Order-linked screener_file (always send keys; use null when missing)
+              footImage23: order?.screenerFile?.picture_23 ?? null,
+              footImage24: order?.screenerFile?.picture_24 ?? null,
+              footLength: order?.customerFootLength ?? null,
             }
           : null,
       },
