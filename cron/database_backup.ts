@@ -10,14 +10,24 @@ import { uploadFileToS3, deleteFileFromS3 } from "../utils/s3utils";
 const execAsync = promisify(exec);
 const prisma = new PrismaClient({ adapter });
 
-function logBackupError(phase: string, err: unknown) {
-  if (err instanceof Error) {
-    console.error(`[database_backup] ERROR [${phase}]`, err.message);
-    if (err.stack) {
-      console.error(err.stack);
-    }
-  } else {
-    console.error(`[database_backup] ERROR [${phase}]`, err);
+const LOG = "[database_backup]";
+
+/** Keep this many newest backups; older rows and S3 objects are removed after each successful upload. */
+const KEEP_LAST_BACKUPS = 5;
+
+function logInfo(message: string) {
+  console.log(`${LOG} ${message}`);
+}
+
+function logWarn(message: string) {
+  console.warn(`${LOG} ${message}`);
+}
+
+function logErr(phase: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`${LOG} ${phase}: ${msg}`);
+  if (process.env.NODE_ENV !== "production" && err instanceof Error && err.stack) {
+    console.error(err.stack);
   }
 }
 
@@ -31,13 +41,13 @@ function pgEnvFromDatabaseUrl(dbUrl: string): NodeJS.ProcessEnv {
   try {
     u = new URL(normalized);
   } catch (e) {
-    logBackupError("pgEnvFromDatabaseUrl:invalid-url", e);
+    logErr("pgEnvFromDatabaseUrl:invalid-url", e);
     throw new Error("DATABASE_URL is not a valid URL");
   }
 
   if (u.protocol !== "postgresql:") {
     const err = new Error("DATABASE_URL must use postgresql:// or postgres://");
-    logBackupError("pgEnvFromDatabaseUrl:bad-protocol", err);
+    logErr("pgEnvFromDatabaseUrl:bad-protocol", err);
     throw err;
   }
 
@@ -46,7 +56,7 @@ function pgEnvFromDatabaseUrl(dbUrl: string): NodeJS.ProcessEnv {
     const err = new Error(
       "DATABASE_URL must include the database name in the path (e.g. .../neondb?...)",
     );
-    logBackupError("pgEnvFromDatabaseUrl:missing-db-path", err);
+    logErr("pgEnvFromDatabaseUrl:missing-db-path", err);
     throw err;
   }
 
@@ -72,7 +82,7 @@ function pgEnvFromDatabaseUrl(dbUrl: string): NodeJS.ProcessEnv {
   return env;
 }
 
-/** Dump, upload to S3, record row, prune backups older than 30 days (local dir `/uploade`). */
+/** Dump, upload to S3, record row, prune to last `KEEP_LAST_BACKUPS` (local dir `/uploade`). */
 export async function runDatabaseBackup() {
   let dumpPath: string | undefined;
 
@@ -80,7 +90,7 @@ export async function runDatabaseBackup() {
     const dbUrl = process.env.DATABASE_URL;
     if (!dbUrl) {
       const err = new Error("DATABASE_URL must be set");
-      logBackupError("runDatabaseBackup:missing-url", err);
+      logErr("runDatabaseBackup:missing-url", err);
       throw err;
     }
 
@@ -88,17 +98,14 @@ export async function runDatabaseBackup() {
     try {
       pgEnv = pgEnvFromDatabaseUrl(dbUrl);
     } catch (e) {
-      logBackupError("runDatabaseBackup:parse-url", e);
+      logErr("runDatabaseBackup:parse-url", e);
       throw e;
     }
 
     const database = pgEnv.PGDATABASE as string;
-    console.log("[database_backup] start", {
-      host: pgEnv.PGHOST,
-      port: pgEnv.PGPORT,
-      database,
-      sslmode: pgEnv.PGSSLMODE ?? "(default)",
-    });
+    logInfo(
+      `starting backup: db=${database} host=${pgEnv.PGHOST} port=${pgEnv.PGPORT}`,
+    );
 
     const date = new Date().toISOString().slice(0, 10);
     const fileName = `${database}_${date}.dump`;
@@ -106,7 +113,7 @@ export async function runDatabaseBackup() {
     try {
       await fs.promises.mkdir(uploadDir, { recursive: true });
     } catch (e) {
-      logBackupError("runDatabaseBackup:mkdir-upload-dir", e);
+      logErr("runDatabaseBackup:mkdir-upload-dir", e);
       throw e;
     }
     dumpPath = path.join(uploadDir, fileName);
@@ -114,7 +121,7 @@ export async function runDatabaseBackup() {
     try {
       await execAsync(`pg_dump -F c -f "${dumpPath}"`, { env: pgEnv });
     } catch (e) {
-      logBackupError("runDatabaseBackup:pg_dump", e);
+      logErr("runDatabaseBackup:pg_dump", e);
       throw e;
     }
 
@@ -122,7 +129,7 @@ export async function runDatabaseBackup() {
     try {
       buffer = await fs.promises.readFile(dumpPath);
     } catch (e) {
-      logBackupError("runDatabaseBackup:read-dump-file", e);
+      logErr("runDatabaseBackup:read-dump-file", e);
       throw e;
     }
 
@@ -134,53 +141,49 @@ export async function runDatabaseBackup() {
         "application/octet-stream",
       );
     } catch (e) {
-      logBackupError("runDatabaseBackup:upload-s3", e);
+      logErr("runDatabaseBackup:upload-s3", e);
       throw e;
     }
 
     try {
       await prisma.database_backup.create({ data: { backupFile: s3Url } });
     } catch (e) {
-      logBackupError("runDatabaseBackup:prisma-create-row", e);
+      logErr("runDatabaseBackup:prisma-create-row", e);
       throw e;
     }
-    console.log("[database_backup] ok:", s3Url);
+    logInfo("backup completed successfully");
   } finally {
     if (dumpPath) {
       try {
         await fs.promises.unlink(dumpPath);
       } catch (e) {
-        logBackupError("runDatabaseBackup:cleanup-dump-file", e);
+        logErr("runDatabaseBackup:cleanup-dump-file", e);
       }
     }
   }
 
   try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
-    const old = await prisma.database_backup.findMany({
-      where: { createdAt: { lt: cutoff } },
+    const ordered = await prisma.database_backup.findMany({
+      orderBy: { createdAt: "desc" },
       select: { id: true, backupFile: true },
     });
-    for (const row of old) {
+    const toRemove = ordered.slice(KEEP_LAST_BACKUPS);
+    for (const row of toRemove) {
       try {
         await deleteFileFromS3(row.backupFile);
         await prisma.database_backup.delete({ where: { id: row.id } });
       } catch (e) {
-        logBackupError(`runDatabaseBackup:retention-delete:${row.id}`, e);
+        logErr(`runDatabaseBackup:retention-delete:${row.id}`, e);
       }
     }
   } catch (e) {
-    logBackupError("runDatabaseBackup:retention-query", e);
+    logErr("runDatabaseBackup:retention-query", e);
     throw e;
   }
 }
 
 export function scheduleDailyDatabaseBackup() {
   if (process.env.DATABASE_BACKUP?.toLowerCase() !== "enabled") {
-    console.log(
-      "[database_backup] cron not scheduled (DATABASE_BACKUP is not enabled)",
-    );
     return;
   }
 
@@ -188,34 +191,28 @@ export function scheduleDailyDatabaseBackup() {
   const allowInDev =
     process.env.DATABASE_BACKUP_IN_DEV?.toLowerCase() === "true";
   if (!isProd && !allowInDev) {
-    console.log(
-      "[database_backup] cron not scheduled: NODE_ENV is not production (got " +
-        JSON.stringify(process.env.NODE_ENV ?? "(unset)") +
-        "). For production deploys use NODE_ENV=production. " +
-        "To test locally, set DATABASE_BACKUP_IN_DEV=true in .env.",
+    logInfo(
+      `scheduled backup skipped (NODE_ENV=${JSON.stringify(process.env.NODE_ENV ?? "unset")}; set NODE_ENV=production or DATABASE_BACKUP_IN_DEV=true)`,
     );
     return;
   }
   if (!isProd && allowInDev) {
-    console.warn(
-      "[database_backup] cron scheduling in non-production (DATABASE_BACKUP_IN_DEV=true) — every-minute pg_dump will run.",
+    logWarn(
+      "scheduling backup cron in non-production (DATABASE_BACKUP_IN_DEV=true)",
     );
   }
 
   cron.schedule(
     "* * * * *",
     async () => {
-      console.log("cron-tick=======================");
       try {
         await runDatabaseBackup();
       } catch (e) {
-        logBackupError("cron-tick", e);
+        logErr("cron", e);
       }
     },
     { timezone: "UTC" },
   );
 
-  console.log(
-    "[database_backup] cron scheduled: every minute (* * * * *), timezone UTC",
-  );
+  logInfo("scheduled: */1 * * * * UTC");
 }
