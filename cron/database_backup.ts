@@ -203,7 +203,7 @@ export function scheduleDailyDatabaseBackup() {
   }
 
   cron.schedule(
-    "* * * * *",
+    "0 7 * * *",
     async () => {
       try {
         await runDatabaseBackup();
@@ -211,8 +211,8 @@ export function scheduleDailyDatabaseBackup() {
         logErr("cron", e);
       }
     },
-    { timezone: "UTC" },
+    { timezone: "Asia/Dhaka" },
   );
 
-  logInfo("scheduled: */1 * * * * UTC");
+  logInfo("scheduled: daily 07:00 Asia/Dhaka (0 7 * * *)");
 }
