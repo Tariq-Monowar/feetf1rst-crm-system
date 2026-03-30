@@ -17,6 +17,8 @@ router.get(
   getKvaData,
 );
 
+//get werkstattzettel sheet pdf data
+//{{_base_url}}v2/shoe-orders/treack-order/werkstattzettel-sheet-pdf/{{orderId}}
 router.get(
   "/werkstattzettel-sheet-pdf/:orderId",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),

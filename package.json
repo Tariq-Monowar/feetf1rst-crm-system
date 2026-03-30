@@ -14,6 +14,7 @@
     "create:ability-if-mt": "ts-node scripts/create-ability-if-mt.ts",
     "adjest:footleagth-for-all-order": "ts-node scripts/adjest-footleagth-for-all-order.ts",
     "set-pasword-for-minkorthopaedie": "ts-node scripts/set-password-for-minkorthopaedie.ts",
+    "verify-pasword-for-minkorthopaedie": "ts-node scripts/verify-password-for-minkorthopaedie.ts",
     "defaults:massschaft-kollektion:false": "ts-node scripts/set-massschaft-kollektion-defaults-false.ts",
     "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts",
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts"
