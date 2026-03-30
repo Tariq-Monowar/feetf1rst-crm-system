@@ -50,7 +50,7 @@ export const allowedOrigins = [
   "https://admin.feetf1rst.tech",
   "https://boc-diet-hartford-featured.trycloudflare.com",
   "https://2rn0d13r-3003.asse.devtunnels.ms",
-  "https://que-loads-editors-reliance.trycloudflare.com"
+  "https://california-guys-hunting-leg.trycloudflare.com"
 ];
 
 app.use(
