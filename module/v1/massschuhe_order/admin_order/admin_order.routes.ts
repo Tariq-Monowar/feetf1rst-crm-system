@@ -8,6 +8,7 @@ import {
   sendToAdminOrder_3,
   getAllAdminOrders,
   getAllAdminOrdersByPartner,
+  getPartnerOrdersMoreByPartnerId,
   getSingleAllAdminOrders,
   createCourierContact,
   customerListOrderContact,
@@ -123,7 +124,15 @@ router.get(
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllAdminOrdersByPartner,
 );
-//anp
+
+// GET /get/by-partner/:partnerUserId/orders — More orders for one partner (same order shape as by-partner).
+//   Keyset: ?cursor=<lastOrderId>&limit=5   |   Offset: ?orderPage=2&limit=5
+//   Filters: search, status, catagoary, order_status, payment_status, lite=1
+router.get(
+  "/get/by-partner/:partnerUserId/orders",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getPartnerOrdersMoreByPartnerId,
+);
 
 //get single admin order
 // GET {{_baseurl}}admin_order/get/:id

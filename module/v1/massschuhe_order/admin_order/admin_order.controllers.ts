@@ -1339,7 +1339,6 @@ export const getAllAdminOrdersByPartner = async (
   req: Request,
   res: Response,
 ) => {
-  // --- Valid enum values (query validation) ---
   const WORKFLOW_STATUSES = [
     "Bestellung_eingegangen",
     "In_Produktion",
@@ -1374,13 +1373,11 @@ export const getAllAdminOrdersByPartner = async (
     };
   }
 
-  /** Maps API `status=In_Produktion` to DB enum `In_Produktiony`. */
   function toDbWorkflowStatus(raw: unknown): string {
     const s = String(raw);
     return s === "In_Produktion" ? "In_Produktiony" : s;
   }
 
-  /** Text search across order rows and related partner (`user` on custom_shafts). */
   function searchMatchBlock(term: string) {
     const q = { contains: term, mode: "insensitive" as const };
     return {
@@ -1406,10 +1403,7 @@ export const getAllAdminOrdersByPartner = async (
     };
   }
 
-  /**
-   * Builds the Prisma `where` for `custom_shafts` rows that belong in the response.
-   */
-  function buildOrderWhereClause(
+  function buildAdminByPartnerOrderWhereClause(
     workflowStatus: unknown,
     catagoary: unknown,
     search: string,
@@ -1440,30 +1434,21 @@ export const getAllAdminOrdersByPartner = async (
     const orderWhere: Record<string, unknown> = adminOrderStatus
       ? { order_status: adminOrderStatus }
       : { order_status: { not: "canceled" } };
-
     const extraConditions: Record<string, unknown>[] = [];
 
-    if (paymentStatus) {
-      extraConditions.push({ payment_status: paymentStatus });
-    }
+    if (paymentStatus) extraConditions.push({ payment_status: paymentStatus });
     if (workflowStatus) {
       extraConditions.push({ status: toDbWorkflowStatus(workflowStatus) });
     }
-    if (catagoary) {
-      extraConditions.push({ catagoary });
-    }
-    if (search) {
-      extraConditions.push(searchMatchBlock(search));
-    }
+    if (catagoary) extraConditions.push({ catagoary });
+    if (search) extraConditions.push(searchMatchBlock(search));
 
     if (extraConditions.length) {
       (orderWhere as { AND?: unknown }).AND = extraConditions;
     }
-
     return { ok: true, orderWhere };
   }
 
-  /** Full order card for dashboard (default). */
   const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT = {
     id: true,
     partnerId: true,
@@ -1478,12 +1463,7 @@ export const getAllAdminOrdersByPartner = async (
     isCustomeModels: true,
     deliveryDate: true,
     customer: {
-      select: {
-        id: true,
-        customerNumber: true,
-        vorname: true,
-        nachname: true,
-      },
+      select: { id: true, customerNumber: true, vorname: true, nachname: true },
     },
     maßschaft_kollektion: { select: { id: true, name: true } },
     customModels: {
@@ -1492,7 +1472,6 @@ export const getAllAdminOrdersByPartner = async (
     },
   } as const;
 
-  /** Lighter select when `lite=1` — skips customModels relation. */
   const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT_LITE = {
     id: true,
     partnerId: true,
@@ -1507,15 +1486,66 @@ export const getAllAdminOrdersByPartner = async (
     isCustomeModels: true,
     deliveryDate: true,
     customer: {
-      select: {
-        id: true,
-        customerNumber: true,
-        vorname: true,
-        nachname: true,
-      },
+      select: { id: true, customerNumber: true, vorname: true, nachname: true },
     },
     maßschaft_kollektion: { select: { id: true, name: true } },
   } as const;
+
+  const ORDER_BY_NEWEST_FIRST = [
+    { createdAt: "desc" as const },
+    { id: "desc" as const },
+  ];
+
+  function shapeOrderForPartnerDashboard(o: any) {
+    const customName = o.customModels?.[0]?.custom_models_name ?? null;
+    const kollektionName = o.maßschaft_kollektion?.name ?? null;
+    const modelName = o.isCustomeModels
+      ? customName ?? kollektionName
+      : kollektionName;
+
+    return {
+      id: o.id,
+      partnerId: o.partnerId ?? null,
+      orderNumber: o.orderNumber ?? null,
+      catagoary: o.catagoary ?? null,
+      status: o.status ?? null,
+      order_status: o.order_status ?? null,
+      payment_status: o.payment_status ?? null,
+      totalPrice: o.totalPrice ?? null,
+      other_customer_number: o.other_customer_number ?? null,
+      createdAt: o.createdAt,
+      deliveryDate: o.deliveryDate ?? null,
+      isCustomeModels: o.isCustomeModels ?? null,
+      customer: o.customer ?? null,
+      maßschaft_kollektion: o.maßschaft_kollektion ?? null,
+      customModels: o.customModels ?? null,
+      product: o.catagoary ?? null,
+      productName: kollektionName,
+      modelName: modelName ?? null,
+      price: o.totalPrice ?? null,
+      isWorkflowComplete: o.status === "Ausgeführt",
+    };
+  }
+
+  function mapOrdersForResponse(
+    rawRows: any[],
+    adminOrderStatusQuery: string | undefined,
+  ) {
+    const rows = adminOrderStatusQuery
+      ? rawRows
+      : rawRows.filter((o) => o.order_status !== "canceled");
+    return rows.map(shapeOrderForPartnerDashboard);
+  }
+
+  function clampIntAdminByPartner(
+    n: number,
+    min: number,
+    max: number,
+    fallback: number,
+  ) {
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(n)));
+  }
 
   const PARTNER_CARD_SELECT = {
     id: true,
@@ -1531,11 +1561,6 @@ export const getAllAdminOrdersByPartner = async (
       select: { id: true, address: true, description: true },
     },
   };
-
-  const ORDER_BY_NEWEST_FIRST = [
-    { createdAt: "desc" as const },
-    { id: "desc" as const },
-  ];
 
   const DASHBOARD_WORKFLOW_KEYS = [
     "Neu",
@@ -1653,62 +1678,10 @@ export const getAllAdminOrdersByPartner = async (
     };
   }
 
-  /** Explicit fields only (avoids bloated JSON from `...row`). */
-  function shapeOrderForPartnerDashboard(o: any) {
-    const customName = o.customModels?.[0]?.custom_models_name ?? null;
-    const kollektionName = o.maßschaft_kollektion?.name ?? null;
-    const modelName = o.isCustomeModels
-      ? customName ?? kollektionName
-      : kollektionName;
-
-    return {
-      id: o.id,
-      partnerId: o.partnerId ?? null,
-      orderNumber: o.orderNumber ?? null,
-      catagoary: o.catagoary ?? null,
-      status: o.status ?? null,
-      order_status: o.order_status ?? null,
-      payment_status: o.payment_status ?? null,
-      totalPrice: o.totalPrice ?? null,
-      other_customer_number: o.other_customer_number ?? null,
-      createdAt: o.createdAt,
-      deliveryDate: o.deliveryDate ?? null,
-      isCustomeModels: o.isCustomeModels ?? null,
-      customer: o.customer ?? null,
-      maßschaft_kollektion: o.maßschaft_kollektion ?? null,
-      customModels: o.customModels ?? null,
-      product: o.catagoary ?? null,
-      productName: kollektionName,
-      modelName: modelName ?? null,
-      price: o.totalPrice ?? null,
-      isWorkflowComplete: o.status === "Ausgeführt",
-    };
-  }
-
-  /**
-   * When the client did not pass `order_status`, we hide canceled rows in the JSON
-   * (DB query already prefers non-canceled; this is a safety net). If `order_status`
-   * is set, the query is authoritative and we return rows as-is.
-   */
-  function mapOrdersForResponse(
-    rawRows: any[],
-    adminOrderStatusQuery: string | undefined,
-  ) {
-    const rows = adminOrderStatusQuery
-      ? rawRows
-      : rawRows.filter((o) => o.order_status !== "canceled");
-    return rows.map(shapeOrderForPartnerDashboard);
-  }
-
   const DEFAULT_PARTNER_LIMIT = 5;
   const MAX_PARTNER_LIMIT = 50;
   const DEFAULT_ORDER_LIMIT = 5;
   const MAX_ORDER_LIMIT = 100;
-
-  function clampInt(n: number, min: number, max: number, fallback: number) {
-    if (!Number.isFinite(n)) return fallback;
-    return Math.min(max, Math.max(min, Math.floor(n)));
-  }
 
   async function countPartnersMatching(orderWhere: Record<string, unknown>) {
     return prisma.user.count({
@@ -1794,7 +1767,7 @@ export const getAllAdminOrdersByPartner = async (
     const paymentStatusQuery =
       (req.query.payment_status as string)?.trim() || undefined;
 
-    const filters = buildOrderWhereClause(
+    const filters = buildAdminByPartnerOrderWhereClause(
       workflowStatus,
       catagoary,
       search,
@@ -1807,13 +1780,13 @@ export const getAllAdminOrdersByPartner = async (
 
     const { orderWhere } = filters;
 
-    const partnerLimit = clampInt(
+    const partnerLimit = clampIntAdminByPartner(
       parseInt(String(req.query.partnerLimit ?? DEFAULT_PARTNER_LIMIT), 10),
       1,
       MAX_PARTNER_LIMIT,
       DEFAULT_PARTNER_LIMIT,
     );
-    const orderLimit = clampInt(
+    const orderLimit = clampIntAdminByPartner(
       parseInt(String(req.query.orderLimit ?? DEFAULT_ORDER_LIMIT), 10),
       1,
       MAX_ORDER_LIMIT,
@@ -2093,6 +2066,340 @@ export const getAllAdminOrdersByPartner = async (
   }
 };
 
+/**
+ * Load more orders for one partner — same order objects as `GET /get/by-partner`.
+ *
+ * **Route:** `GET .../get/by-partner/:partnerUserId/orders`
+ *
+ * **Query**
+ * - `limit` or `orderLimit` — default **5**, max **100**.
+ * - **Keyset:** `cursor` or `afterOrderId` = last order `id` from `ordersMeta.nextCursor` / previous response (newest-first).
+ * - **Offset:** omit `cursor` and use `orderPage` / `ordersPage` (1-based).
+ * - Same filters as by-partner: `search`, `status`, `catagoary`, `order_status`, `payment_status`.
+ * - `lite` / `compact` — omit `customModels` in SQL (smaller payload).
+ */
+export const getPartnerOrdersMoreByPartnerId = async (
+  req: Request,
+  res: Response,
+) => {
+  const WORKFLOW_STATUSES = [
+    "Bestellung_eingegangen",
+    "In_Produktion",
+    "Qualitätskontrolle",
+    "Versandt",
+    "Ausgeführt",
+  ] as const;
+  const PRODUCT_CATEGORIES = [
+    "Halbprobenerstellung",
+    "Massschafterstellung",
+    "Bodenkonstruktion",
+    "Komplettfertigung",
+  ] as const;
+  const ADMIN_ORDER_STATUS = ["active", "canceled", "completed"] as const;
+  const PAYMENT_STATUS = ["Paid", "Unpaid", "Unclear"] as const;
+
+  function reject(
+    status: number,
+    message: string,
+    extra?: Record<string, unknown>,
+  ) {
+    return { ok: false as const, status, body: { success: false, message, ...extra } };
+  }
+  function toDbWorkflowStatus(raw: unknown): string {
+    const s = String(raw);
+    return s === "In_Produktion" ? "In_Produktiony" : s;
+  }
+  function searchMatchBlock(term: string) {
+    const q = { contains: term, mode: "insensitive" as const };
+    return {
+      OR: [
+        { orderNumber: q },
+        { other_customer_number: q },
+        { customer: { OR: [{ vorname: q }, { nachname: q }, { email: q }] } },
+        { maßschaft_kollektion: { name: q } },
+        { user: { OR: [{ name: q }, { busnessName: q }, { email: q }] } },
+      ],
+    };
+  }
+  function buildAdminByPartnerOrderWhereClause(
+    workflowStatus: unknown,
+    catagoary: unknown,
+    search: string,
+    adminOrderStatus: unknown,
+    paymentStatus: unknown,
+  ) {
+    if (workflowStatus && !WORKFLOW_STATUSES.includes(workflowStatus as any)) {
+      return reject(400, "Invalid status value", { validStatuses: WORKFLOW_STATUSES });
+    }
+    if (catagoary && !PRODUCT_CATEGORIES.includes(catagoary as any)) {
+      return reject(400, "Invalid catagoary value", {
+        validCatagoaries: PRODUCT_CATEGORIES,
+      });
+    }
+    if (adminOrderStatus && !ADMIN_ORDER_STATUS.includes(adminOrderStatus as any)) {
+      return reject(400, "Invalid order_status value", {
+        validOrderStatuses: ADMIN_ORDER_STATUS,
+      });
+    }
+    if (paymentStatus && !PAYMENT_STATUS.includes(paymentStatus as any)) {
+      return reject(400, "Invalid payment_status value", {
+        validPaymentStatuses: PAYMENT_STATUS,
+      });
+    }
+    const orderWhere: Record<string, unknown> = adminOrderStatus
+      ? { order_status: adminOrderStatus }
+      : { order_status: { not: "canceled" } };
+    const extraConditions: Record<string, unknown>[] = [];
+    if (paymentStatus) extraConditions.push({ payment_status: paymentStatus });
+    if (workflowStatus) {
+      extraConditions.push({ status: toDbWorkflowStatus(workflowStatus) });
+    }
+    if (catagoary) extraConditions.push({ catagoary });
+    if (search) extraConditions.push(searchMatchBlock(search));
+    if (extraConditions.length) {
+      (orderWhere as { AND?: unknown }).AND = extraConditions;
+    }
+    return { ok: true as const, orderWhere };
+  }
+  const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT = {
+    id: true,
+    partnerId: true,
+    orderNumber: true,
+    catagoary: true,
+    status: true,
+    order_status: true,
+    payment_status: true,
+    totalPrice: true,
+    other_customer_number: true,
+    createdAt: true,
+    isCustomeModels: true,
+    deliveryDate: true,
+    customer: {
+      select: { id: true, customerNumber: true, vorname: true, nachname: true },
+    },
+    maßschaft_kollektion: { select: { id: true, name: true } },
+    customModels: { take: 1, select: { custom_models_name: true } },
+  } as const;
+  const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT_LITE = {
+    id: true,
+    partnerId: true,
+    orderNumber: true,
+    catagoary: true,
+    status: true,
+    order_status: true,
+    payment_status: true,
+    totalPrice: true,
+    other_customer_number: true,
+    createdAt: true,
+    isCustomeModels: true,
+    deliveryDate: true,
+    customer: {
+      select: { id: true, customerNumber: true, vorname: true, nachname: true },
+    },
+    maßschaft_kollektion: { select: { id: true, name: true } },
+  } as const;
+  const ORDER_BY_NEWEST_FIRST = [
+    { createdAt: "desc" as const },
+    { id: "desc" as const },
+  ];
+  function shapeOrderForPartnerDashboard(o: any) {
+    const customName = o.customModels?.[0]?.custom_models_name ?? null;
+    const kollektionName = o.maßschaft_kollektion?.name ?? null;
+    const modelName = o.isCustomeModels ? customName ?? kollektionName : kollektionName;
+    return {
+      id: o.id,
+      partnerId: o.partnerId ?? null,
+      orderNumber: o.orderNumber ?? null,
+      catagoary: o.catagoary ?? null,
+      status: o.status ?? null,
+      order_status: o.order_status ?? null,
+      payment_status: o.payment_status ?? null,
+      totalPrice: o.totalPrice ?? null,
+      other_customer_number: o.other_customer_number ?? null,
+      createdAt: o.createdAt,
+      deliveryDate: o.deliveryDate ?? null,
+      isCustomeModels: o.isCustomeModels ?? null,
+      customer: o.customer ?? null,
+      maßschaft_kollektion: o.maßschaft_kollektion ?? null,
+      customModels: o.customModels ?? null,
+      product: o.catagoary ?? null,
+      productName: kollektionName,
+      modelName: modelName ?? null,
+      price: o.totalPrice ?? null,
+      isWorkflowComplete: o.status === "Ausgeführt",
+    };
+  }
+  function mapOrdersForResponse(rawRows: any[], adminOrderStatusQuery?: string) {
+    const rows = adminOrderStatusQuery
+      ? rawRows
+      : rawRows.filter((o) => o.order_status !== "canceled");
+    return rows.map(shapeOrderForPartnerDashboard);
+  }
+  function clampIntAdminByPartner(
+    n: number,
+    min: number,
+    max: number,
+    fallback: number,
+  ) {
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(n)));
+  }
+
+  try {
+    const partnerUserId = (req.params.partnerUserId as string)?.trim();
+    if (!partnerUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Partner user id is required",
+      });
+    }
+
+    const search = (req.query.search as string)?.trim() || "";
+    const workflowStatus = req.query.status;
+    const catagoary = req.query.catagoary;
+    const adminOrderStatusQuery =
+      (req.query.order_status as string)?.trim() || undefined;
+    const paymentStatusQuery =
+      (req.query.payment_status as string)?.trim() || undefined;
+
+    const filters = buildAdminByPartnerOrderWhereClause(
+      workflowStatus,
+      catagoary,
+      search,
+      adminOrderStatusQuery,
+      paymentStatusQuery,
+    );
+    if (filters.ok === false) {
+      return res.status(filters.status).json(filters.body);
+    }
+
+    const { orderWhere } = filters;
+
+    const partner = await prisma.user.findFirst({
+      where: { id: partnerUserId, role: "PARTNER" },
+      select: { id: true },
+    });
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "Partner not found",
+      });
+    }
+
+    const DEFAULT_ORDER_LIMIT = 5;
+    const MAX_ORDER_LIMIT = 100;
+    const limit = clampIntAdminByPartner(
+      parseInt(
+        String(req.query.limit ?? req.query.orderLimit ?? DEFAULT_ORDER_LIMIT),
+        10,
+      ),
+      1,
+      MAX_ORDER_LIMIT,
+      DEFAULT_ORDER_LIMIT,
+    );
+
+    const cursorOrderId =
+      (req.query.cursor as string)?.trim() ||
+      (req.query.afterOrderId as string)?.trim() ||
+      undefined;
+
+    const orderPageRaw = parseInt(
+      String(req.query.orderPage ?? req.query.ordersPage ?? "1"),
+      10,
+    );
+    const orderPage =
+      Number.isFinite(orderPageRaw) && orderPageRaw >= 1 ? orderPageRaw : 1;
+
+    const useLiteOrders =
+      ["1", "true", "yes"].includes(String(req.query.lite ?? "").toLowerCase()) ||
+      req.query.compact === "1";
+    const orderSelect = useLiteOrders
+      ? ADMIN_ORDER_BY_PARTNER_ORDER_SELECT_LITE
+      : ADMIN_ORDER_BY_PARTNER_ORDER_SELECT;
+
+    const baseOrderWhere: Record<string, unknown> = {
+      ...orderWhere,
+      partnerId: partnerUserId,
+    };
+
+    let orderRowsPlus: any[];
+
+    if (cursorOrderId) {
+      const anchor = await prisma.custom_shafts.findFirst({
+        where: { id: cursorOrderId, partnerId: partnerUserId },
+        select: { id: true, createdAt: true },
+      });
+      if (!anchor) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid cursor / afterOrderId (order not found for this partner).",
+        });
+      }
+      orderRowsPlus = await prisma.custom_shafts.findMany({
+        where: {
+          AND: [
+            baseOrderWhere as object,
+            {
+              OR: [
+                { createdAt: { lt: anchor.createdAt } },
+                {
+                  AND: [
+                    { createdAt: anchor.createdAt },
+                    { id: { lt: anchor.id } },
+                  ],
+                },
+              ],
+            },
+          ],
+        } as any,
+        orderBy: ORDER_BY_NEWEST_FIRST,
+        take: limit + 1,
+        select: orderSelect as any,
+      });
+    } else {
+      const orderSkip = (orderPage - 1) * limit;
+      orderRowsPlus = await prisma.custom_shafts.findMany({
+        where: baseOrderWhere as any,
+        orderBy: ORDER_BY_NEWEST_FIRST,
+        skip: orderSkip,
+        take: limit + 1,
+        select: orderSelect as any,
+      });
+    }
+
+    const hasNextPage = orderRowsPlus.length > limit;
+    const rawSlice = orderRowsPlus.slice(0, limit);
+    const orders = mapOrdersForResponse(rawSlice, adminOrderStatusQuery);
+
+    const lastId = orders.length
+      ? (orders[orders.length - 1] as { id: string }).id
+      : null;
+    const nextCursor = hasNextPage && lastId ? lastId : null;
+
+    return res.status(200).json({
+      success: true,
+      message: "Partner orders fetched successfully",
+      data: {
+        partnerUserId,
+        orders,
+      },
+      ordersMeta: {
+        ...(cursorOrderId ? {} : { page: orderPage }),
+        limit,
+        hasNextPage,
+        nextCursor,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get Partner Orders By Partner Id Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching partner orders",
+      error: error.message,
+    });
+  }
+};
 
 export const getSingleAllAdminOrders = async (req: Request, res: Response) => {
   try {
