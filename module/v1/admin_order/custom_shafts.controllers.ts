@@ -885,19 +885,40 @@ export const createCustomBodenkonstruktionOrder = async (
       bodenkonstruktion_json,
       deliveryDate,
       shoe_order_id,
+      customer_id,
     } = req.body;
     const shoeOrderId =
       typeof shoe_order_id === "string" && shoe_order_id.trim()
         ? shoe_order_id.trim()
         : null;
+    const customerId =
+      typeof customer_id === "string" && customer_id.trim()
+        ? customer_id.trim()
+        : null;
 
-    // Validate required fields
-    if (!other_customer_name) {
-      cleanupFiles();
-      return res.status(400).json({
-        success: false,
-        message: "customerName is required",
+    // Validate required fields (accept either customer_id or other_customer_name)
+    // if (!customerId && !other_customer_name) {
+    //   cleanupFiles();
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Either customer_id or customerName is required",
+    //   });
+    // }
+
+    let customer: { id: string; customerNumber: number | null } | null = null;
+    if (customerId) {
+      customer = await prisma.customers.findFirst({
+        where: { id: customerId, partnerId: id },
+        select: { id: true, customerNumber: true },
       });
+      if (!customer) {
+        cleanupFiles();
+        return res.status(404).json({
+          success: false,
+          message:
+            "customer_id not found or does not belong to the authenticated partner",
+        });
+      }
     }
 
     if (!totalPrice) {
@@ -996,6 +1017,7 @@ export const createCustomBodenkonstruktionOrder = async (
         orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
         ...(shoeOrderId && { shoe_order: { connect: { id: shoeOrderId } } }),
+        ...(customer?.id && { customer: { connect: { id: customer.id } } }),
       },
       select: {
         id: true,
@@ -1029,6 +1051,12 @@ export const createCustomBodenkonstruktionOrder = async (
           INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, note, "createdAt", "updatedAt")
           VALUES (gen_random_uuid(), ${(data as any).orderNumber}, ${"shoes"}, ${id}, ${customShaftId}, ${"Bodenkonstruktion"}, ${parsedTotalPrice ?? null}, ${"Custom Bodenkonstruktion send to admin"}, NOW(), NOW())
         `;
+        if (customer?.id) {
+          await prisma.admin_order_transitions.updateMany({
+            where: { custom_shafts_id: customShaftId },
+            data: { customerId: customer.id },
+          });
+        }
 
         const existing = await prisma.partner_total_amount.findFirst({
           where: { partnerId: id },
@@ -1086,7 +1114,7 @@ export const createCustomBodenkonstruktionOrder = async (
     return res.status(200).json({
       success: true,
       message: "Custom Bodenkonstruktion order created successfully",
-      data: { ...data, shoe_order_id: shoeOrderId },
+      data: { ...data, shoe_order_id: shoeOrderId, customer_id: customer?.id ?? null },
     });
   } catch (error: any) {
     console.error("Create Custom Bodenkonstruktion Order Error:", error);
