@@ -240,9 +240,9 @@ export const sendInvoiceEmail = async (
 
 /*-----------------------
   CUSTOM SHAFT ORDER
-------------------------*/
+------------------------*///NODE_ENV=development
 
-const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "tqmhosain@gmail.com"; // "info@feetf1rst.com"; //
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = process.env.NODE_ENV === "development" ? "tqmhosain@gmail.com" : "info@feetf1rst.com"; // "info@feetf1rst.com"; //
 
 export const sendCustomShaftOrderNotification = async (
   payload: CustomShaftOrderEmailPayload,
