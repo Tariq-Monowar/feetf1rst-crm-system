@@ -1634,6 +1634,15 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           order: {
             select: {
               half_sample_required: true,
+              customer: {
+                select: {
+                  id: true,
+                  customerNumber: true,
+                  vorname: true,
+                  nachname: true,
+                  telefon: true,
+                },
+              },
             },
           },
           partner: {
