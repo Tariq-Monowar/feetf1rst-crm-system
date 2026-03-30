@@ -305,6 +305,15 @@ export const getWerkstattzettelSheetPdf = async (
         has_trim_strips: true,
         bedding_required: true,
         supply_note: true,
+        employee: {
+          select: {
+            id: true,
+            employeeName: true,
+            accountName: true,
+            role: true,
+            image: true,
+          },
+        },
         shoeOrderStep: {
           select: {
             id: true,
@@ -329,14 +338,7 @@ export const getWerkstattzettelSheetPdf = async (
           },
           orderBy: { createdAt: "asc" },
         },
-        prescription: {
-          select: {
-            id: true,
-            doctor_name: true,
-            doctor_location: true,
-            createdAt: true,
-          },
-        },
+        prescription: true,
         partner: {
           select: {
             id: true,
@@ -368,6 +370,18 @@ export const getWerkstattzettelSheetPdf = async (
       });
     }
 
+    const stepHalbprobenerstellung =
+      order.shoeOrderStep.find((s) => s.status === "Halbprobenerstellung") ??
+      null;
+    const stepHalbprobeDurchfuehren =
+      order.shoeOrderStep.find((s) => s.status === "Halbprobe_durchführen") ??
+      null;
+    const stepLeistenerstellung =
+      order.shoeOrderStep.find((s) => s.status === "Leistenerstellung") ?? null;
+    const stepBettungserstellung =
+      order.shoeOrderStep.find((s) => s.status === "Bettungserstellung") ??
+      null;
+
     return res.status(200).json({
       success: true,
       message: "Werkstattzettel sheet data fetched successfully",
@@ -380,14 +394,67 @@ export const getWerkstattzettelSheetPdf = async (
           phone: order?.customer?.telefon,
           email: order?.customer?.email,
         },
-        prescriptionInfo: {
-          prescription: order?.prescription,
+        prescriptionInfo: order?.prescription,
+        orderInfo: {
+          orderNumber: order?.orderNumber,
+          createdAt: order?.createdAt,
+          branch_location: order?.branch_location,
+          quantity: order?.quantity,
+          vat_rate: order?.vat_rate,
+          supply_note: order?.supply_note,
+          priseInfo: {
+            insurance_price: order?.insurance_price,
+            private_price: order?.private_price,
+            addon_price: order?.addon_price,
+            discount: order?.discount,
+            total_price: order?.total_price,
+            vat_rate: order?.vat_rate,
+            Netto: "nai 😐😐😐",
+          },
         },
-
-        productionWorkflow: {
+        employeeInfo: order?.employee,
+        anamulVai: "-------- eta order er vitorer data-----------",
+        half_sample: {
           half_sample_required: order?.half_sample_required,
+          step4_halbprobenerstellung: {
+            isCompleted: stepHalbprobenerstellung?.isCompleted ?? null,
+            auto_print: stepHalbprobenerstellung?.auto_print ?? null,
+            preparation_date:
+              stepHalbprobenerstellung?.preparation_date ?? null,
+            fitting_date: stepHalbprobenerstellung?.fitting_date ?? null,
+            notes: stepHalbprobenerstellung?.notes ?? null,
+          },
+          step5_halbprobe_durchfuehren: {
+            isCompleted: stepHalbprobeDurchfuehren?.isCompleted ?? null,
+            auto_print: stepHalbprobeDurchfuehren?.auto_print ?? null,
+            fitting_date: stepHalbprobeDurchfuehren?.fitting_date ?? null,
+            adjustments: stepHalbprobeDurchfuehren?.adjustments ?? null,
+            customer_reviews:
+              stepHalbprobeDurchfuehren?.customer_reviews ?? null,
+            notes: stepHalbprobeDurchfuehren?.notes ?? null,
+          },
+        },
+        has_trim: {
           has_trim_strips: order?.has_trim_strips,
+          step2_leistenerstellung: {
+            isCompleted: stepLeistenerstellung?.isCompleted ?? null,
+            auto_print: stepLeistenerstellung?.auto_print ?? null,
+            material: stepLeistenerstellung?.material ?? null,
+            leistentyp: stepLeistenerstellung?.leistentyp ?? null,
+            notes: stepLeistenerstellung?.notes ?? null,
+            leistengroesse: stepLeistenerstellung?.leistengröße ?? null,
+          },
+        },
+        bedding_required: {
           bedding_required: order?.bedding_required,
+          step3_bettungserstellung: {
+            isCompleted: stepBettungserstellung?.isCompleted ?? null,
+            auto_print: stepBettungserstellung?.auto_print ?? null,
+            step3_json: stepBettungserstellung?.step3_json ?? null,
+            zusaetzliche_notizen:
+              stepBettungserstellung?.zusätzliche_notizen ?? null,
+            notes: stepBettungserstellung?.notes ?? null,
+          },
         },
       },
     });
