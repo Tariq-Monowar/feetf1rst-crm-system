@@ -1,227 +1,126 @@
 {
-    "success": true,
-    "message": "Admin orders by partner fetched successfully",
-    "data": [
-        {
-            "partner": {
-                "id": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                "name": null,
-                "busnessName": "partner 1",
-                "partnerId": "002",
-                "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
-                "email": "partner1@gmail.com",
-                "phone": "",
-                "storeLocations": [
-                    {
-                        "id": "3f3727d8-97c9-491f-9233-92c48609621e",
-                        "address": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany",
-                        "description": "test"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": "666",
-                        "bankInfo": {
-                            "bic": "CODR",
-                            "bankName": "MacKenzie Fitzgerald",
-                            "bankNumber": "DE0355656454564"
-                        }
-                    }
-                ],
-                "businessName": "ekmatro vibahito bekti",
-                "contactName": null,
-                "note": "test",
-                "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
-            },
-            "summary": {
-                "orderCount": 27,
-                "totalAmount": 23415.31,
-                "payment": {
-                    "Paid": 26,
-                    "Unclear": 1
-                },
-                "workflowStatus": {
-                    "Neu": 27,
-                    "Bestellung_eingegangen": 0,
-                    "In_Produktion": 0,
-                    "Qualitätskontrolle": 0,
-                    "Versandt": 0,
-                    "Ausgeführt": 0,
-                    "problem": 0
-                }
-            },
-            "orders": [
-                {
-                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
-                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                    "orderNumber": "10026",
-                    "catagoary": "Halbprobenerstellung",
-                    "status": "Neu",
-                    "order_status": "active",
-                    "payment_status": "Unclear",
-                    "totalPrice": 3000,
-                    "other_customer_number": null,
-                    "createdAt": "2026-03-19T10:39:56.920Z",
-                    "isCustomeModels": false,
-                    "deliveryDate": null,
-                    "customer": null,
-                    "maßschaft_kollektion": null,
-                    "customModels": [],
-                    "product": "Halbprobenerstellung",
-                    "productName": null,
-                    "modelName": null,
-                    "price": 3000,
-                    "isWorkflowComplete": false
-                },
-                                {
-                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
-                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                    "orderNumber": "10026",
-                    "catagoary": "Halbprobenerstellung",
-                    "status": "Neu",
-                    "order_status": "active",
-                    "payment_status": "Unclear",
-                    "totalPrice": 3000,
-                    "other_customer_number": null,
-                    "createdAt": "2026-03-19T10:39:56.920Z",
-                    "isCustomeModels": false,
-                    "deliveryDate": null,
-                    "customer": null,
-                    "maßschaft_kollektion": null,
-                    "customModels": [],
-                    "product": "Halbprobenerstellung",
-                    "productName": null,
-                    "modelName": null,
-                    "price": 3000,
-                    "isWorkflowComplete": false
-                },
-                                {
-                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
-                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                    "orderNumber": "10026",
-                    "catagoary": "Halbprobenerstellung",
-                    "status": "Neu",
-                    "order_status": "active",
-                    "payment_status": "Unclear",
-                    "totalPrice": 3000,
-                    "other_customer_number": null,
-                    "createdAt": "2026-03-19T10:39:56.920Z",
-                    "isCustomeModels": false,
-                    "deliveryDate": null,
-                    "customer": null,
-                    "maßschaft_kollektion": null,
-                    "customModels": [],
-                    "product": "Halbprobenerstellung",
-                    "productName": null,
-                    "modelName": null,
-                    "price": 3000,
-                    "isWorkflowComplete": false
-                }
-            ],
-            "ordersPagination": {
-                "page": 1,
-                "limit": 1,
-                "totalOrders": 27,
-                "totalPages": 27,
-                "hasNextPage": true,
-                "hasPreviousPage": false
-            }
-        },
-                {
-            "partner": {
-                "id": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                "name": null,
-                "busnessName": "partner 2",
-                "partnerId": "002",
-                "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
-                "email": "partner@gmail.com",
-                "phone": "",
-                "storeLocations": [
-                    {
-                        "id": "3f3727d8-97c9-491f-9233-92c48609621e",
-                        "address": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany",
-                        "description": "test"
-                    }
-                ],
-                "accountInfos": [
-                    {
-                        "vat_number": "666",
-                        "bankInfo": {
-                            "bic": "CODR",
-                            "bankName": "MacKenzie Fitzgerald",
-                            "bankNumber": "DE0355656454564"
-                        }
-                    }
-                ],
-                "businessName": "ekmatro vibahito bekti",
-                "contactName": null,
-                "note": "test",
-                "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
-            },
-            "summary": {
-                "orderCount": 27,
-                "totalAmount": 23415.31,
-                "payment": {
-                    "Paid": 26,
-                    "Unclear": 1
-                },
-                "workflowStatus": {
-                    "Neu": 27,
-                    "Bestellung_eingegangen": 0,
-                    "In_Produktion": 0,
-                    "Qualitätskontrolle": 0,
-                    "Versandt": 0,
-                    "Ausgeführt": 0,
-                    "problem": 0
-                }
-            },
-            "orders": [
-                {
-                    "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
-                    "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
-                    "orderNumber": "10026",
-                    "catagoary": "Halbprobenerstellung",
-                    "status": "Neu",
-                    "order_status": "active",
-                    "payment_status": "Unclear",
-                    "totalPrice": 3000,
-                    "other_customer_number": null,
-                    "createdAt": "2026-03-19T10:39:56.920Z",
-                    "isCustomeModels": false,
-                    "deliveryDate": null,
-                    "customer": null,
-                    "maßschaft_kollektion": null,
-                    "customModels": [],
-                    "product": "Halbprobenerstellung",
-                    "productName": null,
-                    "modelName": null,
-                    "price": 3000,
-                    "isWorkflowComplete": false
-                }
-            ],
-            "ordersPagination": {
-                "page": 1,
-                "limit": 1,
-                "totalOrders": 27,
-                "totalPages": 27,
-                "hasNextPage": true,
-                "hasPreviousPage": false
-            }
-        }
-    ],
-    "pagination": {
-        "limit": 1,
-        "hasNextPage": false,
-        "hasMorePartners": false,
-        "totalPartners": 1,
-        "totalPartnerPages": 1,
-        "partnerPage": 1,
-        "lastPartnerPage": 1,
-        "partnerPageOutOfRange": false,
-        "mode": "page",
-        "page": 1,
-        "hasPreviousPage": false,
-        "nextPage": null,
-        "nextCursor": null
-    }
+  "success": true,
+  "message": "Admin orders by partner fetched successfully",
+  "data": [
+      {
+          "partner": {
+              "id": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+              "name": null,
+              "busnessName": "ekmatro vibahito bekti",
+              "partnerId": "002",
+              "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
+              "email": "partner@gmail.com",
+              "phone": "",
+              "storeLocations": [
+                  {
+                      "id": "3f3727d8-97c9-491f-9233-92c48609621e",
+                      "address": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany",
+                      "description": "test"
+                  }
+              ],
+              "businessName": "ekmatro vibahito bekti",
+              "contactName": null,
+              "note": "test",
+              "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
+          },
+          "summary": {
+              "orderCount": 27,
+              "totalAmount": 23415.31,
+              "payment": {
+                  "Paid": 26,
+                  "Unclear": 1
+              },
+              "workflowStatus": {
+                  "Neu": 27,
+                  "Bestellung_eingegangen": 0,
+                  "In_Produktion": 0,
+                  "Qualitätskontrolle": 0,
+                  "Versandt": 0,
+                  "Ausgeführt": 0,
+                  "problem": 0
+              }
+          },
+          "orders": [
+              {
+                  "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                  "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                  "orderNumber": "10026",
+                  "catagoary": "Halbprobenerstellung",
+                  "status": "Neu",
+                  ............. more thousand to billion data
+              },
+              {
+                  "id": "b9825522-ea23-4f68-be3d-19529b04c965",
+                  "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                  "orderNumber": "10000",
+                  "catagoary": "Bodenkonstruktion",
+                  ............. more thousand to billion data
+              },
+              more thougent
+          ]
+      },
+      {
+          "partner": {
+              "id": "2b8cac15-76aa-4ff2-9dd4-027d34535354",
+              "name": null,
+              "busnessName": "ekmatro  bekti",
+              "partnerId": "003",
+              "image": "https://feetf1rst.s3.eu-central-1.amazonaws.com/1773684852322-marvel_logo.jpg",
+              "email": "paretner@gmail.com",
+              "phone": "",
+              "storeLocations": [
+                  {
+                      "id": "3f3727d8-97c9-491f-9233-333333",
+                      "address": "Hsv Stadion, Uwe-334-Allee, Altona, Germany",
+                      "description": "3ew"
+                  }
+              ],
+              "businessName": "ekmatro 5333 bekti",
+              "contactName": null,
+              "note": "test",
+              "primaryStoreAddress": "Hsv Stadion, Uwe-Seeler-Allee, Altona, Germany"
+          },
+          "summary": {
+              "orderCount": 27,
+              "totalAmount": 23415.31,
+              "payment": {
+                  "Paid": 26,
+                  "Unclear": 1
+              },
+              "workflowStatus": {
+                  "Neu": 27,
+                  "Bestellung_eingegangen": 0,
+                  "In_Produktion": 0,
+                  "Qualitätskontrolle": 0,
+                  "Versandt": 0,
+                  "Ausgeführt": 0,
+                  "problem": 0
+              }
+          },
+          "orders": [
+              {
+                  "id": "c418e279-43f1-43e7-873e-f383f9c1239e",
+                  "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                  "orderNumber": "10026",
+                  "catagoary": "Halbprobenerstellung",
+                  "status": "Neu",
+                  .............. more thousand to billion data
+              },
+              {
+                  "id": "b9825522-ea23-4f68-be3d-19529b04c965",
+                  "partnerId": "2b8cac15-76aa-4ff2-9dd4-027d27dbb174",
+                  "orderNumber": "10000",
+                  "catagoary": "Bodenkonstruktion",
+                  ............. more thousand to billion data
+              },
+              more  thousand to billion data
+          ]
+      } ... more thougent partner with more thousand to billion data
+  ]
+  importent:
+  paginatuion base on partner, 1st get only 5 (partnerLimit={{}}) partner and show has more true or false
+  if it's true i send last partner id then o get without this data more 5 (partnerLimit={{}}) partner!
+  allowse remember i need to quary
+  partnerLimit={{}}, orderLimit={{}}
+
 }

@@ -1310,13 +1310,33 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
 };
 
 /**
- * **By partner:** returns **all** PARTNER users that have ≥1 `custom_shafts` row matching filters (default: `order_status` ≠ canceled), each with **all** matching orders. Optional filters: `search`, `status`, `catagoary`. Optional `partnerUserId` = single partner only.
+ * Admin dashboard: `custom_shafts` rows grouped by partner (`User` role `PARTNER`).
+ *
+ * ## Partner paging
+ * - `partnerLimit` — partners per response (default **5**, max **50**). Override via query string.
+ * - **Keyset (recommended):** send `cursor` or `afterPartnerId` = `pagination.nextCursor` from the previous response to load the next slice (newest-first order).
+ * - **Offset:** if `cursor` is omitted, use `partnerPage` / `partner` / `page` (1-based) with the same `partnerLimit`.
+ *
+ * ## Order paging (same page/limit for every partner in `data`)
+ * - `orderLimit` (default **5**, max **100**), `orderPage` / `ordersPage` (default **1**).
+ * - `ordersMeta` per item: `{ page, limit, hasNextPage }` (no duplicate total; use `summary.orderCount` if needed).
+ *
+ * ## Response shape
+ * - `data[]`: `{ partner, summary, orders, ordersMeta }`.
+ * - `pagination`: `{ partnerLimit, orderLimit, orderPage, partnerPage, hasMorePartners, nextCursor, totalPartners }`.
+ *
+ * ## Filters (all optional)
+ * - `search` — order fields + customer/kollektion + partner `name`, `busnessName`, `email`.
+ * - `status` — workflow `custom_shafts.status` (not admin `order_status`).
+ * - `catagoary`, `order_status` (`active`|`canceled`|`completed`), `payment_status` (`Paid`|`Unpaid`|`Unclear`).
+ * - `partnerUserId` — only that partner (still respects order paging params).
  */
 export const getAllAdminOrdersByPartner = async (
   req: Request,
   res: Response,
 ) => {
-  const ADMIN_ORDER_VALID_STATUSES = [
+  // --- Valid enum values (query validation) ---
+  const WORKFLOW_STATUSES = [
     "Bestellung_eingegangen",
     "In_Produktion",
     "Qualitätskontrolle",
@@ -1324,89 +1344,119 @@ export const getAllAdminOrdersByPartner = async (
     "Ausgeführt",
   ] as const;
 
-  const ADMIN_ORDER_VALID_CATEGORIES = [
+  const PRODUCT_CATEGORIES = [
     "Halbprobenerstellung",
     "Massschafterstellung",
     "Bodenkonstruktion",
     "Komplettfertigung",
   ] as const;
 
-  function buildAdminOrdersWhereClause(
-    status: unknown,
+  const ADMIN_ORDER_STATUS = ["active", "canceled", "completed"] as const;
+  const PAYMENT_STATUS = ["Paid", "Unpaid", "Unclear"] as const;
+
+  type OrderWhereResult =
+    | { ok: true; orderWhere: Record<string, unknown> }
+    | { ok: false; status: number; body: Record<string, unknown> };
+
+  function reject(
+    status: number,
+    message: string,
+    extra?: Record<string, unknown>,
+  ): OrderWhereResult {
+    return {
+      ok: false,
+      status,
+      body: { success: false, message, ...extra },
+    };
+  }
+
+  /** Maps API `status=In_Produktion` to DB enum `In_Produktiony`. */
+  function toDbWorkflowStatus(raw: unknown): string {
+    const s = String(raw);
+    return s === "In_Produktion" ? "In_Produktiony" : s;
+  }
+
+  /** Text search across order rows and related partner (`user` on custom_shafts). */
+  function searchMatchBlock(term: string) {
+    const q = { contains: term, mode: "insensitive" as const };
+    return {
+      OR: [
+        { orderNumber: q },
+        { other_customer_number: q },
+        {
+          customer: {
+            OR: [
+              { vorname: q },
+              { nachname: q },
+              { email: q },
+            ],
+          },
+        },
+        { maßschaft_kollektion: { name: q } },
+        {
+          user: {
+            OR: [{ name: q }, { busnessName: q }, { email: q }],
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * Builds the Prisma `where` for `custom_shafts` rows that belong in the response.
+   */
+  function buildOrderWhereClause(
+    workflowStatus: unknown,
     catagoary: unknown,
     search: string,
-  ):
-    | { ok: true; where: Record<string, unknown> }
-    | { ok: false; status: number; body: Record<string, unknown> } {
-    if (status && !ADMIN_ORDER_VALID_STATUSES.includes(status as any)) {
-      return {
-        ok: false,
-        status: 400,
-        body: {
-          success: false,
-          message: "Invalid status value",
-          validStatuses: ADMIN_ORDER_VALID_STATUSES,
-        },
-      };
-    }
-    if (catagoary && !ADMIN_ORDER_VALID_CATEGORIES.includes(catagoary as any)) {
-      return {
-        ok: false,
-        status: 400,
-        body: {
-          success: false,
-          message: "Invalid catagoary value",
-          validCatagoaries: ADMIN_ORDER_VALID_CATEGORIES,
-        },
-      };
-    }
-
-    const where: Record<string, unknown> = { order_status: { not: "canceled" } };
-    const and: Record<string, unknown>[] = [];
-
-    if (status) {
-      and.push({
-        status:
-          status.toString() === "In_Produktion" ? "In_Produktiony" : status,
+    adminOrderStatus: unknown,
+    paymentStatus: unknown,
+  ): OrderWhereResult {
+    if (workflowStatus && !WORKFLOW_STATUSES.includes(workflowStatus as any)) {
+      return reject(400, "Invalid status value", {
+        validStatuses: WORKFLOW_STATUSES,
       });
+    }
+    if (catagoary && !PRODUCT_CATEGORIES.includes(catagoary as any)) {
+      return reject(400, "Invalid catagoary value", {
+        validCatagoaries: PRODUCT_CATEGORIES,
+      });
+    }
+    if (adminOrderStatus && !ADMIN_ORDER_STATUS.includes(adminOrderStatus as any)) {
+      return reject(400, "Invalid order_status value", {
+        validOrderStatuses: ADMIN_ORDER_STATUS,
+      });
+    }
+    if (paymentStatus && !PAYMENT_STATUS.includes(paymentStatus as any)) {
+      return reject(400, "Invalid payment_status value", {
+        validPaymentStatuses: PAYMENT_STATUS,
+      });
+    }
+
+    const orderWhere: Record<string, unknown> = adminOrderStatus
+      ? { order_status: adminOrderStatus }
+      : { order_status: { not: "canceled" } };
+
+    const extraConditions: Record<string, unknown>[] = [];
+
+    if (paymentStatus) {
+      extraConditions.push({ payment_status: paymentStatus });
+    }
+    if (workflowStatus) {
+      extraConditions.push({ status: toDbWorkflowStatus(workflowStatus) });
     }
     if (catagoary) {
-      and.push({ catagoary });
+      extraConditions.push({ catagoary });
     }
-
     if (search) {
-      and.push({
-        OR: [
-          { orderNumber: { contains: search, mode: "insensitive" } },
-          { other_customer_number: { contains: search, mode: "insensitive" } },
-          {
-            customer: {
-              OR: [
-                { vorname: { contains: search, mode: "insensitive" } },
-                { nachname: { contains: search, mode: "insensitive" } },
-                { email: { contains: search, mode: "insensitive" } },
-              ],
-            },
-          },
-          {
-            maßschaft_kollektion: {
-              name: { contains: search, mode: "insensitive" },
-            },
-          },
-          {
-            user: {
-              OR: [
-                { name: { contains: search, mode: "insensitive" } },
-                { email: { contains: search, mode: "insensitive" } },
-              ],
-            },
-          },
-        ],
-      });
+      extraConditions.push(searchMatchBlock(search));
     }
 
-    if (and.length) (where as { AND?: unknown }).AND = and;
-    return { ok: true, where };
+    if (extraConditions.length) {
+      (orderWhere as { AND?: unknown }).AND = extraConditions;
+    }
+
+    return { ok: true, orderWhere };
   }
 
   const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT = {
@@ -1450,8 +1500,12 @@ export const getAllAdminOrdersByPartner = async (
       take: 1,
       select: { id: true, address: true, description: true },
     },
-    accountInfos: { select: { vat_number: true, bankInfo: true } },
   };
+
+  const ORDER_BY_NEWEST_FIRST = [
+    { createdAt: "desc" as const },
+    { id: "desc" as const },
+  ];
 
   const DASHBOARD_WORKFLOW_KEYS = [
     "Neu",
@@ -1586,17 +1640,168 @@ export const getAllAdminOrdersByPartner = async (
     };
   }
 
-  try {
-    const search = (req.query.search as string)?.trim() || "";
-    const status = req.query.status;
-    const catagoary = req.query.catagoary;
+  /**
+   * When the client did not pass `order_status`, we hide canceled rows in the JSON
+   * (DB query already prefers non-canceled; this is a safety net). If `order_status`
+   * is set, the query is authoritative and we return rows as-is.
+   */
+  function mapOrdersForResponse(
+    rawRows: any[],
+    adminOrderStatusQuery: string | undefined,
+  ) {
+    const rows = adminOrderStatusQuery
+      ? rawRows
+      : rawRows.filter((o) => o.order_status !== "canceled");
+    return rows.map(shapeOrderForPartnerDashboard);
+  }
 
-    const built = buildAdminOrdersWhereClause(status, catagoary, search);
-    if (built.ok === false) {
-      return res.status(built.status).json(built.body);
+  const DEFAULT_PARTNER_LIMIT = 5;
+  const MAX_PARTNER_LIMIT = 50;
+  const DEFAULT_ORDER_LIMIT = 5;
+  const MAX_ORDER_LIMIT = 100;
+
+  function clampInt(n: number, min: number, max: number, fallback: number) {
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(min, Math.floor(n)));
+  }
+
+  async function countPartnersMatching(orderWhere: Record<string, unknown>) {
+    return prisma.user.count({
+      where: {
+        role: "PARTNER",
+        custom_shafts: { some: orderWhere as object },
+      } as any,
+    });
+  }
+
+  /**
+   * Returns up to `limit` partner user ids (newest first). Uses `take = limit + 1`
+   * to detect `hasMorePartners`.
+   */
+  async function fetchPartnerIdPage(args: {
+    orderWhere: Record<string, unknown>;
+    limit: number;
+    cursorPartnerId?: string;
+    partnerPage: number;
+  }): Promise<
+    | { ok: true; partnerIds: string[]; hasMorePartners: boolean }
+    | { ok: false; reason: "bad_cursor" }
+  > {
+    const { orderWhere, limit, cursorPartnerId, partnerPage } = args;
+    const take = limit + 1;
+
+    const basePartnerFilter = {
+      role: "PARTNER" as const,
+      custom_shafts: { some: orderWhere as object },
+    };
+
+    if (cursorPartnerId) {
+      const anchor = await prisma.user.findUnique({
+        where: { id: cursorPartnerId },
+        select: { createdAt: true, id: true },
+      });
+      if (!anchor) return { ok: false, reason: "bad_cursor" };
+      const rows = await prisma.user.findMany({
+        where: {
+          AND: [
+            basePartnerFilter,
+            {
+              OR: [
+                { createdAt: { lt: anchor.createdAt } },
+                {
+                  AND: [
+                    { createdAt: anchor.createdAt },
+                    { id: { lt: anchor.id } },
+                  ],
+                },
+              ],
+            },
+          ],
+        } as any,
+        orderBy: ORDER_BY_NEWEST_FIRST,
+        take,
+        select: { id: true },
+      });
+      const hasMorePartners = rows.length > limit;
+      const partnerIds = rows.slice(0, limit).map((r) => r.id);
+      return { ok: true, partnerIds, hasMorePartners };
     }
 
-    const baseOrderWhere: Record<string, unknown> = { ...built.where };
+    const skip = Math.max(0, (partnerPage - 1) * limit);
+    const rows = await prisma.user.findMany({
+      where: basePartnerFilter as any,
+      orderBy: ORDER_BY_NEWEST_FIRST,
+      skip,
+      take,
+      select: { id: true },
+    });
+    const hasMorePartners = rows.length > limit;
+    const partnerIds = rows.slice(0, limit).map((r) => r.id);
+    return { ok: true, partnerIds, hasMorePartners };
+  }
+
+  try {
+    const search = (req.query.search as string)?.trim() || "";
+    const workflowStatus = req.query.status;
+    const catagoary = req.query.catagoary;
+    const adminOrderStatusQuery =
+      (req.query.order_status as string)?.trim() || undefined;
+    const paymentStatusQuery =
+      (req.query.payment_status as string)?.trim() || undefined;
+
+    const filters = buildOrderWhereClause(
+      workflowStatus,
+      catagoary,
+      search,
+      adminOrderStatusQuery,
+      paymentStatusQuery,
+    );
+    if (filters.ok === false) {
+      return res.status(filters.status).json(filters.body);
+    }
+
+    const { orderWhere } = filters;
+
+    const partnerLimit = clampInt(
+      parseInt(String(req.query.partnerLimit ?? DEFAULT_PARTNER_LIMIT), 10),
+      1,
+      MAX_PARTNER_LIMIT,
+      DEFAULT_PARTNER_LIMIT,
+    );
+    const orderLimit = clampInt(
+      parseInt(String(req.query.orderLimit ?? DEFAULT_ORDER_LIMIT), 10),
+      1,
+      MAX_ORDER_LIMIT,
+      DEFAULT_ORDER_LIMIT,
+    );
+    const orderPageRaw = parseInt(
+      String(req.query.orderPage ?? req.query.ordersPage ?? "1"),
+      10,
+    );
+    const orderPage =
+      Number.isFinite(orderPageRaw) && orderPageRaw >= 1 ? orderPageRaw : 1;
+    const orderSkip = (orderPage - 1) * orderLimit;
+
+    const cursorPartnerId =
+      (req.query.cursor as string)?.trim() ||
+      (req.query.afterPartnerId as string)?.trim() ||
+      undefined;
+    const partnerListPageRaw = parseInt(
+      String(
+        req.query.partnerPage !== undefined
+          ? req.query.partnerPage
+          : req.query.partner !== undefined
+            ? req.query.partner
+            : req.query.page ?? "1",
+      ),
+      10,
+    );
+    const partnerListPage =
+      Number.isFinite(partnerListPageRaw) && partnerListPageRaw >= 1
+        ? partnerListPageRaw
+        : 1;
+
+    const baseOrderWhere: Record<string, unknown> = { ...orderWhere };
     const partnerUserIdFocus = (
       (req.query.partnerUserId as string)?.trim() || undefined
     ) as string | undefined;
@@ -1619,25 +1824,6 @@ export const getAllAdminOrdersByPartner = async (
       }
     }
 
-    const partnerWhere = {
-      role: "PARTNER" as const,
-      custom_shafts: { some: built.where as object },
-    };
-
-    let partnerSlice: any[] = [];
-    if (partnerUserIdFocus) {
-      partnerSlice = [focusPartnerRow];
-    } else {
-      partnerSlice = await prisma.user.findMany({
-        where: partnerWhere as any,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: PARTNER_CARD_SELECT as any,
-      });
-    }
-
-    const partnerIds = partnerSlice.map((p) => p.id);
-    const totalPartners = partnerIds.length;
-
     const emptySummary = () => ({
       orderCount: 0,
       totalAmount: 0,
@@ -1645,52 +1831,98 @@ export const getAllAdminOrdersByPartner = async (
       workflowStatus: emptyWorkflowStatus(),
     });
 
+    const paginationPayload = (
+      hasMorePartners: boolean,
+      nextCursor: string | null,
+      totalPartners: number,
+    ) => ({
+      partnerLimit,
+      orderLimit,
+      orderPage,
+      /** Offset partner page (1-based). Null when using `cursor` / `afterPartnerId`. */
+      partnerPage: cursorPartnerId ? null : partnerListPage,
+      hasMorePartners,
+      /** Pass as `cursor` or `afterPartnerId` on the next request to load the next partner slice. */
+      nextCursor,
+      totalPartners,
+    });
+
     if (partnerUserIdFocus && focusPartnerRow) {
-      const [summaryMap, orderRows, totalOrderCount] = await Promise.all([
+      const [summaryMap, orderRowsPlus] = await Promise.all([
         loadPartnerSummariesAggregated(
           [partnerUserIdFocus],
           baseOrderWhere as Record<string, unknown>,
         ),
         prisma.custom_shafts.findMany({
           where: baseOrderWhere as any,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          orderBy: ORDER_BY_NEWEST_FIRST,
+          skip: orderSkip,
+          take: orderLimit + 1,
           select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
         }),
-        prisma.custom_shafts.count({
-          where: baseOrderWhere as any,
-        }),
       ]);
-      const orders = orderRows
-        .filter((o: any) => o.order_status !== "canceled")
-        .map(shapeOrderForPartnerDashboard);
+      const hasNextOrderPage = orderRowsPlus.length > orderLimit;
+      const orderRows = orderRowsPlus.slice(0, orderLimit);
+      const orders = mapOrdersForResponse(orderRows, adminOrderStatusQuery);
+      const summaryBlock =
+        summaryMap.get(partnerUserIdFocus) ?? emptySummary();
       return res.status(200).json({
         success: true,
         message: "Admin orders by partner fetched successfully",
         data: [
           {
             partner: shapePartnerForDashboard(focusPartnerRow),
-            summary:
-              summaryMap.get(partnerUserIdFocus) ?? emptySummary(),
+            summary: summaryBlock,
             orders,
-            ordersMeta: { totalOrders: totalOrderCount },
+            ordersMeta: {
+              page: orderPage,
+              limit: orderLimit,
+              hasNextPage: hasNextOrderPage,
+            },
           },
         ],
         pagination: {
-          mode: "singlePartner" as const,
-          partnerUserId: partnerUserIdFocus,
+          partnerLimit,
+          orderLimit,
+          orderPage,
+          partnerPage: null,
+          hasMorePartners: false,
+          nextCursor: null,
           totalPartners: 1,
         },
       });
     }
+
+    const [totalPartners, partnerPageResult] = await Promise.all([
+      countPartnersMatching(orderWhere),
+      fetchPartnerIdPage({
+        orderWhere,
+        limit: partnerLimit,
+        cursorPartnerId,
+        partnerPage: cursorPartnerId ? 1 : partnerListPage,
+      }),
+    ]);
+
+    if (partnerPageResult.ok === false) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid cursor / afterPartnerId (partner user not found). Omit cursor to start from the first page.",
+      });
+    }
+
+    const { partnerIds, hasMorePartners } = partnerPageResult;
+    const nextPartnerCursor =
+      hasMorePartners && partnerIds.length > 0
+        ? partnerIds[partnerIds.length - 1]
+        : null;
 
     if (partnerIds.length === 0) {
       return res.status(200).json({
         success: true,
         message: "Admin orders by partner fetched successfully",
         data: [],
-        pagination: {
-          totalPartners: 0,
-        },
+        pagination: paginationPayload(false, null, totalPartners),
       });
     }
 
@@ -1699,28 +1931,22 @@ export const getAllAdminOrdersByPartner = async (
         where: { id: { in: partnerIds } },
         select: PARTNER_CARD_SELECT as any,
       }),
-      loadPartnerSummariesAggregated(partnerIds, built.where),
-      prisma.custom_shafts.groupBy({
-        by: ["partnerId"],
-        where: {
-          ...(built.where as object),
-          partnerId: { in: partnerIds },
-        } as any,
-        _count: { _all: true },
-      }),
-      ...partnerIds.map((pid) =>
+      loadPartnerSummariesAggregated(partnerIds, orderWhere),
+      ...partnerIds.map((partnerId) =>
         prisma.custom_shafts.findMany({
           where: {
-            ...(built.where as object),
-            partnerId: pid,
+            ...(orderWhere as object),
+            partnerId,
           } as any,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          orderBy: ORDER_BY_NEWEST_FIRST,
+          skip: orderSkip,
+          take: orderLimit + 1,
           select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
         }),
       ),
     ]);
 
-    const partnerRows = batchResults[0] as any[];
+    const partnerRowsFromDb = batchResults[0] as any[];
     const summaryByPartner = batchResults[1] as Map<
       string,
       {
@@ -1730,39 +1956,38 @@ export const getAllAdminOrdersByPartner = async (
         workflowStatus: Record<string, number>;
       }
     >;
-    const filteredCountRows = batchResults[2] as Array<{
-      partnerId: string | null;
-      _count: { _all: number };
-    }>;
-    const orderListsByPartnerIndex = batchResults.slice(3) as any[][];
+    const orderRowsPerPartner = batchResults.slice(2) as any[][];
 
-    const partnerById = new Map(partnerRows.map((p) => [p.id as string, p]));
-
-    const filteredCountByPartner = new Map<string, number>();
-    for (const r of filteredCountRows) {
-      if (r.partnerId)
-        filteredCountByPartner.set(r.partnerId, r._count._all);
-    }
-    for (const pid of partnerIds) {
-      if (!filteredCountByPartner.has(pid))
-        filteredCountByPartner.set(pid, 0);
+    const partnerById = new Map<string, any>();
+    for (const row of partnerRowsFromDb) {
+      partnerById.set(row.id as string, row);
     }
 
-    const data = partnerIds.map((pid, idx) => {
-      const p = partnerById.get(pid);
-      const rawPage = orderListsByPartnerIndex[idx] ?? [];
-      const rawOrders = rawPage.filter(
-        (o: any) => o.order_status !== "canceled",
+    const data = partnerIds.map((partnerId, index) => {
+      const partnerRow = partnerById.get(partnerId);
+      const rawPlus = orderRowsPerPartner[index] ?? [];
+      const hasNextOrderPage = rawPlus.length > orderLimit;
+      const rawSlice = rawPlus.slice(0, orderLimit);
+      const orders = mapOrdersForResponse(
+        rawSlice,
+        adminOrderStatusQuery,
       );
-      const orders = rawOrders.map(shapeOrderForPartnerDashboard);
-      const totalFilteredOrders = filteredCountByPartner.get(pid) ?? 0;
+      const summaryBlock =
+        summaryByPartner.get(partnerId) ?? emptySummary();
       return {
         partner: shapePartnerForDashboard(
-          p ?? { id: pid, storeLocations: [], accountInfos: [] },
+          partnerRow ?? {
+            id: partnerId,
+            storeLocations: [],
+          },
         ),
-        summary: summaryByPartner.get(pid) ?? emptySummary(),
+        summary: summaryBlock,
         orders,
-        ordersMeta: { totalOrders: totalFilteredOrders },
+        ordersMeta: {
+          page: orderPage,
+          limit: orderLimit,
+          hasNextPage: hasNextOrderPage,
+        },
       };
     });
 
@@ -1770,9 +1995,11 @@ export const getAllAdminOrdersByPartner = async (
       success: true,
       message: "Admin orders by partner fetched successfully",
       data,
-      pagination: {
+      pagination: paginationPayload(
+        hasMorePartners,
+        nextPartnerCursor,
         totalPartners,
-      },
+      ),
     });
   } catch (error: any) {
     console.error("Get Admin Orders By Partner Error:", error);

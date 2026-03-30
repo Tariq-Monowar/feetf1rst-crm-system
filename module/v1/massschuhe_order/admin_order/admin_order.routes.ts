@@ -107,8 +107,14 @@ router.get(
   getAllAdminOrders,
 );
 
-// All partners with matching custom_shafts (order_status ≠ canceled + filters); full order list per partner. Optional: partnerUserId, search, status, catagoary.
-// GET .../get/by-partner?search=&status=&catagoary=&partnerUserId=
+// GET /get/by-partner — Partners + orders (paginated). Role: PARTNER | ADMIN | EMPLOYEE.
+//
+// Pagination: partnerLimit (default 5, max 50), orderLimit (default 5, max 100), orderPage.
+// Next partners: cursor or afterPartnerId = previous pagination.nextCursor. Or partnerPage / partner / page (offset) without cursor.
+// Filters: search, status (workflow), catagoary, order_status, payment_status, partnerUserId.
+//
+// Example: GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&orderPage=1
+// Example: GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&cursor=<nextCursor>
 router.get(
   "/get/by-partner",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
