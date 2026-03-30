@@ -107,19 +107,23 @@ router.get(
   getAllAdminOrders,
 );
 
-// GET /get/by-partner — Partners + orders (paginated). Role: PARTNER | ADMIN | EMPLOYEE.
+// GET /get/by-partner — Admin partners + orders (paginated). Roles: PARTNER | ADMIN | EMPLOYEE.
 //
-// Pagination: partnerLimit (default 5, max 50), orderLimit (default 5, max 100), orderPage.
-// Next partners: cursor or afterPartnerId = previous pagination.nextCursor. Or partnerPage / partner / page (offset) without cursor.
-// Filters: search, status (workflow), catagoary, order_status, payment_status, partnerUserId.
+// Query (high level):
+//   Pagination — partnerLimit, orderLimit, orderPage | ordersPage; partners — cursor | afterPartnerId (use pagination.nextCursor).
+//   Performance — includeSummary=0 to skip summary aggregates; lite=1 | compact=1 for smaller order payload (no customModels).
+//   Filters — search, status (workflow), catagoary, order_status, payment_status, partnerUserId.
 //
-// Example: GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&orderPage=1
-// Example: GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&cursor=<nextCursor>
+// Examples:
+//   GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&orderPage=1
+//   GET {base}/massschuhe-order/admin-order/get/by-partner?partnerLimit=5&orderLimit=5&cursor=<nextCursor>
+//   GET {base}/massschuhe-order/admin-order/get/by-partner?includeSummary=0&lite=1
 router.get(
   "/get/by-partner",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   getAllAdminOrdersByPartner,
 );
+//anp
 
 //get single admin order
 // GET {{_baseurl}}admin_order/get/:id

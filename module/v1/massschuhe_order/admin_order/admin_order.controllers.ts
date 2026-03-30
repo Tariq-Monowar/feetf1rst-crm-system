@@ -1319,11 +1319,15 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
  *
  * ## Order paging (same page/limit for every partner in `data`)
  * - `orderLimit` (default **5**, max **100**), `orderPage` / `ordersPage` (default **1**).
- * - `ordersMeta` per item: `{ page, limit, hasNextPage }` (no duplicate total; use `summary.orderCount` if needed).
+ * - `ordersMeta` per item: `{ page, limit, hasNextPage }`.
+ *
+ * ## Performance / payload
+ * - `includeSummary` — default `true`. Set `0` or `false` to **skip** DB aggregates (`summary` becomes `null`, faster on large datasets).
+ * - `lite` or `compact` — `1` / `true`: skip `customModels` in SQL; order objects are explicit fields only (no Prisma row spread).
  *
  * ## Response shape
- * - `data[]`: `{ partner, summary, orders, ordersMeta }`.
- * - `pagination`: `{ partnerLimit, orderLimit, orderPage, partnerPage, hasMorePartners, nextCursor, totalPartners }`.
+ * - `data[]`: `{ partner, summary | null, orders, ordersMeta }`.
+ * - `pagination`: `{ partnerLimit, orderLimit, hasMorePartners, nextCursor, totalPartners }`.
  *
  * ## Filters (all optional)
  * - `search` — order fields + customer/kollektion + partner `name`, `busnessName`, `email`.
@@ -1459,6 +1463,7 @@ export const getAllAdminOrdersByPartner = async (
     return { ok: true, orderWhere };
   }
 
+  /** Full order card for dashboard (default). */
   const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT = {
     id: true,
     partnerId: true,
@@ -1485,7 +1490,32 @@ export const getAllAdminOrdersByPartner = async (
       take: 1,
       select: { custom_models_name: true },
     },
-  };
+  } as const;
+
+  /** Lighter select when `lite=1` — skips customModels relation. */
+  const ADMIN_ORDER_BY_PARTNER_ORDER_SELECT_LITE = {
+    id: true,
+    partnerId: true,
+    orderNumber: true,
+    catagoary: true,
+    status: true,
+    order_status: true,
+    payment_status: true,
+    totalPrice: true,
+    other_customer_number: true,
+    createdAt: true,
+    isCustomeModels: true,
+    deliveryDate: true,
+    customer: {
+      select: {
+        id: true,
+        customerNumber: true,
+        vorname: true,
+        nachname: true,
+      },
+    },
+    maßschaft_kollektion: { select: { id: true, name: true } },
+  } as const;
 
   const PARTNER_CARD_SELECT = {
     id: true,
@@ -1623,6 +1653,7 @@ export const getAllAdminOrdersByPartner = async (
     };
   }
 
+  /** Explicit fields only (avoids bloated JSON from `...row`). */
   function shapeOrderForPartnerDashboard(o: any) {
     const customName = o.customModels?.[0]?.custom_models_name ?? null;
     const kollektionName = o.maßschaft_kollektion?.name ?? null;
@@ -1631,7 +1662,21 @@ export const getAllAdminOrdersByPartner = async (
       : kollektionName;
 
     return {
-      ...o,
+      id: o.id,
+      partnerId: o.partnerId ?? null,
+      orderNumber: o.orderNumber ?? null,
+      catagoary: o.catagoary ?? null,
+      status: o.status ?? null,
+      order_status: o.order_status ?? null,
+      payment_status: o.payment_status ?? null,
+      totalPrice: o.totalPrice ?? null,
+      other_customer_number: o.other_customer_number ?? null,
+      createdAt: o.createdAt,
+      deliveryDate: o.deliveryDate ?? null,
+      isCustomeModels: o.isCustomeModels ?? null,
+      customer: o.customer ?? null,
+      maßschaft_kollektion: o.maßschaft_kollektion ?? null,
+      customModels: o.customModels ?? null,
       product: o.catagoary ?? null,
       productName: kollektionName,
       modelName: modelName ?? null,
@@ -1801,6 +1846,20 @@ export const getAllAdminOrdersByPartner = async (
         ? partnerListPageRaw
         : 1;
 
+    /** When `false`, skip aggregate groupBys — faster; `summary` is `null`. */
+    const includeSummary =
+      req.query.includeSummary === undefined ||
+      !["0", "false", "no"].includes(
+        String(req.query.includeSummary).toLowerCase(),
+      );
+    /** Smaller DB + JSON: no `customModels` relation. */
+    const useLiteOrders =
+      ["1", "true", "yes"].includes(String(req.query.lite ?? "").toLowerCase()) ||
+      req.query.compact === "1";
+    const orderSelect = useLiteOrders
+      ? ADMIN_ORDER_BY_PARTNER_ORDER_SELECT_LITE
+      : ADMIN_ORDER_BY_PARTNER_ORDER_SELECT;
+
     const baseOrderWhere: Record<string, unknown> = { ...orderWhere };
     const partnerUserIdFocus = (
       (req.query.partnerUserId as string)?.trim() || undefined
@@ -1838,34 +1897,46 @@ export const getAllAdminOrdersByPartner = async (
     ) => ({
       partnerLimit,
       orderLimit,
-      orderPage,
-      /** Offset partner page (1-based). Null when using `cursor` / `afterPartnerId`. */
-      partnerPage: cursorPartnerId ? null : partnerListPage,
       hasMorePartners,
-      /** Pass as `cursor` or `afterPartnerId` on the next request to load the next partner slice. */
+      /** Next partner slice: repeat query with `cursor` or `afterPartnerId` = this value. */
       nextCursor,
       totalPartners,
     });
 
     if (partnerUserIdFocus && focusPartnerRow) {
-      const [summaryMap, orderRowsPlus] = await Promise.all([
-        loadPartnerSummariesAggregated(
-          [partnerUserIdFocus],
-          baseOrderWhere as Record<string, unknown>,
-        ),
-        prisma.custom_shafts.findMany({
+      let orderRowsPlus: any[];
+      let summaryBlock: ReturnType<typeof emptySummary> | null;
+
+      if (includeSummary) {
+        const [summaryMap, rows] = await Promise.all([
+          loadPartnerSummariesAggregated(
+            [partnerUserIdFocus],
+            baseOrderWhere as Record<string, unknown>,
+          ),
+          prisma.custom_shafts.findMany({
+            where: baseOrderWhere as any,
+            orderBy: ORDER_BY_NEWEST_FIRST,
+            skip: orderSkip,
+            take: orderLimit + 1,
+            select: orderSelect as any,
+          }),
+        ]);
+        orderRowsPlus = rows;
+        summaryBlock = summaryMap.get(partnerUserIdFocus) ?? emptySummary();
+      } else {
+        orderRowsPlus = await prisma.custom_shafts.findMany({
           where: baseOrderWhere as any,
           orderBy: ORDER_BY_NEWEST_FIRST,
           skip: orderSkip,
           take: orderLimit + 1,
-          select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
-        }),
-      ]);
+          select: orderSelect as any,
+        });
+        summaryBlock = null;
+      }
+
       const hasNextOrderPage = orderRowsPlus.length > orderLimit;
       const orderRows = orderRowsPlus.slice(0, orderLimit);
       const orders = mapOrdersForResponse(orderRows, adminOrderStatusQuery);
-      const summaryBlock =
-        summaryMap.get(partnerUserIdFocus) ?? emptySummary();
       return res.status(200).json({
         success: true,
         message: "Admin orders by partner fetched successfully",
@@ -1884,8 +1955,6 @@ export const getAllAdminOrdersByPartner = async (
         pagination: {
           partnerLimit,
           orderLimit,
-          orderPage,
-          partnerPage: null,
           hasMorePartners: false,
           nextCursor: null,
           totalPartners: 1,
@@ -1931,7 +2000,19 @@ export const getAllAdminOrdersByPartner = async (
         where: { id: { in: partnerIds } },
         select: PARTNER_CARD_SELECT as any,
       }),
-      loadPartnerSummariesAggregated(partnerIds, orderWhere),
+      includeSummary
+        ? loadPartnerSummariesAggregated(partnerIds, orderWhere)
+        : Promise.resolve(
+            null as Map<
+              string,
+              {
+                orderCount: number;
+                totalAmount: number;
+                payment: Record<string, number>;
+                workflowStatus: Record<string, number>;
+              }
+            > | null,
+          ),
       ...partnerIds.map((partnerId) =>
         prisma.custom_shafts.findMany({
           where: {
@@ -1941,7 +2022,7 @@ export const getAllAdminOrdersByPartner = async (
           orderBy: ORDER_BY_NEWEST_FIRST,
           skip: orderSkip,
           take: orderLimit + 1,
-          select: ADMIN_ORDER_BY_PARTNER_ORDER_SELECT as any,
+          select: orderSelect as any,
         }),
       ),
     ]);
@@ -1955,7 +2036,7 @@ export const getAllAdminOrdersByPartner = async (
         payment: Record<string, number>;
         workflowStatus: Record<string, number>;
       }
-    >;
+    > | null;
     const orderRowsPerPartner = batchResults.slice(2) as any[][];
 
     const partnerById = new Map<string, any>();
@@ -1972,8 +2053,9 @@ export const getAllAdminOrdersByPartner = async (
         rawSlice,
         adminOrderStatusQuery,
       );
-      const summaryBlock =
-        summaryByPartner.get(partnerId) ?? emptySummary();
+      const summaryBlock = includeSummary
+        ? summaryByPartner!.get(partnerId) ?? emptySummary()
+        : null;
       return {
         partner: shapePartnerForDashboard(
           partnerRow ?? {
