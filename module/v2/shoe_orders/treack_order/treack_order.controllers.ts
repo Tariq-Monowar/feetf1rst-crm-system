@@ -372,31 +372,23 @@ export const getWerkstattzettelSheetPdf = async (
       success: true,
       message: "Werkstattzettel sheet data fetched successfully",
       data: {
-       customerInfo: {
-        firstName: order?.customer?.vorname,
-        lastName: order?.customer?.nachname,
-        birthDate: order?.customer?.geburtsdatum,
-        address: order?.customer?.wohnort,
-        phone: order?.customer?.telefon,
-        email: order?.customer?.email,
-       },
-       prescriptionInfo: {
-         prescription: order?.prescription,
-       },
-       orderInfo: {
-        quantity: order?.quantity,
-        vatRate: order?.vat_rate,
-        insurances: order?.insurances,
-        kvaNumber: order?.kvaNumber,
-        halbprobe: order?.halbprobe,
+        customerInfo: {
+          firstName: order?.customer?.vorname,
+          lastName: order?.customer?.nachname,
+          birthDate: order?.customer?.geburtsdatum,
+          address: order?.customer?.wohnort,
+          phone: order?.customer?.telefon,
+          email: order?.customer?.email,
+        },
+        prescriptionInfo: {
+          prescription: order?.prescription,
+        },
+
         productionWorkflow: {
           half_sample_required: order?.half_sample_required,
           has_trim_strips: order?.has_trim_strips,
           bedding_required: order?.bedding_required,
         },
-        
-       },
- 
       },
     });
   } catch (error: any) {
