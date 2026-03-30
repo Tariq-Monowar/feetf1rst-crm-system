@@ -7,7 +7,6 @@ import {
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
 import {
-  generateNextOrderNumber,
   generateNextCustomShaftOrderNumber,
 } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 import {
@@ -429,6 +428,10 @@ export const createTustomShafts = async (req, res) => {
   const files = req.files || {};
   const { id } = req.user;
   const b = req.body;
+  const shoeOrderId =
+    typeof b.shoe_order_id === "string" && b.shoe_order_id.trim()
+      ? b.shoe_order_id.trim()
+      : null;
 
   function cleanupFiles() {
     Object.keys(files).forEach((key) => {
@@ -573,6 +576,21 @@ export const createTustomShafts = async (req, res) => {
     }
   }
 
+  if (shoeOrderId) {
+    const shoeOrder = await prisma.shoe_order.findFirst({
+      where: { id: shoeOrderId, partnerId: id },
+      select: { id: true },
+    });
+    if (!shoeOrder) {
+      cleanupFiles();
+      return res.status(404).json({
+        success: false,
+        message:
+          "shoe_order_id not found or does not belong to the authenticated partner",
+      });
+    }
+  }
+
   // if (!hasVersenden && !isCourier) {
   //   cleanupFiles();
   //   return res.status(400).json({ success: false, message: "Either versenden or courier contact data is required" });
@@ -650,6 +668,9 @@ export const createTustomShafts = async (req, res) => {
     (shaftData as any).maßschaft_kollektion = {
       connect: { id: b.mabschaftKollektionId },
     };
+  }
+  if (shoeOrderId) {
+    (shaftData as any).shoe_order = { connect: { id: shoeOrderId } };
   }
 
   const shaftSelect = {
@@ -776,25 +797,32 @@ export const createTustomShafts = async (req, res) => {
       : customer
         ? `Kunde #${customer.customerNumber}`
         : "—";
-    sendCustomShaftOrderNotification({
-      orderId: customShaft.id,
-      partnerName:
-        customShaft.user?.busnessName || customShaft.user?.name || "Partner",
-      partnerEmail: customShaft.user?.email || "",
-      partnerImage: customShaft.user?.image ?? null,
-      category,
-      totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
-      customerDisplay,
-      kollektionName: customShaft.maßschaft_kollektion?.name ?? null,
-      isCustomModels: Boolean(isCustomModels),
-      isBodenkonstruktion: false,
-      createdAt: formatOrderCreatedAt(new Date()),
-    }).catch((err) => console.error("Order notification email failed:", err));
+    // Notification/email should never block API response.
+    (async () => {
+      try {
+        await sendCustomShaftOrderNotification({
+          orderId: customShaft.id,
+          partnerName:
+            customShaft.user?.busnessName || customShaft.user?.name || "Partner",
+          partnerEmail: customShaft.user?.email || "",
+          partnerImage: customShaft.user?.image ?? null,
+          category,
+          totalPrice: b.totalPrice ? parseFloat(b.totalPrice) : null,
+          customerDisplay,
+          kollektionName: customShaft.maßschaft_kollektion?.name ?? null,
+          isCustomModels: Boolean(isCustomModels),
+          isBodenkonstruktion: false,
+          createdAt: formatOrderCreatedAt(new Date()),
+        });
+      } catch (err) {
+        console.error("Order notification/email background job failed:", err);
+      }
+    })();
 
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
-      data: { ...customShaft, custom_models: customModel },
+      data: { ...customShaft, custom_models: customModel, shoe_order_id: shoeOrderId },
       Courier_contact: courierData,
     });
   } catch (err) {
@@ -856,7 +884,12 @@ export const createCustomBodenkonstruktionOrder = async (
       totalPrice,
       bodenkonstruktion_json,
       deliveryDate,
+      shoe_order_id,
     } = req.body;
+    const shoeOrderId =
+      typeof shoe_order_id === "string" && shoe_order_id.trim()
+        ? shoe_order_id.trim()
+        : null;
 
     // Validate required fields
     if (!other_customer_name) {
@@ -881,6 +914,21 @@ export const createCustomBodenkonstruktionOrder = async (
         success: false,
         message: "bodenkonstruktion_json is required",
       });
+    }
+
+    if (shoeOrderId) {
+      const shoeOrder = await prisma.shoe_order.findFirst({
+        where: { id: shoeOrderId, partnerId: id },
+        select: { id: true },
+      });
+      if (!shoeOrder) {
+        cleanupFiles();
+        return res.status(404).json({
+          success: false,
+          message:
+            "shoe_order_id not found or does not belong to the authenticated partner",
+        });
+      }
     }
 
     // Parse totalPrice properly - handle string, number, or null
@@ -947,6 +995,7 @@ export const createCustomBodenkonstruktionOrder = async (
         isCustomBodenkonstruktion: true,
         orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
+        ...(shoeOrderId && { shoe_order: { connect: { id: shoeOrderId } } }),
       },
       select: {
         id: true,
@@ -967,40 +1016,42 @@ export const createCustomBodenkonstruktionOrder = async (
       },
     });
 
-    const orderNumber = await generateNextOrderNumber(id);
-
     const customShaftId = (data as any).id;
+    const orderPrice = Number(parsedTotalPrice ?? 0);
 
     /*
-     * ==================================Admin Order Transitions Started==========================================
-     * =============================================================================================================
+     * ==================================Admin Order Transitions + partner_total_amount (background) ============
+     * Run in background so response returns fast.
      */
-    //background service
-    await prisma.$executeRaw`
-      INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, note, "createdAt", "updatedAt")
-      VALUES (gen_random_uuid(), ${orderNumber}, ${"shoes"}, ${id}, ${customShaftId}, ${"Bodenkonstruktion"}, ${parsedTotalPrice ?? null}, ${"Custom Bodenkonstruktion send to admin"}, NOW(), NOW())
-    `;
+    (async () => {
+      try {
+        await prisma.$executeRaw`
+          INSERT INTO admin_order_transitions (id, "orderNumber", "orderFor", "partnerId", "custom_shafts_id", "custom_shafts_catagoary", price, note, "createdAt", "updatedAt")
+          VALUES (gen_random_uuid(), ${(data as any).orderNumber}, ${"shoes"}, ${id}, ${customShaftId}, ${"Bodenkonstruktion"}, ${parsedTotalPrice ?? null}, ${"Custom Bodenkonstruktion send to admin"}, NOW(), NOW())
+        `;
 
-    //partner_total_amount old + new
-    const old = await prisma.partner_total_amount.findFirst({
-      where: { partnerId: id },
-      select: { id: true, totalAmount: true },
-    });
-    const newTotal = (old?.totalAmount ?? 0) + Number(parsedTotalPrice ?? 0);
-    if (old) {
-      await prisma.partner_total_amount.update({
-        where: { id: old.id },
-        data: { totalAmount: newTotal },
-      });
-    } else {
-      await prisma.partner_total_amount.create({
-        data: { partnerId: id, totalAmount: newTotal },
-      });
-    }
-    /*
-     * ==================================Admin Order Transitions Ended==========================================
-     * =============================================================================================================
-     */
+        const existing = await prisma.partner_total_amount.findFirst({
+          where: { partnerId: id },
+          select: { id: true, totalAmount: true },
+        });
+        const newTotal = (existing?.totalAmount ?? 0) + orderPrice;
+        if (existing) {
+          await prisma.partner_total_amount.update({
+            where: { id: existing.id },
+            data: { totalAmount: newTotal },
+          });
+        } else {
+          await prisma.partner_total_amount.create({
+            data: { partnerId: id, totalAmount: newTotal },
+          });
+        }
+      } catch (e) {
+        console.error(
+          "Background admin_order_transitions / partner_total_amount error:",
+          e,
+        );
+      }
+    })();
 
     // Notify admin by email (fire-and-forget, partner from create select)
     const deliveryDateFormatted = parsedDeliveryDate
@@ -1012,23 +1063,30 @@ export const createCustomBodenkonstruktionOrder = async (
       : null;
 
     const partnerUser = (data as any).user;
-    sendCustomShaftOrderNotification({
-      orderId: (data as any).id,
-      partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
-      partnerEmail: partnerUser?.email || "",
-      partnerImage: partnerUser?.image ?? null,
-      category: "Bodenkonstruktion",
-      totalPrice: parsedTotalPrice,
-      customerDisplay: other_customer_name || "—",
-      isBodenkonstruktion: true,
-      deliveryDate: deliveryDateFormatted,
-      createdAt: formatOrderCreatedAt(new Date()),
-    }).catch((err) => console.error("Order notification email failed:", err));
+    // Notification/email should never block API response.
+    (async () => {
+      try {
+        await sendCustomShaftOrderNotification({
+          orderId: (data as any).id,
+          partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+          partnerEmail: partnerUser?.email || "",
+          partnerImage: partnerUser?.image ?? null,
+          category: "Bodenkonstruktion",
+          totalPrice: parsedTotalPrice,
+          customerDisplay: other_customer_name || "—",
+          isBodenkonstruktion: true,
+          deliveryDate: deliveryDateFormatted,
+          createdAt: formatOrderCreatedAt(new Date()),
+        });
+      } catch (err) {
+        console.error("Order notification/email background job failed:", err);
+      }
+    })();
 
     return res.status(200).json({
       success: true,
       message: "Custom Bodenkonstruktion order created successfully",
-      data,
+      data: { ...data, shoe_order_id: shoeOrderId },
     });
   } catch (error: any) {
     console.error("Create Custom Bodenkonstruktion Order Error:", error);

@@ -1974,8 +1974,7 @@ model shoe_order {
    */
   branch_location  Json?
   pick_up_location Json?
-  store_location Json? // { title: string, description?: string }
-
+  store_location   Json? // { title: string, description?: string }
 
   /**
    * --------------
@@ -2017,9 +2016,6 @@ model shoe_order {
 
   deposit_provision   Float?
   foot_analysis_price Json?
-
-
-
 
   employeeId String?
   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
@@ -2087,6 +2083,7 @@ model shoe_order {
   shoeOrderStep   shoe_order_step[]
   ordersFeedbacks ordersFeedback[]
   orderNotes      order_notes[]
+  customShafts    custom_shafts[]
 
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
@@ -2410,6 +2407,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2433,6 +2431,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -2497,6 +2496,9 @@ model custom_shafts {
   //relation with shoes
   massschuhe_order_id String?
   massschuhe_order    massschuhe_order? @relation(fields: [massschuhe_order_id], references: [id], onDelete: SetNull)
+
+  shoe_order_id String?
+  shoe_order    shoe_order? @relation(fields: [shoe_order_id], references: [id], onDelete: SetNull)
 
   status custom_shafts_status? @default(Neu)
 

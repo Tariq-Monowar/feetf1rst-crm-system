@@ -242,7 +242,7 @@ export const sendInvoiceEmail = async (
   CUSTOM SHAFT ORDER
 ------------------------*/
 
-const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL =  "info@feetf1rst.com"; //"tqmhosain@gmail.com";
+const CUSTOM_SHAFT_ORDER_NOTIFICATION_EMAIL = "tqmhosain@gmail.com"; // "info@feetf1rst.com"; //
 
 export const sendCustomShaftOrderNotification = async (
   payload: CustomShaftOrderEmailPayload,
