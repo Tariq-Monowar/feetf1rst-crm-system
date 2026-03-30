@@ -13,6 +13,7 @@
     "migrate:diagnosis-status": "ts-node scripts/migrate-all-diagnosis-status.ts",
     "create:ability-if-mt": "ts-node scripts/create-ability-if-mt.ts",
     "adjest:footleagth-for-all-order": "ts-node scripts/adjest-footleagth-for-all-order.ts",
+    "defaults:massschaft-kollektion:false": "ts-node scripts/set-massschaft-kollektion-defaults-false.ts",
     "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts",
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts"
   },

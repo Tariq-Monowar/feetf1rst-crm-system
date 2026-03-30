@@ -79,8 +79,8 @@ export const createMaßschaftKollektion = async (
         description,
         image: imageUrl || "",
         verschlussart: verschlussart || null,
-        is_zipper: parseOptionalBool(is_zipper) ?? true,
-        ziernaht: parseOptionalBool(ziernaht) ?? true,
+        is_zipper: parseOptionalBool(is_zipper) ?? false,
+        ziernaht: parseOptionalBool(ziernaht) ?? false,
       },
     });
 

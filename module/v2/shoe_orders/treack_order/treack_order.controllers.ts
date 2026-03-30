@@ -250,15 +250,13 @@ export const getKvaData = async (req: Request, res: Response) => {
   }
 };
 
-
-export const getWerkstattzettelSheetPdf = async (req: Request, res: Response) => {
+export const getWerkstattzettelSheetPdf = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const { orderId } = req.params;
     const partnerId = req.user?.id;
-
-
-    
-
 
     if (!orderId) {
       return res.status(400).json({
@@ -266,7 +264,142 @@ export const getWerkstattzettelSheetPdf = async (req: Request, res: Response) =>
         message: "Order ID is required",
       });
     }
-  } catch (error) {
+
+    const order = await prisma.shoe_order.findUnique({
+      where: { id: orderId, partnerId: partnerId },
+
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        updatedAt: true,
+        status: true,
+        priority: true,
+        quantity: true,
+        branch_location: true,
+        pick_up_location: true,
+        store_location: true,
+        payment_status: true,
+        payment_type: true,
+        insurance_status: true,
+        insurance_payed: true,
+        private_payed: true,
+        insurance_price: true,
+        private_price: true,
+        addon_price: true,
+        discount: true,
+        total_price: true,
+        vat_rate: true,
+        order_note: true,
+        status_note: true,
+        medical_diagnosis: true,
+        detailed_diagnosis: true,
+        deposit_provision: true,
+        foot_analysis_price: true,
+        employeeId: true,
+        kva: true,
+        halbprobe: true,
+        insurances: true,
+        kvaNumber: true,
+        half_sample_required: true,
+        has_trim_strips: true,
+        bedding_required: true,
+        supply_note: true,
+        shoeOrderStep: {
+          select: {
+            id: true,
+            status: true,
+            isCompleted: true,
+            auto_print: true,
+            notes: true,
+            material: true,
+            leistentyp: true,
+            leistengröße: true,
+            step3_json: true,
+            zusätzliche_notizen: true,
+            preparation_date: true,
+            fitting_date: true,
+            adjustments: true,
+            customer_reviews: true,
+            checkliste_halbprobe: true,
+            startedAt: true,
+            complatedAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        prescription: {
+          select: {
+            id: true,
+            doctor_name: true,
+            doctor_location: true,
+            createdAt: true,
+          },
+        },
+        partner: {
+          select: {
+            id: true,
+            name: true,
+            busnessName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        customer: {
+          select: {
+            id: true,
+            customerNumber: true,
+            vorname: true,
+            nachname: true,
+            wohnort: true,
+            telefon: true,
+            email: true,
+            geburtsdatum: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Werkstattzettel sheet data fetched successfully",
+      data: {
+       customerInfo: {
+        firstName: order?.customer?.vorname,
+        lastName: order?.customer?.nachname,
+        birthDate: order?.customer?.geburtsdatum,
+        address: order?.customer?.wohnort,
+        phone: order?.customer?.telefon,
+        email: order?.customer?.email,
+       },
+       prescriptionInfo: {
+         prescription: order?.prescription,
+       },
+       orderInfo: {
+        quantity: order?.quantity,
+        vatRate: order?.vat_rate,
+        insurances: order?.insurances,
+        kvaNumber: order?.kvaNumber,
+        halbprobe: order?.halbprobe,
+        productionWorkflow: {
+          half_sample_required: order?.half_sample_required,
+          has_trim_strips: order?.has_trim_strips,
+          bedding_required: order?.bedding_required,
+        },
+        
+       },
+ 
+      },
+    });
+  } catch (error: any) {
     console.error("Get Werkstattzettel Sheet Pdf Error:", error);
     res.status(500).json({
       success: false,
@@ -274,4 +407,4 @@ export const getWerkstattzettelSheetPdf = async (req: Request, res: Response) =>
       error: error.message,
     });
   }
-}
+};
