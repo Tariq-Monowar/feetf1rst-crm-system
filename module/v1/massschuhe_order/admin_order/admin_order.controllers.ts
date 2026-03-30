@@ -1156,11 +1156,13 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
     }
 
     const validStatuses = [
+      "Neu",
       "Bestellung_eingegangen",
       "In_Produktion",
       "Qualitätskontrolle",
       "Versandt",
       "Ausgeführt",
+      "problem",
     ];
     const validCatagoaries = [
       "Halbprobenerstellung",
@@ -1340,13 +1342,16 @@ export const getAllAdminOrdersByPartner = async (
   res: Response,
 ) => {
   const WORKFLOW_STATUSES = [
+    "Neu",
     "Bestellung_eingegangen",
     "In_Produktion",
     "Qualitätskontrolle",
     "Versandt",
     "Ausgeführt",
+    "problem",
   ] as const;
 
+  
   const PRODUCT_CATEGORIES = [
     "Halbprobenerstellung",
     "Massschafterstellung",
@@ -2083,11 +2088,13 @@ export const getPartnerOrdersMoreByPartnerId = async (
   res: Response,
 ) => {
   const WORKFLOW_STATUSES = [
+    "Neu",
     "Bestellung_eingegangen",
     "In_Produktion",
     "Qualitätskontrolle",
     "Versandt",
     "Ausgeführt",
+    "problem",
   ] as const;
   const PRODUCT_CATEGORIES = [
     "Halbprobenerstellung",

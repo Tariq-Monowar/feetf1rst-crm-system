@@ -139,8 +139,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
   }
 };
 
-
-
 export const getKvaData = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
@@ -251,3 +249,25 @@ export const getKvaData = async (req: Request, res: Response) => {
     });
   }
 };
+
+
+export const getWerkstattzettelSheetPdf = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const partnerId = req.user?.id;
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+  } catch (error) {
+    console.error("Get Werkstattzettel Sheet Pdf Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching werkstattzettel sheet pdf",
+      error: error.message,
+    });
+  }
+}

@@ -125,7 +125,7 @@ router.get(
   getAllAdminOrdersByPartner,
 );
 
-// GET /get/by-partner/:partnerUserId/orders — More orders for one partner (same order shape as by-partner).
+// GET {{_baseurl}}admin_order/get/by-partner/:partnerUserId/orders — More orders for one partner (same order shape as by-partner).
 //   Keyset: ?cursor=<lastOrderId>&limit=5   |   Offset: ?orderPage=2&limit=5
 //   Filters: search, status, catagoary, order_status, payment_status, lite=1
 router.get(
