@@ -1693,13 +1693,22 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       `,
     ]);
 
+    const customShaftsByType = {
+      schafttyp: linkedCustomShafts
+        .filter((s) => s.catagoary !== "Bodenkonstruktion")
+        .map((s) => ({ id: s.id, catagoary: s.catagoary })),
+      bodenkonstruktion: linkedCustomShafts
+        .filter((s) => s.catagoary === "Bodenkonstruktion")
+        .map((s) => ({ id: s.id, catagoary: s.catagoary })),
+    };
+
     if (statusParam && steps.length === 0) {
       return res.status(200).json({
         success: true,
         message: "No step with this status found for this order",
         data: null,
         shoeOrderStep,
-        linkedCustomShafts,
+        customShaftsByType,
       });
     }
 
@@ -1710,7 +1719,7 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       message: "Shoe order status fetched successfully",
       data,
       shoeOrderStep,
-      linkedCustomShafts,
+      customShaftsByType,
     });
   } catch (error: any) {
     console.error("Get Shoe Order Status Error:", error);
