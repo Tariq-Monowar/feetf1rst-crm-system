@@ -1425,6 +1425,7 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
     }
 
     const validStatuses = [
+      "Neu",
       "Bestellung_eingegangen",
       "In_Produktiony", // Fixed: schema has "In_Produktiony" not "In_Produktion"
       "Qualitätskontrolle",
@@ -1465,12 +1466,10 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
       },
     });
 
-    if (status === "Ausgeführt") {
-      await prisma.admin_order_transitions.updateMany({
-        where: { custom_shafts_id: id },
-        data: { status: "complated" },
-      });
-    }
+    await prisma.admin_order_transitions.updateMany({
+      where: { custom_shafts_id: id },
+      data: { status: status === "Ausgeführt" ? "complated" : "panding" },
+    });
 
     res.status(200).json({
       success: true,
