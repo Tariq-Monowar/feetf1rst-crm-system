@@ -107,8 +107,8 @@ router.get(
   getAllAdminOrders,
 );
 
-// One partner per response; orders paginated (default orderPage=1, orderLimit=20, max 100). partner|partnerPage|page = partner index; cursor|partnerId = next partner (User id).
-// GET .../get/by-partner?partner=4&orderPage=1&orderLimit=20&search=&status=&catagoary=
+// All partners with matching custom_shafts (order_status ≠ canceled + filters); full order list per partner. Optional: partnerUserId, search, status, catagoary.
+// GET .../get/by-partner?search=&status=&catagoary=&partnerUserId=
 router.get(
   "/get/by-partner",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
