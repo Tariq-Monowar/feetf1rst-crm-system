@@ -233,16 +233,7 @@ export const createStorage = async (req: Request, res: Response) => {
     // Get image from uploaded file if exists
     const image = file?.location || null;
 
-    const missingField = [
-      "produktname",
-      "hersteller",
-      "artikelnummer",
-      // "lagerort",
-      // "mindestbestand",
-      "groessenMengen",
-      "purchase_price",
-      "selling_price",
-    ].find((field) => !req.body[field]);
+    const missingField = ["groessenMengen"].find((field) => !req.body[field]);
 
     if (missingField) {
       cleanupFile();
