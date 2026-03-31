@@ -78,7 +78,9 @@ export const getOrderRequiredFields = async (req: Request, res: Response) => {
           .filter((f) => f.length > 0);
 
     if (fieldList.length > 0) {
-      const invalidFields = fieldList.filter((f) => !ALLOWED_FIELDS.includes(f as any));
+      const invalidFields = fieldList.filter(
+        (f) => !ALLOWED_FIELDS.includes(f as any),
+      );
       if (invalidFields.length > 0) {
         return res.status(400).json({
           success: false,
@@ -130,7 +132,10 @@ const BOOLEAN_KEYS = [
 /**
  * PUT/PATCH - Update insole order required-field flags for the current partner.
  */
-export const manageOrderRequiredFields = async (req: Request, res: Response) => {
+export const manageOrderRequiredFields = async (
+  req: Request,
+  res: Response,
+) => {
   try {
     const partnerId = req.user?.id;
 
@@ -182,7 +187,10 @@ export const manageOrderRequiredFields = async (req: Request, res: Response) => 
 
     return res.status(200).json({
       success: true,
-      message: "Order required fields updated successfully",
+      message:
+        process.env.LANGUAGE === "de"
+          ? "Pflichtfelder der Bestellung wurden erfolgreich aktualisiert."
+          : "Order required fields updated successfully",
       data: record,
     });
   } catch (error: any) {
