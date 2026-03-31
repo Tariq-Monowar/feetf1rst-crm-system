@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyUser } from "../../../../middleware/verifyUsers";
-import { getBarcodeLabel, getKvaData, getWerkstattzettelSheetPdf } from "./treack_order.controllers";
+import { getActiveButton, getBarcodeLabel, getKvaData, getWerkstattzettelSheetPdf } from "./treack_order.controllers";
 
 const router = express.Router();
 
@@ -29,5 +29,13 @@ router.get(
   getWerkstattzettelSheetPdf,
 );
 
+//treact active btton and data
+// {{_baseUrl}}v2/shoe-orders/track/active-button/:orderId
+// Objective: Return active button and data for the given order.
+router.get(
+  "/active-button/:orderId",
+  verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
+  getActiveButton,
+);
 
 export default router;

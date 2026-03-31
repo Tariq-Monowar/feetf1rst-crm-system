@@ -669,10 +669,6 @@ export const createTustomShafts = async (req, res) => {
       connect: { id: b.mabschaftKollektionId },
     };
   }
-  if (shoeOrderId) {
-    (shaftData as any).shoe_order = { connect: { id: shoeOrderId } };
-  }
-
   const shaftSelect = {
     id: true,
     orderNumber: true,
@@ -713,6 +709,59 @@ export const createTustomShafts = async (req, res) => {
       data: shaftData as any,
       select: shaftSelect,
     });
+
+    // Link shoe order after create (Prisma client may not expose relation/scalar input)
+    if (shoeOrderId) {
+      try {
+        const linkColumnRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+          SELECT kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+           AND tc.table_schema = kcu.table_schema
+          JOIN information_schema.constraint_column_usage ccu
+            ON ccu.constraint_name = tc.constraint_name
+           AND ccu.table_schema = tc.table_schema
+          WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema = 'public'
+            AND tc.table_name = 'custom_shafts'
+            AND ccu.table_name = 'shoe_order'
+          LIMIT 1
+        `;
+
+        const fallbackColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'custom_shafts'
+            AND (
+              lower(column_name) IN ('shoe_order_id', 'shoeorderid', 'shoeorder_id', 'shoe_orderid', 'shoe_order')
+              OR (column_name ILIKE '%shoe%order%' AND column_name NOT ILIKE '%massschuhe%')
+            )
+          ORDER BY
+            CASE
+              WHEN lower(column_name) = 'shoe_order_id' THEN 1
+              WHEN lower(column_name) = 'shoeorderid' THEN 2
+              ELSE 3
+            END
+          LIMIT 1
+        `;
+
+        const rawColumn =
+          linkColumnRows[0]?.column_name ?? fallbackColumns[0]?.column_name ?? null;
+        const linkColumn = rawColumn ? `"${rawColumn.replace(/"/g, "\"\"")}"` : null;
+
+        if (linkColumn) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE custom_shafts SET ${linkColumn} = $1 WHERE id = $2`,
+            shoeOrderId,
+            customShaft.id,
+          );
+        }
+      } catch (linkErr) {
+        console.error("Failed to link shoe order on custom_shafts:", linkErr);
+      }
+    }
 
     let customModel = null;
     if (isCustomModels) {
@@ -1001,8 +1050,7 @@ export const createCustomBodenkonstruktionOrder = async (
 
     const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
     // Create custom shaft order without customer or order connections
-    const data = await prisma.custom_shafts.create({
-      data: {
+    const shaftData: any = {
         user: {
           connect: { id: id },
         },
@@ -1016,9 +1064,11 @@ export const createCustomBodenkonstruktionOrder = async (
         isCustomBodenkonstruktion: true,
         orderNumber: shaftOrderNumber,
         catagoary: "Bodenkonstruktion",
-        ...(shoeOrderId && { shoe_order: { connect: { id: shoeOrderId } } }),
         ...(customer?.id && { customer: { connect: { id: customer.id } } }),
-      },
+      };
+
+    const data = await prisma.custom_shafts.create({
+      data: shaftData,
       select: {
         id: true,
         other_customer_name: true,
@@ -1037,6 +1087,63 @@ export const createCustomBodenkonstruktionOrder = async (
         },
       },
     });
+
+    // Prisma client in this project may not expose shoe_order relation/scalar fields.
+    // Link it using raw SQL when DB column exists.
+    if (shoeOrderId) {
+      try {
+        const linkColumnRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+          SELECT kcu.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+           AND tc.table_schema = kcu.table_schema
+          JOIN information_schema.constraint_column_usage ccu
+            ON ccu.constraint_name = tc.constraint_name
+           AND ccu.table_schema = tc.table_schema
+          WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_schema = 'public'
+            AND tc.table_name = 'custom_shafts'
+            AND ccu.table_name = 'shoe_order'
+          LIMIT 1
+        `;
+
+        const fallbackColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'custom_shafts'
+            AND (
+              column_name = 'shoe_order_id'
+              OR column_name = 'shoeOrderId'
+              OR column_name ILIKE '%shoe%order%'
+            )
+          ORDER BY
+            CASE
+              WHEN column_name = 'shoe_order_id' THEN 1
+              WHEN column_name = 'shoeOrderId' THEN 2
+              ELSE 3
+            END
+          LIMIT 1
+        `;
+
+        const rawColumn =
+          linkColumnRows[0]?.column_name ?? fallbackColumns[0]?.column_name ?? null;
+        const linkColumn = rawColumn
+          ? `"${rawColumn.replace(/"/g, "\"\"")}"`
+          : null;
+
+        if (linkColumn) {
+          await prisma.$executeRawUnsafe(
+            `UPDATE custom_shafts SET ${linkColumn} = $1 WHERE id = $2`,
+            shoeOrderId,
+            (data as any).id,
+          );
+        }
+      } catch (linkErr) {
+        console.error("Failed to link shoe order on custom_shafts:", linkErr);
+      }
+    }
 
     const customShaftId = (data as any).id;
     const orderPrice = Number(parsedTotalPrice ?? 0);
