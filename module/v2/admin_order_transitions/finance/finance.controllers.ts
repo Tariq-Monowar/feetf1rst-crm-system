@@ -11,14 +11,27 @@ export const payPartnerToAdminController = async (
 ) => {
   try {
     const { id } = req.user;
+    const isGerman = (process.env.LANGUAGE || "en").toLowerCase() === "de";
 
     const { amount } = req.body;
+    const requestedAmount = Number(amount);
 
     // Validate amount
     if (!amount) {
       return res.status(400).json({
         success: false,
-        message: "Amount is required",
+        message: isGerman
+          ? "Bitte gib einen Auszahlungsbetrag ein."
+          : "Please enter a payout amount.",
+      });
+    }
+
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: isGerman
+          ? "Der Betrag muss größer als 0 sein."
+          : "Amount must be greater than 0.",
       });
     }
 
@@ -38,13 +51,16 @@ export const payPartnerToAdminController = async (
     const pendingSum = Number(pendingSumRow._sum.totalAmount ?? 0);
     const available = total - pendingSum;
 
-    if (Number(amount) > available || Number(amount) <= 0) {
+    if (requestedAmount > available) {
       return res.status(400).json({
         success: false,
-        message:
-          available <= 0
-            ? "No available balance (total amount minus pending requests)"
-            : "Amount must be positive and not exceed available balance (total minus pending payout requests)",
+        message: isGerman
+          ? `Du kannst maximal ${Number(available.toFixed(2))} auszahlen lassen. Bitte gib einen kleineren Betrag ein.`
+          : `You can request up to ${Number(available.toFixed(2))}. Please enter a smaller amount.`,
+        details: {
+          requestedAmount,
+          availableAmount: Number(available.toFixed(2)),
+        },
       });
     }
 
@@ -52,21 +68,26 @@ export const payPartnerToAdminController = async (
     const requestPayout = await prisma.request_payout.create({
       data: {
         partnerId: id,
-        totalAmount: Number(amount),
+        totalAmount: requestedAmount,
         status: "panding",
       },
     });
 
     return res.status(200).json({
       success: true,
-      message: "Request payout created successfully",
+      message: isGerman
+        ? "Auszahlungsanfrage wurde erfolgreich erstellt."
+        : "Payout request created successfully.",
       data: requestPayout,
     });
   } catch (error: any) {
     console.error("Pay Partner To Admin Error:", error);
     res.status(500).json({
       success: false,
-      message: "Something went wrong while paying partner to admin",
+      message:
+        (process.env.LANGUAGE || "en").toLowerCase() === "de"
+          ? "Beim Erstellen der Auszahlungsanfrage ist ein Fehler aufgetreten."
+          : "Something went wrong while creating the payout request.",
       error: error.message,
     });
   }
