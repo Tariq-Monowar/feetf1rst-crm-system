@@ -1354,16 +1354,7 @@ export const createAppointment = async (req: Request, res: Response) => {
   }
 };
 
-export const createAppointmentWithOverlap = async (
-  req: Request,
-  res: Response,
-) => {
-  (req.query as any) = {
-    ...(req.query || {}),
-    allowOverlap: "true",
-  };
-  return createAppointment(req, res);
-};
+
 
 export const getSystemAppointment = async (req: Request, res: Response) => {
   try {
