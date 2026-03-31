@@ -9,7 +9,7 @@ datasource db {
 }
 
 model User {
-  id        String  @id @default(uuid())
+  id        String  @id @default(cuid())
   partnerId String?
 
   name String?
@@ -108,7 +108,7 @@ model User {
 }
 
 model accountInfo {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   vat_country String?
   vat_number  String?
@@ -130,7 +130,7 @@ model accountInfo {
 }
 
 model ucode {
-  id         String   @id @default(uuid())
+  id         String   @id @default(cuid())
   otp        String
   name       String?
   email      String   @unique
@@ -139,7 +139,7 @@ model ucode {
 }
 
 model partner_payout {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -153,7 +153,7 @@ model partner_payout {
 }
 
 model Product {
-  id              String   @id @default(uuid())
+  id              String   @id @default(cuid())
   name            String?
   brand           String?
   Category        String?
@@ -178,7 +178,7 @@ model Product {
 }
 
 model Color {
-  id        String  @id @default(uuid())
+  id        String  @id @default(cuid())
   colorName String
   colorCode String
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -187,7 +187,7 @@ model Color {
 }
 
 model Image {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   url       String
   color     Color    @relation(fields: [colorId], references: [id], onDelete: Cascade)
   colorId   String
@@ -206,7 +206,7 @@ model Image {
  * --------------------------------------------------------
  */
 model appointment {
-  id            String   @id @default(uuid())
+  id            String   @id @default(cuid())
   customer_name String
   time          String
   date          DateTime
@@ -238,7 +238,7 @@ model appointment {
 }
 
 model AppointmentEmployee {
-  id            String @id @default(uuid())
+  id            String @id @default(cuid())
   appointmentId String
 
   appointment appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
@@ -342,7 +342,7 @@ model appomnent_booking_rules {
 }
 
 model SuggestionFeetf1rst {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   reason     String
   name       String
@@ -355,7 +355,7 @@ model SuggestionFeetf1rst {
 
 // name, email, firma, phone, suggestion
 model ImprovementSuggestion {
-  id         String   @id @default(uuid())
+  id         String   @id @default(cuid())
   suggestion String
   category   String?
   image      String[]
@@ -367,7 +367,7 @@ model ImprovementSuggestion {
 }
 
 model Message {
-  id             String              @id @default(uuid())
+  id             String              @id @default(cuid())
   subject        String
   content        String
   senderId       String
@@ -394,7 +394,7 @@ enum RecipientType {
 }
 
 model MessageVisibility {
-  id         String   @id @default(uuid())
+  id         String   @id @default(cuid())
   messageId  String
   userId     String
   isDeleted  Boolean  @default(false)
@@ -427,7 +427,7 @@ enum Gender {
 //-------------------------------------------------
 
 model Employees {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   accountName String
 
@@ -471,7 +471,7 @@ model Employees {
 }
 
 model leave_application {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   employeeId String
   employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -514,7 +514,7 @@ enum leave_application_status {
 }
 
 model WorkshopNote {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @unique
@@ -539,7 +539,7 @@ model WorkshopNote {
 }
 
 model Versorgungen {
-  id   String @id @default(uuid())
+  id   String @id @default(cuid())
   name String
 
   /// Rohling Hersteller is come form "Stores in  produktname" field
@@ -586,7 +586,7 @@ enum supplyType {
 }
 
 model supplyStatus {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   name        String?
   description String?
@@ -626,7 +626,7 @@ enum versorgungenStatus {
 }
 
 model diagnosis_status {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
 
@@ -640,7 +640,7 @@ model diagnosis_status {
 }
 
 model customer_price {
-  id                 String @id @default(uuid())
+  id                 String @id @default(cuid())
   fußanalyse        Float?
   einlagenversorgung Float?
 
@@ -652,7 +652,7 @@ model customer_price {
 }
 
 model customer_settings {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   user      User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -666,7 +666,7 @@ model customer_settings {
 }
 
 model store_location {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -815,7 +815,7 @@ model customers_sign {
 }
 
 model customer_requirements {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -839,21 +839,21 @@ model customer_requirements {
 }
 
 model shoeAnswers {
-  id         String    @id @default(uuid())
+  id         String    @id @default(cuid())
   customerId String
   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
   answer     Json
 }
 
 model insolesAnswers {
-  id         String    @id @default(uuid())
+  id         String    @id @default(cuid())
   customerId String
   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
   answer     Json
 }
 
 model controllQuestions {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -871,7 +871,7 @@ model controllQuestions {
 }
 
 model screener_file {
-  id         String    @id @default(uuid())
+  id         String    @id @default(cuid())
   customerId String
   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -915,7 +915,7 @@ model screener_file {
 }
 
 model customer_files {
-  id         String    @id @default(uuid())
+  id         String    @id @default(cuid())
   customerId String
   customer   customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
   url        String
@@ -927,7 +927,7 @@ model customer_files {
 }
 
 model einlagenAnswers {
-  id         String           @id @default(uuid())
+  id         String           @id @default(cuid())
   customerId String
   customer   customers        @relation(fields: [customerId], references: [id], onDelete: Cascade)
   category   QuestionCategory
@@ -947,7 +947,7 @@ enum QuestionCategory {
 }
 
 model customerHistorie {
-  id         String        @id @default(uuid())
+  id         String        @id @default(cuid())
   customerId String
   customer   customers     @relation(fields: [customerId], references: [id], onDelete: Cascade)
   category   EventCategory
@@ -986,7 +986,7 @@ enum EventCategory {
 }
 
 model customer_versorgungen {
-  id   String @id @default(uuid())
+  id   String @id @default(cuid())
   name String
 
   /// Rohling Hersteller is come form "Stores in  produktname" field
@@ -1055,7 +1055,7 @@ model customerOrders {
    * main data (order data)
    * ------------------------------------------------
    */
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   u_orderType u_orderType? // store type
 
@@ -1245,7 +1245,7 @@ enum Priority {
 }
 
 model customerOrderInsurance {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String
   order   customerOrders @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1280,7 +1280,7 @@ enum vat_countrys {
 }
 
 model customerOrdersHistory {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String
   order   customerOrders @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -1308,7 +1308,7 @@ model customerOrdersHistory {
 }
 
 model ordersFeedback {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String?
   order   customerOrders? @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -1340,7 +1340,7 @@ enum FeedbackReact {
 }
 
 model customerProduct {
-  id                String @id @default(uuid())
+  id                String @id @default(cuid())
   name              String
   rohlingHersteller String
   artikelHersteller String
@@ -1380,7 +1380,7 @@ enum OrderStatus {
 }
 
 model insole_standard {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   isFavorite Boolean @default(false)
   name       String?
@@ -1394,7 +1394,7 @@ model insole_standard {
 }
 
 model order_notes {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   insoleOrderId String?
   insoleOrder   customerOrders? @relation(fields: [insoleOrderId], references: [id], onDelete: SetNull)
@@ -1458,7 +1458,7 @@ model admin_store {
    * 1.অ্যাাডমিন কে এক টা ক্লিন ট্রাংজিকশনের ডাটা বা স্টরি দেওয়া।
    * 2.পার্টনারের ব্যালেন্স ট্রেক করা।
    */
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   image String?
   price Float?
@@ -1514,7 +1514,7 @@ model admin_store {
 }
 
 model brand_store {
-  id    String  @id @default(uuid())
+  id    String  @id @default(cuid())
   brand String?
 
   groessenMengen Json?
@@ -1528,7 +1528,7 @@ model brand_store {
 }
 
 model admin_store_tracking {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   storeId String
   store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -1567,7 +1567,7 @@ model admin_store_tracking {
 }
 
 model admin_store_history {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   admin_storeId String
   admin_store   admin_store @relation(fields: [admin_storeId], references: [id], onDelete: Cascade)
@@ -1580,7 +1580,7 @@ model admin_store_history {
 }
 
 model Stores {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   /// Product name
   produktname String //productName
@@ -1665,7 +1665,7 @@ enum CreateStatus {
 }
 
 model StoreOrderOverview {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   storeId String
   store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -1716,7 +1716,7 @@ enum StoreOrderOverviewStatus {
 }
 
 model StoresHistory {
-  id      String @id @default(uuid())
+  id      String @id @default(cuid())
   storeId String
   store   Stores @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
@@ -1764,7 +1764,7 @@ enum ChangeType {
 }
 
 model stock_material {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -2240,7 +2240,7 @@ enum step5_feedback_status {
 }
 
 model files {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   fileName String?
   fileUrl  String?
@@ -2254,7 +2254,7 @@ model files {
 }
 
 model shoe_order_insurance {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId String?
   order   shoe_order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
@@ -2280,7 +2280,7 @@ model shoe_order_insurance {
  * ==========================================================================================================
  */
 model maßschaft_kollektion {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   ide String?
 
@@ -2309,7 +2309,7 @@ model maßschaft_kollektion {
 }
 
 model custom_shafts {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   /**
    * cএটা সব খানে আছে
@@ -2579,7 +2579,7 @@ enum custom_shafts_status {
 
 // deleveary date or finish date (one row per category — upsert by category)
 model custom_shafts_delivery_dates {
-  id       String                  @id @default(uuid())
+  id       String                  @id @default(cuid())
   day      Int?
   category custom_shafts_catagoary @unique
 }
@@ -2618,7 +2618,7 @@ model damian_count {
 }
 
 model CourierContact {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
@@ -2659,7 +2659,7 @@ model CourierContact {
  * =============================================================================================================
  */
 model admin_order_transitions {
-  id                String  @id @default(uuid())
+  id                String  @id @default(cuid())
   orderNumber       String?
   transitionsNumber String?
 
@@ -2709,7 +2709,7 @@ model admin_order_transitions {
 }
 
 model partner_total_amount {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   partner   User?  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -2725,7 +2725,7 @@ model partner_total_amount {
 }
 
 model request_payout {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -2739,7 +2739,7 @@ model request_payout {
 }
 
 model partner_payout_history {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String?
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -2777,7 +2777,7 @@ enum request_payout_status {
 
 /// Feature flags for partner dashboard. Keep in sync with module/v2/feature_access/feature_access.data.ts FEATURES (key = field name).
 model FeatureAccess {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   partnerId String @unique
   partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -2838,7 +2838,7 @@ model FeatureAccess {
 }
 
 model employee_feature_access {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   employeeId String
   employee   Employees @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -2970,7 +2970,7 @@ enum notificationType {
 }
 
 model software_version {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   version     String
   releaseDate DateTime
@@ -3251,7 +3251,7 @@ model feetf1rst_shop_interests {
 
 //vat
 model government_vat {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   country     vat_country?
   rate        Float?
@@ -3303,7 +3303,7 @@ model database_backup {
 
 // ===================== POS Receipt (Fiskaly SIGN IT — Italy) ======================
 model pos_receipt {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   orderId   String
   orderType String // "insole" | "shoes"
@@ -3358,7 +3358,7 @@ model pos_receipt {
 }
 
 model work_types {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   name        String?
   description String?
@@ -3376,7 +3376,7 @@ model work_types {
 }
 
 model work_hours {
-  id String @id @default(uuid())
+  id String @id @default(cuid())
 
   date  DateTime?
   hours Int?
