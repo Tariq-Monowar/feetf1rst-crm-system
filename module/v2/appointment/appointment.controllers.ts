@@ -439,7 +439,10 @@ export const getEmployeeFreePercentage = async (
       parseHHMMToMinutes(shopSettings?.shop_open) ?? 9 * 60;
     const fallbackCloseMin =
       parseHHMMToMinutes(shopSettings?.shop_close) ?? 18 * 60;
-    const fallbackDutyDayMinutes = Math.max(0, fallbackCloseMin - fallbackOpenMin);
+    const fallbackDutyDayMinutes = Math.max(
+      0,
+      fallbackCloseMin - fallbackOpenMin,
+    );
 
     // Date range for appointments query
     const rangeStart = new Date(
@@ -539,7 +542,11 @@ export const getEmployeeFreePercentage = async (
 
     // Index appointments by (employeeId, dateKey) — includes legacy employeId-only rows
     const busyByKey = new Map<string, Interval[]>();
-    const pushBusy = (employeeId: string, dateKey: string, interval: Interval) => {
+    const pushBusy = (
+      employeeId: string,
+      dateKey: string,
+      interval: Interval,
+    ) => {
       const key = `${employeeId}:${dateKey}`;
       const list = busyByKey.get(key) ?? busyByKey.set(key, []).get(key)!;
       list.push(interval);
@@ -791,6 +798,7 @@ export const getRoomOccupancyPercentage = async (
 // Create appointment
 export const createAppointment = async (req: Request, res: Response) => {
   try {
+    const isGerman = process.env.LANGUAGE === "de";
     const {
       customer_name,
       customerId,
@@ -876,6 +884,183 @@ export const createAppointment = async (req: Request, res: Response) => {
       return;
     }
 
+    // Parse user input time, normalize to 24h HH:MM, and support both 12h/24h in logic
+    const parseTimeToMinutesFlexible = (
+      value: string,
+    ): { minutes: number; hhmm24: string } | null => {
+      if (!value || typeof value !== "string") return null;
+      const raw = value.trim();
+      if (!raw) return null;
+
+      // Supports:
+      // 24h: "13:30"
+      // 12h: "1:30 PM", "01:30pm", "01:30 pm"
+      const match = raw.match(/^(\d{1,2}):(\d{2})(?:\s*([AaPp][Mm]))?$/);
+      if (!match) return null;
+
+      let hour = Number(match[1]);
+      const minute = Number(match[2]);
+      const period = (match[3] || "").toUpperCase();
+
+      if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+      if (minute < 0 || minute > 59) return null;
+
+      if (period) {
+        if (hour < 1 || hour > 12) return null;
+        if (period === "PM" && hour !== 12) hour += 12;
+        if (period === "AM" && hour === 12) hour = 0;
+      } else {
+        if (hour < 0 || hour > 23) return null;
+      }
+
+      const hh = String(hour).padStart(2, "0");
+      const mm = String(minute).padStart(2, "0");
+
+      return {
+        minutes: hour * 60 + minute,
+        hhmm24: `${hh}:${mm}`,
+      };
+    };
+
+    const requestedTimeParsed = parseTimeToMinutesFlexible(String(time));
+    if (!requestedTimeParsed) {
+      return res.status(400).json({
+        success: false,
+        message: isGerman
+          ? "Ungültiges Zeitformat. Bitte HH:MM oder HH:MM AM/PM verwenden."
+          : "Invalid time format. Please use HH:MM or HH:MM AM/PM.",
+      });
+    }
+    const normalizedTime24 = requestedTimeParsed.hhmm24;
+
+    // Check room overlap when a room is selected
+    if (appomnentRoom && String(appomnentRoom).trim() !== "") {
+      const normalizedRequestedRoom = normRoomNameForMatch(
+        String(appomnentRoom),
+      );
+
+      const toMinutesFromTimeString = (value: string): number | null => {
+        if (!value) return null;
+        const [timePartRaw, periodRaw] = value.includes(" ")
+          ? value.split(" ")
+          : [value, ""];
+        const [hStr, mStr] = timePartRaw.split(":");
+        const h = Number(hStr);
+        const m = Number(mStr);
+        if (!Number.isInteger(h) || !Number.isInteger(m)) return null;
+        if (m < 0 || m > 59) return null;
+
+        let hour = h;
+        const period = periodRaw.toLowerCase();
+        if (period === "pm" && hour !== 12) hour += 12;
+        if (period === "am" && hour === 12) hour = 0;
+        if (hour < 0 || hour > 23) return null;
+        return hour * 60 + m;
+      };
+
+      const requestedStartMin = toMinutesFromTimeString(String(time));
+      if (requestedStartMin == null) {
+        return res.status(400).json({
+          success: false,
+          message: isGerman
+            ? "Ungültiges Zeitformat. Bitte HH:MM verwenden."
+            : "Invalid time format. Please use HH:MM.",
+        });
+      }
+      const requestedEndMin =
+        requestedStartMin + Number(appointmentDuration) * 60;
+
+      const dateStart = new Date(
+        appointmentDate.getFullYear(),
+        appointmentDate.getMonth(),
+        appointmentDate.getDate(),
+      );
+      const dateEnd = new Date(
+        appointmentDate.getFullYear(),
+        appointmentDate.getMonth(),
+        appointmentDate.getDate() + 1,
+      );
+
+      const sameDayAppointments = await prisma.appointment.findMany({
+        where: {
+          userId: id,
+          appomnentRoom: { not: null },
+          date: { gte: dateStart, lt: dateEnd },
+        },
+        select: {
+          id: true,
+          reason: true,
+          appomnentRoom: true,
+          time: true,
+          duration: true,
+          customer_name: true,
+          assignedTo: true,
+          employeId: true,
+          details: true,
+          isClient: true,
+          userId: true,
+          reminder: true,
+          reminderSent: true,
+          customerId: true,
+          date: true,
+          createdAt: true,
+        },
+      });
+
+      const roomConflicts = sameDayAppointments.filter(
+        (a) =>
+          normRoomNameForMatch(a.appomnentRoom) === normalizedRequestedRoom,
+      );
+
+      for (const existing of roomConflicts) {
+        const existingStart = toMinutesFromTimeString(String(existing.time));
+        if (existingStart == null) continue;
+        const existingEnd = existingStart + Number(existing.duration || 1) * 60;
+
+        const hasOverlap =
+          requestedStartMin < existingEnd && requestedEndMin > existingStart;
+
+        if (hasOverlap) {
+          const fullConflictAppointment = await prisma.appointment.findUnique({
+            where: { id: existing.id },
+            include: {
+              appointmentEmployees: {
+                include: {
+                  employee: {
+                    select: {
+                      id: true,
+                      employeeName: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          const employeeNames =
+            fullConflictAppointment?.appointmentEmployees
+              ?.map((ae) => ae.employee?.employeeName)
+              .filter(Boolean)
+              .join(", ") ||
+            existing.assignedTo ||
+            "—";
+          const fullAppointmentData = fullConflictAppointment
+            ? formatAppointmentResponse(fullConflictAppointment as any)
+            : existing;
+
+          return res.status(409).json({
+            success: false,
+            roomOverlap: true,
+            message: isGerman
+              ? `Raum "${appomnentRoom}" ist in diesem Zeitraum bereits belegt (Mitarbeiter: ${employeeNames}).`
+              : `Room "${appomnentRoom}" is already booked for this time range (Employee: ${employeeNames}).`,
+            data: fullAppointmentData,
+          });
+        }
+      }
+    }
+
     // Validate that all employees exist in the database
     if (hasMultipleEmployees) {
       const employeeIds = employees.map((emp) => emp.employeId);
@@ -918,58 +1103,122 @@ export const createAppointment = async (req: Request, res: Response) => {
       }
     }
 
-    // Check for overlapping appointments for all employees
-    if (hasMultipleEmployees) {
-      // Check overlaps for each employee in the array
-      for (const emp of employees) {
-        try {
-          const overlapCheck = await checkAppointmentOverlap(
-            emp.employeId,
-            appointmentDate,
-            time,
-            appointmentDuration,
-          );
+    // Check employee overlaps in one query (faster) and support existing 12h/24h records
+    const employeeIdsToCheck = hasMultipleEmployees
+      ? employees.map((emp) => emp.employeId)
+      : employeId
+        ? [employeId]
+        : [];
 
-          if (overlapCheck.hasOverlap) {
-            res.status(409).json({
-              success: false,
-              message: overlapCheck.message,
-              data: overlapCheck.conflictingAppointment,
-            });
-            return;
-          }
-        } catch (error) {
-          res.status(400).json({
-            success: false,
-            message: error.message || "Error checking appointment overlap",
-          });
-          return;
-        }
-      }
-    } else if (employeId) {
-      // Single employee overlap check (backward compatibility)
-      try {
-        const overlapCheck = await checkAppointmentOverlap(
-          employeId,
-          appointmentDate,
-          time,
-          appointmentDuration,
+    if (employeeIdsToCheck.length > 0) {
+      const dateStart = new Date(
+        appointmentDate.getFullYear(),
+        appointmentDate.getMonth(),
+        appointmentDate.getDate(),
+      );
+      const dateEnd = new Date(
+        appointmentDate.getFullYear(),
+        appointmentDate.getMonth(),
+        appointmentDate.getDate() + 1,
+      );
+
+      const existingAppointments = await prisma.appointment.findMany({
+        where: {
+          userId: id,
+          date: { gte: dateStart, lt: dateEnd },
+          OR: [
+            { employeId: { in: employeeIdsToCheck } },
+            {
+              appointmentEmployees: {
+                some: {
+                  employeeId: { in: employeeIdsToCheck },
+                },
+              },
+            },
+          ],
+        },
+        select: {
+          id: true,
+          time: true,
+          duration: true,
+          assignedTo: true,
+          employeId: true,
+          appointmentEmployees: {
+            select: {
+              employeeId: true,
+            },
+          },
+        },
+      });
+
+      const requestedStartMin = requestedTimeParsed.minutes;
+      const requestedEndMin =
+        requestedStartMin + Number(appointmentDuration) * 60;
+      const requestedIdsSet = new Set(employeeIdsToCheck);
+
+      for (const existing of existingAppointments) {
+        const parsedExisting = parseTimeToMinutesFlexible(
+          String(existing.time),
         );
+        if (!parsedExisting) continue;
 
-        if (overlapCheck.hasOverlap) {
-          res.status(409).json({
-            success: false,
-            message: overlapCheck.message,
-            data: overlapCheck.conflictingAppointment,
-          });
-          return;
+        const existingStartMin = parsedExisting.minutes;
+        const existingEndMin =
+          existingStartMin + Number(existing.duration || 1) * 60;
+
+        const overlap =
+          requestedStartMin < existingEndMin &&
+          requestedEndMin > existingStartMin;
+        if (!overlap) continue;
+
+        const involvedIds = new Set<string>();
+        if (existing.employeId) involvedIds.add(existing.employeId);
+        for (const ae of existing.appointmentEmployees || []) {
+          if (ae.employeeId) involvedIds.add(ae.employeeId);
         }
-      } catch (error) {
-        res.status(400).json({
+
+        const hasMatchingEmployee = [...requestedIdsSet].some((eid) =>
+          involvedIds.has(eid),
+        );
+        if (!hasMatchingEmployee) continue;
+
+        const overlapEmployeeName =
+          existing.assignedTo && String(existing.assignedTo).trim()
+            ? String(existing.assignedTo).trim()
+            : "Selected employee";
+
+        const format12h = (totalMinutes: number) => {
+          const safe = Math.max(0, Math.floor(totalMinutes));
+          const hour24 = Math.floor(safe / 60) % 24;
+          const minute = safe % 60;
+          const period = hour24 >= 12 ? "PM" : "AM";
+          const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+          return `${String(hour12).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+        };
+        const format24h = (totalMinutes: number) => {
+          const safe = Math.max(0, Math.floor(totalMinutes));
+          const hour24 = Math.floor(safe / 60) % 24;
+          const minute = safe % 60;
+          return `${String(hour24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+        };
+
+        const existingUsesAmPm = /\b(am|pm)\b/i.test(String(existing.time || ""));
+
+        const overlapStartText = existingUsesAmPm
+          ? format12h(existingStartMin)
+          : format24h(existingStartMin);
+        const overlapEndText = existingUsesAmPm
+          ? format12h(existingEndMin)
+          : format24h(existingEndMin);
+
+        return res.status(409).json({
           success: false,
-          message: error.message || "Error checking appointment overlap",
+          employeeOverlap: true,
+          message: isGerman
+            ? `Mitarbeiter ${overlapEmployeeName} hat an diesem Datum bereits einen Termin von ${overlapStartText} bis ${overlapEndText}.`
+            : `Employee ${overlapEmployeeName} already has an appointment from ${overlapStartText} to ${overlapEndText} on this date.`,
+          data: existing,
         });
-        return;
       }
     }
 
@@ -994,7 +1243,7 @@ export const createAppointment = async (req: Request, res: Response) => {
 
     const appointmentData: any = {
       customer_name,
-      time,
+      time: normalizedTime24,
       date: appointmentDate,
       reason,
       assignedTo: finalAssignedTo,
@@ -1086,14 +1335,11 @@ export const createAppointment = async (req: Request, res: Response) => {
       `/dashboard/calendar`,
     );
 
-    const language = process.env.LANGUAGE || "en";
-
     res.status(201).json({
       success: true,
-      message:
-        language === "de"
-          ? "Termin erfolgreich erstellt"
-          : "Appointment created successfully",
+      message: isGerman
+        ? "Termin erfolgreich erstellt"
+        : "Appointment created successfully",
       appointment: formatAppointmentResponse(appointment),
     });
   } catch (error) {
@@ -1724,7 +1970,10 @@ export const getAppointmentsNextFourDays = async (
       const bucket =
         daysMap[key] ?? (daysMap[key] = { date: key, appointments: [] });
 
-      const pushRow = (employeeId: string | null, employeeName: string | null) => {
+      const pushRow = (
+        employeeId: string | null,
+        employeeName: string | null,
+      ) => {
         bucket.appointments.push({
           id: employeeId,
           time: appt.time,

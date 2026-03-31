@@ -1468,10 +1468,12 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       return summedGroessenMengen;
     };
 
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const skip = (page - 1) * limit;
+    const limitRaw = parseInt(req.query.limit as string);
+    const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 10, 1), 100);
+    const cursor = (req.query.cursor as string)?.trim() || undefined;
     const search = req.query.search as string;
+    const sort = ((req.query.sort as string)?.trim().toLowerCase() ||
+      "latest") as "latest" | "a_z" | "z_a";
 
     const type = (req.query.type as string)?.trim();
 
@@ -1487,6 +1489,13 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       whereCondition.type = type as StoreType;
     }
 
+    if (!["latest", "a_z", "z_a"].includes(sort)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid sort. Must be latest, a_z, or z_a",
+      });
+    }
+
     if (search) {
       whereCondition.OR = [
         { produktname: { contains: search, mode: "insensitive" } },
@@ -1495,15 +1504,16 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       ];
     }
 
-    const totalItems = await prisma.stores.count({
-      where: { user: { id: userId }, ...whereCondition },
-    });
+    const orderBy =
+      sort === "z_a"
+        ? [{ createdAt: "asc" as const }, { id: "asc" as const }]
+        : [{ createdAt: "desc" as const }, { id: "desc" as const }];
 
-    const allStorage = await prisma.stores.findMany({
+    const allStorageRaw = await prisma.stores.findMany({
       where: { user: { id: userId }, ...whereCondition },
-      skip,
-      take: limit,
-      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy,
       include: {
         storeOrderOverviews: {
           where: {
@@ -1522,6 +1532,13 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
         },
       },
     });
+
+    const hasMore = allStorageRaw.length > limit;
+    const allStorage = hasMore ? allStorageRaw.slice(0, limit) : allStorageRaw;
+    const nextCursor =
+      hasMore && allStorage.length > 0
+        ? allStorage[allStorage.length - 1]?.id ?? null
+        : null;
 
     const partnerBrandSettings = await prisma.store_brand_settings.findMany({
       where: { partnerId: userId },
@@ -1574,8 +1591,6 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       };
     };
 
-    const totalPages = Math.ceil(totalItems / limit);
-
     // Add calculated Status to all stores
     const storageWithStatus = addStatusToStores(allStorage).map(
       (store: any) => {
@@ -1625,12 +1640,10 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
       message: "All storage fetched successfully",
       data: storageWithStatus,
       pagination: {
-        totalItems,
-        totalPages,
-        currentPage: page,
-        itemsPerPage: limit,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
+        limit,
+        hasMore,
+        nextCursor,
+        sort,
       },
     });
   } catch (error) {
