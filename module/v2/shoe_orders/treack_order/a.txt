@@ -1,0 +1,75 @@
+
+responce 1:
+{
+    "success": true,
+    "message": "Active button and data fetched successfully",
+    "data": {
+        "orderId": "cmmfxmk4o0001kuovio6a7z8z",
+        "schafttyp": {
+                "intern": true,
+                "extern": true
+            
+        },
+        "bodenkonstruktion": {
+                "intern": false,
+                "extern": true
+            
+        }
+    }
+}
+
+
+responce 2: ?schafttyp=intern the i get intern data if i quary ?schafttyp=extern i get extern data
+same ?bodenkonstruktion=intern and bodenkonstruktion=extern
+
+{
+    "success": true,
+    "message": "Active button and data fetched successfully",
+    "data": {
+        "orderId": "cmmfxmk4o0001kuovio6a7z8z",
+        "schafttyp": {
+            "active": {
+                "intern": true,
+                "extern": true
+            },
+            "intern": {
+                "note": null,
+                "json": "{\n  \"title\": \"Mein Projekt Dokumentation\",\n  \"mode\": \"site\"\n}",
+                "image": null,
+                "hasData": true
+            },
+            "extern": {
+                "note": null,
+                "customShafts": [
+                    {
+                        "id": "e0e3e5cd-8138-4096-a4ec-1ace75167a10",
+                        "catagoary": "Komplettfertigung"
+                    }
+                ],
+                "hasData": true
+            }
+        },
+        "bodenkonstruktion": {
+            "active": {
+                "intern": false,
+                "extern": true
+            },
+            "intern": {
+                "note": null,
+                "json": null,
+                "image": null,
+                "hasData": false
+            },
+            "extern": {
+                "note": null,
+                "customShafts": [
+                    {
+                        "id": "f4686bb9-5901-4d42-865c-11526ca42aa0",
+                        "catagoary": "Bodenkonstruktion"
+                    }
+                ],
+                "hasData": true
+            }
+        }
+    }
+}

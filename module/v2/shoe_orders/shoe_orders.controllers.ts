@@ -1593,7 +1593,7 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const [steps, shoeOrderStep, linkedCustomShafts] = await Promise.all([
+    const [steps, shoeOrderStep] = await Promise.all([
       prisma.shoe_order_step.findMany({
         where: {
           orderId: id,
@@ -1675,32 +1675,7 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
           createdAt: true,
         },
       }),
-      prisma.$queryRaw<
-        Array<{
-          id: string;
-          orderNumber: string | null;
-          catagoary: string | null;
-          status: string | null;
-          createdAt: Date;
-        }>
-      >`
-        SELECT id, "orderNumber", catagoary, status, "createdAt"
-        FROM "custom_shafts"
-        WHERE "shoe_order_id" = ${id}
-          AND "partnerId" = ${partnerId}
-          AND "order_status" IN ('active', 'completed')
-        ORDER BY "createdAt" DESC
-      `,
     ]);
-
-    const customShaftsByType = {
-      schafttyp: linkedCustomShafts
-        .filter((s) => s.catagoary !== "Bodenkonstruktion")
-        .map((s) => ({ id: s.id, catagoary: s.catagoary })),
-      bodenkonstruktion: linkedCustomShafts
-        .filter((s) => s.catagoary === "Bodenkonstruktion")
-        .map((s) => ({ id: s.id, catagoary: s.catagoary })),
-    };
 
     if (statusParam && steps.length === 0) {
       return res.status(200).json({
@@ -1708,7 +1683,6 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
         message: "No step with this status found for this order",
         data: null,
         shoeOrderStep,
-        customShaftsByType,
       });
     }
 
@@ -1719,7 +1693,6 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       message: "Shoe order status fetched successfully",
       data,
       shoeOrderStep,
-      customShaftsByType,
     });
   } catch (error: any) {
     console.error("Get Shoe Order Status Error:", error);
