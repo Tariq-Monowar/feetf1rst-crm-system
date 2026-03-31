@@ -2,6 +2,7 @@ import express from "express";
 
 import {
   createAppointment,
+  createAppointmentWithOverlap,
   getAllAppointments,
   getAppointmentById,
   updateAppointment,
@@ -42,6 +43,11 @@ router.post(
 );
 
 router.post("/", verifyUser("PARTNER", "ADMIN", "EMPLOYEE"), createAppointment);
+router.post(
+  "/force-create",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  createAppointmentWithOverlap,
+);
 
 router.get(
   "/system-appointment/:customerId/:appointmentId",

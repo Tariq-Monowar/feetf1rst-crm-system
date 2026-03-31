@@ -635,9 +635,11 @@ export const getCombinedAvailableTimeSlots = async (
         dayOfWeek: jsDay,
         isActive: true,
       },
-      include: {
+      select: {
+        employeeId: true,
         availability_time: {
           where: { isActive: true },
+          select: { startTime: true, endTime: true },
         },
       },
     });
@@ -652,66 +654,78 @@ export const getCombinedAvailableTimeSlots = async (
     const formatTime = (h: number, m: number) =>
       `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 
-    // If no availability rules exist at all for these employees on that day,
-    // treat them as fully available for the whole day.
-    if (availabilities.length === 0) {
-      const fullDayTimes: string[] = [];
-      let currentMinutes = 0; // 00:00
-      const endOfDay = 24 * 60; // 24:00
-      while (currentMinutes < endOfDay) {
-        const h = Math.floor(currentMinutes / 60);
-        const m = currentMinutes % 60;
-        fullDayTimes.push(formatTime(h, m));
-        currentMinutes += step;
-      }
-
-      return res.status(200).json({
-        success: true,
-        date,
-        intervalMinutes: step,
-        times: fullDayTimes,
-        employeesWithoutAvailability,
-      });
+    // Prebuild full-day slots once (used when an employee has no availability data).
+    const fullDaySet = new Set<string>();
+    for (let minute = 0; minute < 24 * 60; minute += step) {
+      fullDaySet.add(formatTime(Math.floor(minute / 60), minute % 60));
     }
 
-    // Build time slots incrementally and intersect as we go (less memory, faster).
+    // Group availability rows by employee for this day.
+    const availabilityByEmployee = new Map<
+      string,
+      { availability_time: { startTime: string; endTime: string }[] }[]
+    >();
+    for (const row of availabilities) {
+      const list = availabilityByEmployee.get(row.employeeId) ?? [];
+      list.push(row as any);
+      availabilityByEmployee.set(row.employeeId, list);
+    }
+
+    // Intersect employee-level availability sets.
     let intersection: Set<string> | null = null;
-    for (const av of availabilities) {
-      const set = new Set<string>();
-      for (const slot of av.availability_time) {
-        const [sH, sM] = slot.startTime.split(":").map(Number);
-        const [eH, eM] = slot.endTime.split(":").map(Number);
-        if (
-          Number.isNaN(sH) ||
-          Number.isNaN(sM) ||
-          Number.isNaN(eH) ||
-          Number.isNaN(eM)
-        ) {
-          continue;
+    for (const employeeId of employeeIds) {
+      const rows = availabilityByEmployee.get(employeeId) ?? [];
+
+      // If no row exists for employee => fully free for the whole day.
+      if (rows.length === 0) {
+        if (intersection === null) {
+          intersection = new Set(fullDaySet);
         }
-        let currentMinutes = sH * 60 + sM;
-        const endMinutes = eH * 60 + eM;
-        while (currentMinutes < endMinutes) {
-          const h = Math.floor(currentMinutes / 60);
-          const m = currentMinutes % 60;
-          set.add(formatTime(h, m));
-          currentMinutes += step;
+        continue;
+      }
+
+      // Union all windows of this employee.
+      const employeeSet = new Set<string>();
+      for (const row of rows) {
+        for (const slot of row.availability_time ?? []) {
+          const [sH, sM] = String(slot.startTime).split(":").map(Number);
+          const [eH, eM] = String(slot.endTime).split(":").map(Number);
+          if (
+            Number.isNaN(sH) ||
+            Number.isNaN(sM) ||
+            Number.isNaN(eH) ||
+            Number.isNaN(eM)
+          ) {
+            continue;
+          }
+          let currentMinutes = sH * 60 + sM;
+          const endMinutes = eH * 60 + eM;
+          while (currentMinutes < endMinutes) {
+            employeeSet.add(
+              formatTime(Math.floor(currentMinutes / 60), currentMinutes % 60),
+            );
+            currentMinutes += step;
+          }
         }
       }
 
+      // If employee has row(s) but no valid time windows => treat as full-day free.
+      const normalizedEmployeeSet =
+        employeeSet.size > 0 ? employeeSet : new Set(fullDaySet);
+
       if (intersection === null) {
-        intersection = set;
+        intersection = normalizedEmployeeSet;
       } else {
-        const nextIntersection = new Set<string>();
+        const next = new Set<string>();
         for (const t of intersection) {
-          if (set.has(t)) nextIntersection.add(t);
+          if (normalizedEmployeeSet.has(t)) next.add(t);
         }
-        intersection = nextIntersection;
+        intersection = next;
         if (intersection.size === 0) break;
       }
     }
 
-    const times = intersection ? [...intersection].sort() : [];
+    const times = [...(intersection ?? fullDaySet)].sort();
 
     return res.status(200).json({
       success: true,

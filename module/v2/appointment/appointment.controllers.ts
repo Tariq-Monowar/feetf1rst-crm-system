@@ -799,6 +799,8 @@ export const getRoomOccupancyPercentage = async (
 export const createAppointment = async (req: Request, res: Response) => {
   try {
     const isGerman = process.env.LANGUAGE === "de";
+    const allowOverlap =
+      String((req.query as any)?.allowOverlap || "false") === "true";
     const {
       customer_name,
       customerId,
@@ -934,7 +936,7 @@ export const createAppointment = async (req: Request, res: Response) => {
     const normalizedTime24 = requestedTimeParsed.hhmm24;
 
     // Check room overlap when a room is selected
-    if (appomnentRoom && String(appomnentRoom).trim() !== "") {
+    if (!allowOverlap && appomnentRoom && String(appomnentRoom).trim() !== "") {
       const normalizedRequestedRoom = normRoomNameForMatch(
         String(appomnentRoom),
       );
@@ -1110,7 +1112,7 @@ export const createAppointment = async (req: Request, res: Response) => {
         ? [employeId]
         : [];
 
-    if (employeeIdsToCheck.length > 0) {
+    if (!allowOverlap && employeeIdsToCheck.length > 0) {
       const dateStart = new Date(
         appointmentDate.getFullYear(),
         appointmentDate.getMonth(),
@@ -1350,6 +1352,17 @@ export const createAppointment = async (req: Request, res: Response) => {
       error: error.message,
     });
   }
+};
+
+export const createAppointmentWithOverlap = async (
+  req: Request,
+  res: Response,
+) => {
+  (req.query as any) = {
+    ...(req.query || {}),
+    allowOverlap: "true",
+  };
+  return createAppointment(req, res);
 };
 
 export const getSystemAppointment = async (req: Request, res: Response) => {
