@@ -1188,7 +1188,7 @@ model customerOrders {
   werkstattzettel Boolean?      @default(true)
 
   kva       Boolean? @default(true)
-  halbprobe Boolean? @default(true)
+  halbprobe Boolean? @default(false)
   kvaNumber Int? //it's start form 1
   kvaPdf    String?
 
@@ -2021,7 +2021,7 @@ model shoe_order {
   employee   Employees? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
   kva       Boolean? @default(true)
-  halbprobe Boolean? @default(true)
+  halbprobe Boolean? @default(false)
   kvaNumber Int? //it's start form 1
   kvaPdf    String?
 
