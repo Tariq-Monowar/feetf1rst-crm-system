@@ -348,7 +348,8 @@ export const getAllTransitions = async (req: Request, res: Response) => {
         COALESCE(soo.produktname, s.produktname) AS "store_produktname",
         COALESCE(soo.hersteller, s.hersteller) AS "store_hersteller",
         COALESCE(soo.artikelnummer, s.artikelnummer) AS "store_artikelnummer",
-        soo."status"::text AS "storeOrderOverviewStatus"
+        soo."status"::text AS "storeOrderOverviewStatus",
+        soo."delivered_date" AS "store_delivered_date"
       FROM "admin_order_transitions" aot
       LEFT JOIN "customers" c ON c.id = aot."customerId"
       LEFT JOIN "custom_shafts" cs ON cs.id = aot."custom_shafts_id"
@@ -394,6 +395,7 @@ export const getAllTransitions = async (req: Request, res: Response) => {
               hersteller: row.store_hersteller ?? null,
               artikelnummer: row.store_artikelnummer ?? null,
               status: row.storeOrderOverviewStatus ?? null,
+              delivered_date: row.store_delivered_date ?? null,
             }
           : null,
         createdAt: row.createdAt,
