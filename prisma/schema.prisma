@@ -1520,8 +1520,8 @@ model brand_store {
   id    String  @id @default(cuid())
   brand String?
 
-  groessenMengen Json?
-  delivered_duration Int? @default(14)
+  groessenMengen     Json?
+  delivered_duration Int?  @default(14)
 
   type StoreType @default(rady_insole)
 
@@ -1697,6 +1697,8 @@ model StoreOrderOverview {
 
   status StoreOrderOverviewStatus?
   type   StoreType?
+
+  delivered_date DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2414,6 +2416,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2437,6 +2440,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**

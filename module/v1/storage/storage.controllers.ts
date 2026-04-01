@@ -685,6 +685,22 @@ export const buyStorage = async (req, res) => {
     const delivered_quantity = buildDeliveredQuantityShell(
       transformedGroessenMengen,
     );
+    const brandDurationRow =
+      adminStore.brand && String(adminStore.brand).trim() !== ""
+        ? await prisma.brand_store.findFirst({
+            where: {
+              brand: String(adminStore.brand).trim(),
+              type: storeType as StoreType,
+            },
+            select: { delivered_duration: true },
+          })
+        : null;
+    const deliveredDurationDays = Math.max(
+      0,
+      Math.floor(Number(brandDurationRow?.delivered_duration ?? 14)),
+    );
+    const deliveredDate = new Date();
+    deliveredDate.setDate(deliveredDate.getDate() + deliveredDurationDays);
 
     const lagerortFinal = lagerort ?? null;
     const sellingPriceFinal = Number(selling_price ?? 0);
@@ -742,6 +758,7 @@ export const buyStorage = async (req, res) => {
             hersteller: createdStore.hersteller,
             groessenMengen: transformedGroessenMengen,
             delivered_quantity,
+            delivered_date: deliveredDate,
             type: storeType as StoreType,
             status: "In_bearbeitung",
           },
@@ -776,6 +793,7 @@ export const buyStorage = async (req, res) => {
           hersteller: createdStore.hersteller,
           groessenMengen: transformedGroessenMengen,
           delivered_quantity,
+          delivered_date: deliveredDate,
           type: storeType as StoreType,
           status: "In_bearbeitung",
         },
@@ -1232,6 +1250,24 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
       storeType,
     );
 
+    // Delivery ETA from brand_store by brand name + type (fallback: 14 days)
+    const brandDurationRow =
+      store.hersteller && String(store.hersteller).trim() !== ""
+        ? await prisma.brand_store.findFirst({
+            where: {
+              brand: String(store.hersteller).trim(),
+              type: storeType,
+            },
+            select: { delivered_duration: true },
+          })
+        : null;
+    const deliveredDurationDays = Math.max(
+      0,
+      Math.floor(Number(brandDurationRow?.delivered_duration ?? 14)),
+    );
+    const deliveredDate = new Date();
+    deliveredDate.setDate(deliveredDate.getDate() + deliveredDurationDays);
+
     const delivered_quantity = buildDeliveredQuantityShell(
       overviewGroessenMengen,
     );
@@ -1257,6 +1293,7 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
             hersteller: store.hersteller,
             groessenMengen: overviewGroessenMengen,
             delivered_quantity,
+            delivered_date: deliveredDate,
             type: storeType,
             status: "In_bearbeitung",
           },
@@ -1292,6 +1329,7 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
           hersteller: store.hersteller,
           groessenMengen: overviewGroessenMengen,
           delivered_quantity,
+          delivered_date: deliveredDate,
           type: storeType,
           status: "In_bearbeitung",
         },

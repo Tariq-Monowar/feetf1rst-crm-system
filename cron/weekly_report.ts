@@ -136,9 +136,10 @@ export const dailyReport = () => {
       };
 
       const brandSettingsModel = (prisma as any).store_brand_settings;
+      const brandStoreModel = (prisma as any).brand_store;
       const storeOrderOverviewModel = (prisma as any).storeOrderOverview;
 
-      if (!brandSettingsModel || !storeOrderOverviewModel) {
+      if (!brandSettingsModel || !brandStoreModel || !storeOrderOverviewModel) {
         console.error(
           "Required Prisma models are not available. Please regenerate Prisma client."
         );
@@ -254,6 +255,22 @@ export const dailyReport = () => {
           const orderNumber = await getNextOrderNumberForPartnerCached(
             String(store.userId),
           );
+          const brandDurationRow =
+            store.hersteller && String(store.hersteller).trim() !== ""
+              ? await brandStoreModel.findFirst({
+                  where: {
+                    brand: String(store.hersteller).trim(),
+                    type: store.type ?? "rady_insole",
+                  },
+                  select: { delivered_duration: true },
+                })
+              : null;
+          const deliveredDurationDays = Math.max(
+            0,
+            Math.floor(Number(brandDurationRow?.delivered_duration ?? 14)),
+          );
+          const deliveredDate = new Date();
+          deliveredDate.setDate(deliveredDate.getDate() + deliveredDurationDays);
 
           console.log(
             "[auto-order][calc]",
@@ -264,6 +281,8 @@ export const dailyReport = () => {
               totalQuantity,
               totalPrice,
               orderNumber,
+              deliveredDurationDays,
+              deliveredDate,
             }),
           );
 
@@ -276,6 +295,7 @@ export const dailyReport = () => {
               hersteller: store.hersteller,
               groessenMengen: overviewGroessenMengen,
               delivered_quantity: deliveredQuantity,
+              delivered_date: deliveredDate,
               type: store.type ?? "rady_insole",
               status: "In_bearbeitung",
             },
