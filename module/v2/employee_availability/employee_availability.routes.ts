@@ -28,6 +28,7 @@ router.post("/create/:employeeId", verifyUser("PARTNER"), createEmployeeAvailabi
 router.patch("/toggle-activity/:employeeId", verifyUser("PARTNER"), activeEmployeeAvailability);
 
 router.post("/add-availability-time", verifyUser("PARTNER"), addEmployeeAvailability);
+
 router.all("/update-availability-time/:availability_time_id", (req, res, next) => {
   if (req.method !== "PATCH") {
     return res.status(405).json({
@@ -37,6 +38,7 @@ router.all("/update-availability-time/:availability_time_id", (req, res, next) =
   }
   next();
 });
+
 router.patch("/update-availability-time/:availability_time_id", verifyUser("PARTNER"), updateAvailabilityTime);
 router.delete("/delete-availability-time/:availability_time_id", verifyUser("PARTNER"), deleteAvailabilityTime);
 
