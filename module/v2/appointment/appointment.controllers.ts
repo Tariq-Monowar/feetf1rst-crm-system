@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
-import { notificationType } from "@prisma/client";
+import { Prisma, notificationType } from "@prisma/client";
+import redis from "../../../config/redis.config";
 import { notificationSend } from "../../../utils/notification.utils";
 import {
   checkAppointmentOverlap,
@@ -632,10 +633,13 @@ export const getEmployeeFreePercentage = async (
   }
 };
 
+const ROOM_OCCUPANCY_CACHE_TTL_SEC = 45;
+
 /**
  * Per-room occupancy % (0 = free, 100 = fully booked) vs shop hours.
  * partners_settings.shop_open / shop_close. appointment.appomnentRoom ↔ appomnent_room.name (case-insensitive).
  * POST body: optional { dates: string[] }; if omitted or empty, uses **today** (local calendar date).
+ * Optimized: Redis cache, max date count, SQL aggregate (no row-by-row scan in Node).
  */
 export const getRoomOccupancyPercentage = async (
   req: Request,
@@ -666,14 +670,25 @@ export const getRoomOccupancyPercentage = async (
       ];
     }
 
+    const MAX_DAYS = 62;
+    if (dateInputs.length > MAX_DAYS) {
+      return res.status(400).json({
+        success: false,
+        message: `At most ${MAX_DAYS} dates per request.`,
+      });
+    }
+
     const parsedDates = dateInputs.map(parseLocalDay);
     if (parsedDates.some((d) => isNaN(d.getTime()))) {
-      res.status(400).json({
+      return res.status(400).json({
         success: false,
         message: "All dates must be valid date strings",
       });
-      return;
     }
+
+    const uniqueDays = [
+      ...new Map(parsedDates.map((d) => [formatYmdLocal(d), d])).values(),
+    ].sort((a, b) => a.getTime() - b.getTime());
 
     const [rooms, settings] = await Promise.all([
       prisma.appomnent_room.findMany({
@@ -701,27 +716,25 @@ export const getRoomOccupancyPercentage = async (
     ]);
 
     if (rooms.length === 0) {
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
-        dates: parsedDates.map(formatYmdLocal),
+        dates: uniqueDays.map(formatYmdLocal),
         data: [],
       });
-      return;
     }
 
     const openMin = parseHHMMToMinutes(settings?.shop_open) ?? 9 * 60;
     const closeMin = parseHHMMToMinutes(settings?.shop_close) ?? 18 * 60;
 
     const availablePerDay = Math.max(0, closeMin - openMin);
-    const numDays = parsedDates.length;
+    const numDays = uniqueDays.length;
     const availableMinutesTotal = availablePerDay * numDays;
 
-    const rangeStart = new Date(
-      Math.min(...parsedDates.map((d) => d.getTime())),
-    );
-    const rangeEnd = new Date(
-      Math.max(...parsedDates.map((d) => d.getTime())) + 24 * 60 * 60 * 1000,
-    );
+    const cacheKey = `roomOcc:v1:${partnerId}:${uniqueDays.map(formatYmdLocal).join(",")}:${openMin}-${closeMin}`;
+    const cached = await redis.get(cacheKey).catch(() => null);
+    if (cached) {
+      return res.status(200).json(JSON.parse(cached));
+    }
 
     const roomByNormName = new Map(
       rooms
@@ -729,36 +742,38 @@ export const getRoomOccupancyPercentage = async (
         .map((r) => [normRoomNameForMatch(r.name), r] as const),
     );
 
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        userId: partnerId,
-        date: { gte: rangeStart, lt: rangeEnd },
-        appomnentRoom: { not: null },
-      },
-      select: {
-        appomnentRoom: true,
-        date: true,
-        duration: true,
-      },
+    // Only appointments on requested calendar days (fixes min–max range bug for sparse dates).
+    const dayOrClauses = uniqueDays.map((d) => {
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+      return Prisma.sql`("date" >= ${dayStart} AND "date" < ${dayEnd})`;
     });
+    const dayFilter = Prisma.join(dayOrClauses, " OR ");
+
+    const aggregated = await prisma.$queryRaw<
+      { room_key: string; occupied_minutes: unknown }[]
+    >(Prisma.sql`
+      SELECT LOWER(TRIM("appomnentRoom")) AS room_key,
+             SUM(COALESCE("duration", 1) * 60)::float AS occupied_minutes
+      FROM appointment
+      WHERE "userId" = ${partnerId}
+        AND "appomnentRoom" IS NOT NULL
+        AND (${dayFilter})
+      GROUP BY LOWER(TRIM("appomnentRoom"))
+    `);
 
     const occupiedByRoomId = new Map<string, number>();
     for (const r of rooms) occupiedByRoomId.set(r.id, 0);
 
-    const dateKeys = new Set(parsedDates.map(formatYmdLocal));
-
-    for (const appt of appointments) {
-      const dk = formatYmdLocal(new Date(appt.date));
-      if (!dateKeys.has(dk)) continue;
-
-      const room = roomByNormName.get(normRoomNameForMatch(appt.appomnentRoom));
+    for (const row of aggregated) {
+      const key = String(row.room_key || "").trim();
+      if (!key) continue;
+      const room = roomByNormName.get(key);
       if (!room) continue;
-
-      const durHours = appt.duration != null ? Number(appt.duration) : 1;
-      const durMin = (Number.isFinite(durHours) ? durHours : 1) * 60;
+      const mins = Number(row.occupied_minutes);
       occupiedByRoomId.set(
         room.id,
-        (occupiedByRoomId.get(room.id) ?? 0) + durMin,
+        (occupiedByRoomId.get(room.id) ?? 0) + (Number.isFinite(mins) ? mins : 0),
       );
     }
 
@@ -780,11 +795,21 @@ export const getRoomOccupancyPercentage = async (
       };
     });
 
-    res.status(200).json({
+    const payload = {
       success: true,
-      dates: parsedDates.map(formatYmdLocal),
+      dates: uniqueDays.map(formatYmdLocal),
       data,
-    });
+    };
+
+    redis
+      .setex(
+        cacheKey,
+        ROOM_OCCUPANCY_CACHE_TTL_SEC,
+        JSON.stringify(payload),
+      )
+      .catch(() => {});
+
+    return res.status(200).json(payload);
   } catch (error: any) {
     console.error("Get room occupancy percentage error:", error);
     res.status(500).json({

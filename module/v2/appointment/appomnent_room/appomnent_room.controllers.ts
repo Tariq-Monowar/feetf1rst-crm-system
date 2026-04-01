@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
-import { prisma } from "../../../../db";
+import { prisma, Prisma } from "../../../../db";
 import redis from "../../../../config/redis.config";
+import {
+  normRoomNameForMatch,
+  parseHHMMToMinutes,
+} from "../appointment.helpers";
 
 const REDIS_KEY_ACTIVE_ROOMS = (partnerId: string) =>
   `appomnent_rooms_active:${partnerId}`;
@@ -41,22 +45,83 @@ export const getAllAppomnentRooms = async (req: Request, res: Response) => {
         message: "Unauthorized.",
       });
     }
-    const rooms = await prisma.appomnent_room.findMany({
-      where: { partnerId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        isActive: true,
-        storeLocation: { select: storeLocationPublicSelect },
-        createdAt: true,
-        updatedAt: true,
-      },
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const occupancyDateLabel = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}-${String(todayStart.getDate()).padStart(2, "0")}`;
+
+    const [rooms, settings] = await Promise.all([
+      prisma.appomnent_room.findMany({
+        where: { partnerId },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          isActive: true,
+          storeLocation: { select: storeLocationPublicSelect },
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.partners_settings.findUnique({
+        where: { partnerId },
+        select: { shop_open: true, shop_close: true },
+      }),
+    ]);
+
+    const openMin = parseHHMMToMinutes(settings?.shop_open) ?? 9 * 60;
+    const closeMin = parseHHMMToMinutes(settings?.shop_close) ?? 18 * 60;
+    const availablePerDay = Math.max(0, closeMin - openMin);
+
+    const roomByNormName = new Map(
+      rooms
+        .filter((r) => r.name && r.name.trim().length > 0)
+        .map((r) => [normRoomNameForMatch(r.name), r] as const),
+    );
+
+    const aggregated = await prisma.$queryRaw<
+      { room_key: string; occupied_minutes: unknown }[]
+    >(Prisma.sql`
+      SELECT LOWER(TRIM("appomnentRoom")) AS room_key,
+             SUM(COALESCE("duration", 1) * 60)::float AS occupied_minutes
+      FROM appointment
+      WHERE "userId" = ${partnerId}
+        AND "appomnentRoom" IS NOT NULL
+        AND "date" >= ${todayStart}
+        AND "date" < ${todayEnd}
+      GROUP BY LOWER(TRIM("appomnentRoom"))
+    `);
+
+    const occupiedByRoomId = new Map<string, number>();
+    for (const r of rooms) occupiedByRoomId.set(r.id, 0);
+    for (const row of aggregated) {
+      const key = String(row.room_key || "").trim();
+      if (!key) continue;
+      const room = roomByNormName.get(key);
+      if (!room) continue;
+      const mins = Number(row.occupied_minutes);
+      occupiedByRoomId.set(
+        room.id,
+        (occupiedByRoomId.get(room.id) ?? 0) + (Number.isFinite(mins) ? mins : 0),
+      );
+    }
+
+    const data = rooms.map((room) => {
+      const occupied = occupiedByRoomId.get(room.id) ?? 0;
+      let occupancy = 0;
+      if (availablePerDay > 0) {
+        occupancy = Math.round(
+          Math.min(1, occupied / availablePerDay) * 100,
+        );
+      }
+      return { ...room, occupancy };
     });
 
     res.status(200).json({
       success: true,
-      data: rooms,
+      occupancyDate: occupancyDateLabel,
+      data,
     });
   } catch (error) {
     console.error("Get all appomnent rooms error:", error);
