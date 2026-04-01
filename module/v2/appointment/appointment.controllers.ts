@@ -1123,6 +1123,25 @@ export const createAppointment = async (req: Request, res: Response) => {
     // If allowOverlap=true, this validation is intentionally skipped.
     if (!allowOverlap && employeeIdsToCheck.length > 0) {
       const appointmentDayOfWeek = appointmentDate.getDay();
+      const dayNameEn = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ][appointmentDayOfWeek];
+      const dayNameDe = [
+        "Sonntag",
+        "Montag",
+        "Dienstag",
+        "Mittwoch",
+        "Donnerstag",
+        "Freitag",
+        "Samstag",
+      ][appointmentDayOfWeek];
+      const dayName = isGerman ? dayNameDe : dayNameEn;
       const requestedStartMin = requestedTimeParsed.minutes;
       const requestedEndMin =
         requestedStartMin + Number(appointmentDuration) * 60;
@@ -1199,11 +1218,11 @@ export const createAppointment = async (req: Request, res: Response) => {
           message:
             unavailableEmployees.length === 1
               ? isGerman
-                ? `Der ausgewaehlte Mitarbeiter liegt ausserhalb der Arbeitszeit fuer dayOfWeek ${appointmentDayOfWeek}.`
-                : `Selected employee is outside office time for dayOfWeek ${appointmentDayOfWeek}.`
+                ? `Der ausgewaehlte Mitarbeiter liegt ausserhalb der Arbeitszeit am ${dayName}.`
+                : `Selected employee is outside office time on ${dayName}.`
               : isGerman
-                ? `Einige ausgewaehlte Mitarbeiter liegen ausserhalb der Arbeitszeit fuer dayOfWeek ${appointmentDayOfWeek}.`
-                : `Some selected employees are outside office time for dayOfWeek ${appointmentDayOfWeek}.`,
+                ? `Einige ausgewaehlte Mitarbeiter liegen ausserhalb der Arbeitszeit am ${dayName}.`
+                : `Some selected employees are outside office time on ${dayName}.`,
           dayOfWeek: appointmentDayOfWeek,
           unavailableEmployees,
         });
