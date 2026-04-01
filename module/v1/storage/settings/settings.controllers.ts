@@ -36,10 +36,7 @@ export const getAllBrandStore = async (req: Request, res: Response) => {
       rowsByBrand.set(s.brand, list);
     }
 
-    const rowByBrand = new Map<
-      string,
-      { isActive: boolean; isPdf: boolean }
-    >();
+    const rowByBrand = new Map<string, { isActive: boolean; isPdf: boolean }>();
     for (const [b, list] of rowsByBrand) {
       const pick =
         list.find((x) => x.type === "rady_insole") ?? list[0];

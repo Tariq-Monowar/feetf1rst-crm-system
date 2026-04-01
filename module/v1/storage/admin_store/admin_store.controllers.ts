@@ -43,6 +43,7 @@ export const createAdminStore = async (req, res) => {
       eigenschaften,
       groessenMengen,
       features,
+      delivered_duration,
     } = req.body;
 
     const type = (req.query?.type as string) ?? "rady_insole";
@@ -80,6 +81,10 @@ export const createAdminStore = async (req, res) => {
     }
 
     const image = req.file?.location || null;
+    const deliveredDuration =
+      delivered_duration != null && Number.isFinite(Number(delivered_duration))
+        ? Math.max(0, Math.floor(Number(delivered_duration)))
+        : 14;
 
     let parsedFeatures;
     if (features !== undefined && features !== null && features !== "") {
@@ -141,6 +146,7 @@ export const createAdminStore = async (req, res) => {
           brand,
           groessenMengen: parsedGroessenMengen,
           type: type as StoreType,
+          delivered_duration: deliveredDuration,
         },
       });
     }
@@ -758,7 +764,7 @@ export const getAllModelName = async (req: any, res: any) => {
 
 export const createBrandStore = async (req: any, res: any) => {
   try {
-    const { brand, groessenMengen, type: rawType } = req.body;
+    const { brand, groessenMengen, type: rawType, delivered_duration } = req.body;
     const type = (rawType?.trim() || "rady_insole") as StoreType;
 
     if (!brand || typeof brand !== "string" || !brand.trim()) {
@@ -775,6 +781,10 @@ export const createBrandStore = async (req: any, res: any) => {
     }
 
     const trimmedBrand = brand.trim();
+    const deliveredDuration =
+      delivered_duration != null && Number.isFinite(Number(delivered_duration))
+        ? Math.max(0, Math.floor(Number(delivered_duration)))
+        : 14;
 
     let parsedGroessenMengen: any = null;
     if (
@@ -805,6 +815,11 @@ export const createBrandStore = async (req: any, res: any) => {
           ...(parsedGroessenMengen !== null && {
             groessenMengen: parsedGroessenMengen,
           }),
+          ...(delivered_duration !== undefined &&
+            delivered_duration !== null &&
+            delivered_duration !== "" && {
+              delivered_duration: deliveredDuration,
+            }),
         },
       });
       return res.status(200).json({
@@ -819,6 +834,7 @@ export const createBrandStore = async (req: any, res: any) => {
         brand: trimmedBrand,
         groessenMengen: parsedGroessenMengen,
         type,
+        delivered_duration: deliveredDuration,
       },
     });
 
@@ -904,6 +920,7 @@ export const getSingleBrandStore = async (req, res) => {
         id: true,
         brand: true,
         groessenMengen: true,
+        delivered_duration: true,
         type: true,
       },
     });
@@ -985,6 +1002,7 @@ export const getAllBrandStore = async (req: any, res: any) => {
         id: true,
         brand: true,
         groessenMengen: true,
+        delivered_duration: true,
         type: true,
         createdAt: true,
         updatedAt: true,
