@@ -2847,10 +2847,10 @@ export const partnerConfirmation = async (req: Request, res: Response) => {
 export const getMyStoreForCreateOrder = async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const userRole = String(req.user?.role || "");
 
-    const store = await prisma.stores.findFirst({
+    const stores = await prisma.stores.findMany({
       where: { userId },
+      orderBy: { createdAt: "desc" },
       select: {
         id: true,
         produktname: true,
@@ -2859,7 +2859,7 @@ export const getMyStoreForCreateOrder = async (req: Request, res: Response) => {
       },
     });
 
-    if (!store) {
+    if (!stores.length) {
       return res.status(404).json({
         success: false,
         message: "Store not found",
@@ -2869,7 +2869,7 @@ export const getMyStoreForCreateOrder = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Store fetched successfully",
-      data: store,
+      data: stores,
     });
   } catch (error) {
     res.status(500).json({
