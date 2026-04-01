@@ -2333,6 +2333,7 @@ export const getStoreOverviews = async (req: Request, res: Response) => {
         artikelnummer: true,
         groessenMengen: true,
         delivered_quantity: true,
+        delivered_date: true,
         type: true,
         status: true,
         createdAt: true,
