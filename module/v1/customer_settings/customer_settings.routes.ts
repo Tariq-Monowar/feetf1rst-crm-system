@@ -28,6 +28,9 @@ router.post("/store-locations", verifyUser("PARTNER","EMPLOYEE"), setStoreLocati
 // {{_baseUrl}}customer-settings/store-locations
 router.get("/store-locations", verifyUser("PARTNER","EMPLOYEE"), getStoreLocations);
 
+// GET - Get single store location by ID
+// router.get("/store-locations/:id", verifyUser("PARTNER","EMPLOYEE"), getSingleStoreLocation);
+
 // PUT - Update store location by ID
 router.patch("/store-locations/:id", verifyUser("PARTNER","EMPLOYEE"), updateStoreLocations);
 

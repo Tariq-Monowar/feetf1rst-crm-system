@@ -133,7 +133,11 @@ export const setStoreLocations = async (req: Request, res: Response) => {
     const partnerId = req.user.id;
     const { address, description, isPrimary, shop_open, shop_close } = req.body;
 
-    if (shop_open !== undefined && shop_open !== null && typeof shop_open !== "string") {
+    if (
+      shop_open !== undefined &&
+      shop_open !== null &&
+      typeof shop_open !== "string"
+    ) {
       return res.status(400).json({
         success: false,
         message: "shop_open must be string or null",
@@ -272,6 +276,55 @@ export const getStoreLocations = async (req: Request, res: Response) => {
   }
 };
 
+export const getSingleStoreLocation = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user.id;
+    const { id } = req.params;
+
+    const storeLocation = await prisma.store_location.findUnique({
+      where: { id, partnerId },
+      select: {
+        id: true,
+        address: true,
+        description: true,
+        isPrimary: true,
+        shop_open: true,
+        shop_close: true,
+        createdAt: true,
+        employees: {
+          select: {
+            id: true,
+            employeeName: true,
+            email: true,
+            accountName: true,
+            image: true,
+          },
+        },
+      },
+    });
+
+    if (!storeLocation) {
+      return res.status(404).json({
+        success: false,
+        message: "Store location not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Store location fetched successfully",
+      data: storeLocation,
+    });
+  } catch (error: any) {
+    console.error("Error in getSingleStoreLocation:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while fetching single store location",
+      error: error.message,
+    });
+  }
+};
+
 // PUT - Update a store location
 export const updateStoreLocations = async (req: Request, res: Response) => {
   try {
@@ -279,7 +332,11 @@ export const updateStoreLocations = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { address, description, isPrimary, shop_open, shop_close } = req.body;
 
-    if (shop_open !== undefined && shop_open !== null && typeof shop_open !== "string") {
+    if (
+      shop_open !== undefined &&
+      shop_open !== null &&
+      typeof shop_open !== "string"
+    ) {
       return res.status(400).json({
         success: false,
         message: "shop_open must be string or null",
