@@ -17,6 +17,7 @@
     "verify-pasword-for-minkorthopaedie": "ts-node scripts/verify-password-for-minkorthopaedie.ts",
     "set-default-time-each-store_location": "ts-node scripts/set-default-time-each-store_location.ts",
     "set-default-werkstattzeit-old-employee-availability": "ts-node scripts/set-default-werkstattzeit-for-old-employee-availability.ts",
+    "StoreOrderOverview-delivered_date": "ts-node scripts/set-store-order-overview-delivered-date.ts",
     "defaults:massschaft-kollektion:false": "ts-node scripts/set-massschaft-kollektion-defaults-false.ts",
     "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts",
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts"
