@@ -256,7 +256,7 @@ export const getWerkstattzettelSheetPdf = async (
 ) => {
   try {
     const { orderId } = req.params;
-    const partnerId = req.user?.id;
+    const userId = req.user?.id;
 
     if (!orderId) {
       return res.status(400).json({
@@ -266,7 +266,7 @@ export const getWerkstattzettelSheetPdf = async (
     }
 
     const order = await prisma.shoe_order.findFirst({
-      where: { id: orderId, partnerId },
+      where: { id: orderId, partnerId: userId },
       select: {
         orderNumber: true,
         createdAt: true,
@@ -548,7 +548,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
 
     const shaftMap = new Map<string, CustomShaftRow>();
     for (const col of candidateColumns) {
-      const safeCol = `"${col.replace(/"/g, "\"\"")}"`;
+      const safeCol = `"${col.replace(/"/g, '""')}"`;
       const rows = await prisma.$queryRawUnsafe<CustomShaftRow[]>(
         `
           SELECT id, catagoary
@@ -638,8 +638,12 @@ export const getActiveButton = async (req: Request, res: Response) => {
             intern: hasInternalSchafttyp,
             extern: hasExternalSchafttyp,
           },
-          ...(schafttypQuery === "intern" ? { intern: schafttypInternData } : {}),
-          ...(schafttypQuery === "extern" ? { extern: schafttypExternData } : {}),
+          ...(schafttypQuery === "intern"
+            ? { intern: schafttypInternData }
+            : {}),
+          ...(schafttypQuery === "extern"
+            ? { extern: schafttypExternData }
+            : {}),
         },
         bodenkonstruktion: {
           active: {
@@ -655,7 +659,6 @@ export const getActiveButton = async (req: Request, res: Response) => {
         },
       },
     });
-
   } catch (error: any) {
     console.error("Get Active Button Error:", error);
     return res.status(500).json({
