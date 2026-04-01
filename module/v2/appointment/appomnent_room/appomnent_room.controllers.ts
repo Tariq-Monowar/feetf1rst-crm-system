@@ -194,12 +194,6 @@ export const getAppomnentRoomById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const partnerId = req.user?.id;
-    if (!partnerId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized.",
-      });
-    }
 
     const room = await prisma.appomnent_room.findFirst({
       where: { id, partnerId },

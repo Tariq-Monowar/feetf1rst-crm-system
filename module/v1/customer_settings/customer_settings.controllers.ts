@@ -131,7 +131,24 @@ export const deleteCustomerSettings = async (req: Request, res: Response) => {
 export const setStoreLocations = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
-    const { address, description, isPrimary } = req.body;
+    const { address, description, isPrimary, shop_open, shop_close } = req.body;
+
+    if (shop_open !== undefined && shop_open !== null && typeof shop_open !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "shop_open must be string or null",
+      });
+    }
+    if (
+      shop_close !== undefined &&
+      shop_close !== null &&
+      typeof shop_close !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "shop_close must be string or null",
+      });
+    }
 
     // Use transaction to ensure atomicity
     const storeLocation = await prisma.$transaction(async (tx) => {
@@ -155,12 +172,16 @@ export const setStoreLocations = async (req: Request, res: Response) => {
           address,
           description,
           isPrimary: isPrimary === true,
+          shop_open: shop_open ?? null,
+          shop_close: shop_close ?? null,
         },
         select: {
           id: true,
           address: true,
           description: true,
           isPrimary: true,
+          shop_open: true,
+          shop_close: true,
           createdAt: true,
         },
       });
@@ -196,6 +217,8 @@ export const getStoreLocations = async (req: Request, res: Response) => {
         take: limit,
         select: {
           id: true,
+          shop_open: true,
+          shop_close: true,
           address: true,
           description: true,
           isPrimary: true,
@@ -254,7 +277,24 @@ export const updateStoreLocations = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user.id;
     const { id } = req.params;
-    const { address, description, isPrimary } = req.body;
+    const { address, description, isPrimary, shop_open, shop_close } = req.body;
+
+    if (shop_open !== undefined && shop_open !== null && typeof shop_open !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "shop_open must be string or null",
+      });
+    }
+    if (
+      shop_close !== undefined &&
+      shop_close !== null &&
+      typeof shop_close !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "shop_close must be string or null",
+      });
+    }
 
     if (!id) {
       return res.status(400).json({
@@ -308,12 +348,18 @@ export const updateStoreLocations = async (req: Request, res: Response) => {
             isPrimary !== undefined
               ? isPrimary === true
               : existingLocation.isPrimary,
+          shop_open:
+            shop_open !== undefined ? shop_open : existingLocation.shop_open,
+          shop_close:
+            shop_close !== undefined ? shop_close : existingLocation.shop_close,
         },
         select: {
           id: true,
           address: true,
           description: true,
           isPrimary: true,
+          shop_open: true,
+          shop_close: true,
           createdAt: true,
         },
       });

@@ -676,6 +676,9 @@ model store_location {
   address     String?
   description String?
 
+  shop_open  String? //24h format like 09:00
+  shop_close String? //24h format like 18:00
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2408,6 +2411,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2431,6 +2435,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
