@@ -342,9 +342,6 @@ export const getWerkstattzettelSheetPdf = async (
     const stepHalbprobenerstellung =
       order.shoeOrderStep.find((s) => s.status === "Halbprobenerstellung") ??
       null;
-    const stepHalbprobeDurchfuehren =
-      order.shoeOrderStep.find((s) => s.status === "Halbprobe_durchführen") ??
-      null;
     const stepLeistenerstellung =
       order.shoeOrderStep.find((s) => s.status === "Leistenerstellung") ?? null;
     const stepBettungserstellung =
@@ -397,15 +394,6 @@ export const getWerkstattzettelSheetPdf = async (
               stepHalbprobenerstellung?.preparation_date ?? null,
             fitting_date: stepHalbprobenerstellung?.fitting_date ?? null,
             notes: stepHalbprobenerstellung?.notes ?? null,
-          },
-          step5_halbprobe_durchfuehren: {
-            isCompleted: stepHalbprobeDurchfuehren?.isCompleted ?? null,
-            auto_print: stepHalbprobeDurchfuehren?.auto_print ?? null,
-            fitting_date: stepHalbprobeDurchfuehren?.fitting_date ?? null,
-            adjustments: stepHalbprobeDurchfuehren?.adjustments ?? null,
-            customer_reviews:
-              stepHalbprobeDurchfuehren?.customer_reviews ?? null,
-            notes: stepHalbprobeDurchfuehren?.notes ?? null,
           },
         },
         has_trim: {

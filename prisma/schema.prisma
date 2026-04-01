@@ -1792,6 +1792,8 @@ model store_brand_settings {
   brand String
   type  StoreType @default(rady_insole)
 
+  dalivered_duration Int?
+
   isActive Boolean @default(true)
   isPdf    Boolean @default(false)
 
