@@ -265,46 +265,23 @@ export const getWerkstattzettelSheetPdf = async (
       });
     }
 
-    const order = await prisma.shoe_order.findUnique({
-      where: { id: orderId, partnerId: partnerId },
-
+    const order = await prisma.shoe_order.findFirst({
+      where: { id: orderId, partnerId },
       select: {
-        id: true,
         orderNumber: true,
         createdAt: true,
-        updatedAt: true,
-        status: true,
-        priority: true,
         quantity: true,
         branch_location: true,
-        pick_up_location: true,
-        store_location: true,
-        payment_status: true,
-        payment_type: true,
-        insurance_status: true,
-        insurance_payed: true,
-        private_payed: true,
+        vat_rate: true,
+        supply_note: true,
         insurance_price: true,
         private_price: true,
         addon_price: true,
         discount: true,
         total_price: true,
-        vat_rate: true,
-        order_note: true,
-        status_note: true,
-        medical_diagnosis: true,
-        detailed_diagnosis: true,
-        deposit_provision: true,
-        foot_analysis_price: true,
-        employeeId: true,
-        kva: true,
-        halbprobe: true,
-        insurances: true,
-        kvaNumber: true,
         half_sample_required: true,
         has_trim_strips: true,
         bedding_required: true,
-        supply_note: true,
         employee: {
           select: {
             id: true,
@@ -315,8 +292,17 @@ export const getWerkstattzettelSheetPdf = async (
           },
         },
         shoeOrderStep: {
+          where: {
+            status: {
+              in: [
+                "Leistenerstellung",
+                "Bettungserstellung",
+                "Halbprobenerstellung",
+                "Halbprobe_durchführen",
+              ],
+            },
+          },
           select: {
-            id: true,
             status: true,
             isCompleted: true,
             auto_print: true,
@@ -330,28 +316,11 @@ export const getWerkstattzettelSheetPdf = async (
             fitting_date: true,
             adjustments: true,
             customer_reviews: true,
-            checkliste_halbprobe: true,
-            startedAt: true,
-            complatedAt: true,
-            createdAt: true,
-            updatedAt: true,
           },
-          orderBy: { createdAt: "asc" },
         },
         prescription: true,
-        partner: {
-          select: {
-            id: true,
-            name: true,
-            busnessName: true,
-            email: true,
-            phone: true,
-          },
-        },
         customer: {
           select: {
-            id: true,
-            customerNumber: true,
             vorname: true,
             nachname: true,
             wohnort: true,
