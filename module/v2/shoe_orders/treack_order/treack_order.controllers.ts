@@ -274,14 +274,21 @@ export const getWerkstattzettelSheetPdf = async (
         branch_location: true,
         vat_rate: true,
         supply_note: true,
-        insurance_price: true,
-        private_price: true,
+
         addon_price: true,
         discount: true,
         total_price: true,
         half_sample_required: true,
         has_trim_strips: true,
         bedding_required: true,
+        kvaNumber: true,
+
+        private_price: true,
+        insurance_price: true,
+
+        private_payed: true,
+        insurance_payed: true,
+
         employee: {
           select: {
             id: true,
@@ -373,6 +380,19 @@ export const getWerkstattzettelSheetPdf = async (
           quantity: order?.quantity,
           vat_rate: order?.vat_rate,
           supply_note: order?.supply_note,
+
+          kva_number: order?.kvaNumber,
+
+          insurance_payed: order?.insurance_payed,
+          private_payed: order?.private_price,
+
+          billing_type:
+            order?.insurance_price && order?.private_price
+              ? "broth"
+              : order?.insurance_price
+                ? "insurance"
+                : "private",
+
           priseInfo: {
             insurance_price: order?.insurance_price,
             private_price: order?.private_price,
