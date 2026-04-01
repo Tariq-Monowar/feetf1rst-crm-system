@@ -395,6 +395,9 @@ export const getEmployeeFreePercentage = async (
       });
       return;
     }
+    const uniqueDays = [
+      ...new Map(parsedDates.map((d) => [formatYmdLocal(d), d])).values(),
+    ].sort((a, b) => a.getTime() - b.getTime());
 
     // Fetch all employees for this partner
     const employees = await prisma.employees.findMany({
@@ -412,7 +415,7 @@ export const getEmployeeFreePercentage = async (
 
     const employeeIds = employees.map((e) => e.id);
 
-    const dayNumbers = [...new Set(parsedDates.map((d) => d.getDay()))];
+    const dayNumbers = [...new Set(uniqueDays.map((d) => d.getDay()))];
 
     // Get availability for all employees on all requested weekdays
     const availability = await prisma.employee_availability.findMany({
@@ -430,30 +433,30 @@ export const getEmployeeFreePercentage = async (
       },
     });
 
-    // Date range for appointments query
-    const rangeStart = new Date(
-      Math.min(...parsedDates.map((d) => d.getTime())),
-    );
-    const rangeEnd = new Date(
-      Math.max(...parsedDates.map((d) => d.getTime())) + 24 * 60 * 60 * 1000,
-    );
+    // Query exact requested calendar days (no min-max spillover on sparse date inputs).
+    const dayOrClauses = uniqueDays.map((d) => {
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+      return { date: { gte: dayStart, lt: dayEnd } };
+    });
 
     const appointments = await prisma.appointment.findMany({
       where: {
         userId: partnerId,
-        date: {
-          gte: rangeStart,
-          lt: rangeEnd,
-        },
-        OR: [
+        OR: dayOrClauses,
+        AND: [
           {
-            appointmentEmployees: {
-              some: {
-                employeeId: { in: employeeIds },
+            OR: [
+              {
+                appointmentEmployees: {
+                  some: {
+                    employeeId: { in: employeeIds },
+                  },
+                },
               },
-            },
+              { employeId: { in: employeeIds } },
+            ],
           },
-          { employeId: { in: employeeIds } },
         ],
       },
       select: {
@@ -468,14 +471,18 @@ export const getEmployeeFreePercentage = async (
       },
     });
 
-    const toMinutes = (t: string) => {
+    const toMinutes = (t: string): number | null => {
+      if (!t || typeof t !== "string") return null;
       const [timeStr, period] = t.includes(" ") ? t.split(" ") : [t, ""];
       const [hStr, mStr] = timeStr.split(":");
       let h = Number(hStr);
       const m = Number(mStr);
       const p = period.toLowerCase();
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+      if (m < 0 || m > 59) return null;
       if (p === "pm" && h !== 12) h += 12;
       if (p === "am" && h === 12) h = 0;
+      if (h < 0 || h > 23) return null;
       return h * 60 + m;
     };
 
@@ -522,7 +529,10 @@ export const getEmployeeFreePercentage = async (
       const list =
         availabilityByKey.get(key) ?? availabilityByKey.set(key, []).get(key)!;
       for (const t of av.availability_time) {
-        list.push({ start: toMinutes(t.startTime), end: toMinutes(t.endTime) });
+        const start = toMinutes(t.startTime);
+        const end = toMinutes(t.endTime);
+        if (start == null || end == null || end <= start) continue;
+        list.push({ start, end });
       }
     }
 
@@ -540,7 +550,9 @@ export const getEmployeeFreePercentage = async (
     for (const appt of appointments) {
       const dateKey = formatYmdLocal(new Date(appt.date));
       const start = toMinutes(appt.time);
-      const durMinutes = (appt.duration || 1) * 60;
+      if (start == null) continue;
+      const durHours = Number(appt.duration);
+      const durMinutes = (Number.isFinite(durHours) ? durHours : 1) * 60;
       const interval = { start, end: start + durMinutes };
       if (appt.appointmentEmployees.length > 0) {
         for (const ae of appt.appointmentEmployees) {
@@ -555,7 +567,7 @@ export const getEmployeeFreePercentage = async (
       let totalDutyMinutes = 0;
       let totalWorkedMinutes = 0;
 
-      for (const d of parsedDates) {
+      for (const d of uniqueDays) {
         const day = d.getDay();
         const dateKey = formatYmdLocal(d);
         const avKey = `${emp.id}:${day}`;
@@ -601,7 +613,7 @@ export const getEmployeeFreePercentage = async (
 
     res.status(200).json({
       success: true,
-      dates: parsedDates.map(formatYmdLocal),
+      dates: uniqueDays.map(formatYmdLocal),
       data: result,
     });
   } catch (error: any) {
@@ -1598,8 +1610,30 @@ export const updateAppointment = async (req: Request, res: Response) => {
         ? body.assignedTo
         : existing.assignedTo;
 
+    const existingEmployeeList = (existing.appointmentEmployees ?? []).map(
+      (ae) => ({
+        employeId: ae.employeeId,
+        assignedTo: ae.assignedTo,
+      }),
+    );
+    const shouldReplaceEmployees =
+      body.replaceEmployees === true || body.replaceEmployees === "true";
+    const mergedEmployeesMap = new Map<string, { employeId: string; assignedTo: string }>();
+    for (const emp of existingEmployeeList) {
+      if (emp.employeId) mergedEmployeesMap.set(emp.employeId, emp);
+    }
+    for (const emp of employees) {
+      if (emp.employeId) {
+        mergedEmployeesMap.set(emp.employeId, {
+          employeId: emp.employeId,
+          assignedTo: emp.assignedTo,
+        });
+      }
+    }
     const employeeList = multiEmployee
-      ? employees
+      ? shouldReplaceEmployees
+        ? employees
+        : Array.from(mergedEmployeesMap.values())
       : employeId
         ? [{ employeId, assignedTo: assignedToStr }]
         : [];
@@ -1655,11 +1689,15 @@ export const updateAppointment = async (req: Request, res: Response) => {
     if (multiEmployee) {
       updateData.appointmentEmployees = {
         deleteMany: {},
-        create: employees.map((e: any) => ({
+        create: employeeList.map((e: any) => ({
           employeeId: e.employeId,
           assignedTo: e.assignedTo,
         })),
       };
+      updateData.assignedTo = employeeList.map((e: any) => e.assignedTo).join(", ");
+      if (employeeList.length > 0) {
+        updateData.employeId = employeeList[0].employeId;
+      }
     }
 
     const updated = await prisma.appointment.update({
