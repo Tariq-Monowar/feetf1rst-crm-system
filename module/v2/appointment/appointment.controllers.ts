@@ -415,35 +415,20 @@ export const getEmployeeFreePercentage = async (
     const dayNumbers = [...new Set(parsedDates.map((d) => d.getDay()))];
 
     // Get availability for all employees on all requested weekdays
-    const [availability, shopSettings] = await Promise.all([
-      prisma.employee_availability.findMany({
-        where: {
-          employeeId: { in: employeeIds },
-          partnerId,
-          dayOfWeek: { in: dayNumbers },
-          isActive: true,
+    const availability = await prisma.employee_availability.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        partnerId,
+        dayOfWeek: { in: dayNumbers },
+        isActive: true,
+      },
+      include: {
+        availability_time: {
+          where: { isActive: true },
+          orderBy: { startTime: "asc" },
         },
-        include: {
-          availability_time: {
-            where: { isActive: true },
-            orderBy: { startTime: "asc" },
-          },
-        },
-      }),
-      prisma.partners_settings.findUnique({
-        where: { partnerId },
-        select: { shop_open: true, shop_close: true },
-      }),
-    ]);
-
-    const fallbackOpenMin =
-      parseHHMMToMinutes(shopSettings?.shop_open) ?? 9 * 60;
-    const fallbackCloseMin =
-      parseHHMMToMinutes(shopSettings?.shop_close) ?? 18 * 60;
-    const fallbackDutyDayMinutes = Math.max(
-      0,
-      fallbackCloseMin - fallbackOpenMin,
-    );
+      },
+    });
 
     // Date range for appointments query
     const rangeStart = new Date(
@@ -579,10 +564,6 @@ export const getEmployeeFreePercentage = async (
         let dutyMerged: Interval[];
         if (dutySlots && dutySlots.length > 0) {
           dutyMerged = mergeIntervals(dutySlots);
-        } else if (fallbackDutyDayMinutes > 0) {
-          dutyMerged = mergeIntervals([
-            { start: fallbackOpenMin, end: fallbackCloseMin },
-          ]);
         } else {
           continue;
         }
