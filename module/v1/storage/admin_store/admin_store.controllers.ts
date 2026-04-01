@@ -943,11 +943,32 @@ export const updateBrandStore = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const { groessenMengen, brand } = req.body;
+    const { groessenMengen, brand, delivered_duration } = req.body;
+    const updateData: any = {};
+    if (groessenMengen !== undefined) {
+      updateData.groessenMengen = parseJsonSafely(groessenMengen);
+    }
+    if (brand !== undefined) {
+      updateData.brand = brand;
+    }
+    if (
+      delivered_duration !== undefined &&
+      delivered_duration !== null &&
+      delivered_duration !== ""
+    ) {
+      const parsedDuration = Number(delivered_duration);
+      if (!Number.isFinite(parsedDuration)) {
+        return res.status(400).json({
+          success: false,
+          message: "delivered_duration must be a valid number",
+        });
+      }
+      updateData.delivered_duration = Math.max(0, Math.floor(parsedDuration));
+    }
 
     const brandStore = await prisma.brand_store.update({
       where: { id },
-      data: { groessenMengen: parseJsonSafely(groessenMengen), brand },
+      data: updateData,
     });
 
     res.status(200).json({
