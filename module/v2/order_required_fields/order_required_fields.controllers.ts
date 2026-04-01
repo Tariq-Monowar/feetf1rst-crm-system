@@ -66,6 +66,21 @@ export const getOrderRequiredFields = async (req: Request, res: Response) => {
       "createdAt",
       "updatedAt",
     ] as const;
+    const FIELD_LABELS: Record<string, string> = {
+      ausführliche_diagnose: "Ausführliche Diagnose",
+      versorgung_laut_arzt: "Versorgung laut Arzt",
+      positionsnummer: "Positionsnummer",
+      diagnosisList: "Diagnoseliste",
+      employeeId: "Mitarbeiter-ID",
+      kva: "KVA (Kostenvoranschlag)",
+      halbprobe: "Halbprobe",
+      einlagentyp: "Einlagentyp",
+      überzug: "Überzug",
+      quantity: "Menge",
+      schuhmodell_wählen: "Schuhmodell wählen",
+      versorgung_note: "Versorgungsnotiz",
+      versorgung: "Versorgung",
+    };
 
     const fieldList = Array.isArray(fields)
       ? fields
@@ -90,18 +105,21 @@ export const getOrderRequiredFields = async (req: Request, res: Response) => {
       }
     }
 
-    const responseData =
+    const logicalFieldKeys = (
       fieldList.length > 0
-        ? fieldList.reduce<Record<string, unknown>>((acc, key) => {
-            acc[key] = (record as any)[key];
-            return acc;
-          }, {})
-        : record;
+        ? fieldList
+        : Object.keys(FIELD_LABELS)
+    ).filter((key) => Object.prototype.hasOwnProperty.call(FIELD_LABELS, key));
+    const fieldsWithLabels = logicalFieldKeys.map((key) => ({
+      key,
+      label: FIELD_LABELS[key],
+      value: (record as any)[key],
+    }));
 
     return res.status(200).json({
       success: true,
       message: "Order required fields fetched successfully",
-      data: responseData,
+      data: fieldsWithLabels,
     });
   } catch (error: any) {
     console.error("Error in getOrderRequiredFields:", error);
