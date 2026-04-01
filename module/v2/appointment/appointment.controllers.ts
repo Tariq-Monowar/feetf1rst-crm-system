@@ -1082,54 +1082,133 @@ export const createAppointment = async (req: Request, res: Response) => {
       }
     }
 
-    // Validate that all employees exist in the database
-    if (hasMultipleEmployees) {
-      const employeeIds = employees.map((emp) => emp.employeId);
-      const existingEmployees = await prisma.employees.findMany({
-        where: {
-          id: { in: employeeIds },
-        },
-        select: { id: true },
-      });
+    const employeeIdsToCheck = hasMultipleEmployees
+      ? employees.map((emp) => emp.employeId)
+      : employeId
+        ? [employeId]
+        : [];
+    const employeeRows = employeeIdsToCheck.length
+      ? await prisma.employees.findMany({
+          where: { id: { in: employeeIdsToCheck } },
+          select: { id: true, employeeName: true },
+        })
+      : [];
+    const employeeNameById = new Map(
+      employeeRows.map((row) => [row.id, row.employeeName] as const),
+    );
 
-      const existingEmployeeIds = new Set(
-        existingEmployees.map((emp) => emp.id),
+    // Validate that all requested employees exist in the database
+    if (employeeIdsToCheck.length > 0) {
+      const foundIds = new Set(employeeRows.map((row) => row.id));
+      const missingEmployeeIds = employeeIdsToCheck.filter(
+        (eid) => !foundIds.has(eid),
       );
-      const missingEmployeeIds = employeeIds.filter(
-        (id) => !existingEmployeeIds.has(id),
-      );
-
       if (missingEmployeeIds.length > 0) {
         res.status(400).json({
           success: false,
-          message: `Employees with IDs not found: ${missingEmployeeIds.join(
-            ", ",
-          )}`,
-        });
-        return;
-      }
-    } else if (employeId) {
-      // Validate single employee exists
-      const existingEmployee = await prisma.employees.findUnique({
-        where: { id: employeId },
-        select: { id: true },
-      });
-
-      if (!existingEmployee) {
-        res.status(400).json({
-          success: false,
-          message: `Employee with ID ${employeId} not found`,
+          message:
+            missingEmployeeIds.length === 1
+              ? `Employee with ID ${missingEmployeeIds[0]} not found`
+              : `Employees with IDs not found: ${missingEmployeeIds.join(", ")}`,
         });
         return;
       }
     }
 
     // Check employee overlaps in one query (faster) and support existing 12h/24h records
-    const employeeIdsToCheck = hasMultipleEmployees
-      ? employees.map((emp) => emp.employeId)
-      : employeId
-        ? [employeId]
-        : [];
+
+    // Enforce employee office-time bounds when overlap checks are enabled:
+    // - employee_availability must be active for appointment weekday
+    // - requested interval must fit inside at least one active availability_time slot
+    // If allowOverlap=true, this validation is intentionally skipped.
+    if (!allowOverlap && employeeIdsToCheck.length > 0) {
+      const appointmentDayOfWeek = appointmentDate.getDay();
+      const requestedStartMin = requestedTimeParsed.minutes;
+      const requestedEndMin =
+        requestedStartMin + Number(appointmentDuration) * 60;
+
+      const availabilityRows = await prisma.employee_availability.findMany({
+        where: {
+          partnerId: id,
+          dayOfWeek: appointmentDayOfWeek,
+          employeeId: { in: employeeIdsToCheck },
+        },
+        include: {
+          employee: { select: { id: true, employeeName: true } },
+          availability_time: {
+            where: { isActive: true },
+            select: { startTime: true, endTime: true },
+          },
+        },
+      });
+
+      const availabilityByEmployeeId = new Map(
+        availabilityRows.map((row) => [row.employeeId, row] as const),
+      );
+      const unavailableEmployees: {
+        employeeId: string;
+        employeeName: string | null;
+        reason: string;
+      }[] = [];
+
+      for (const eid of employeeIdsToCheck) {
+        const av = availabilityByEmployeeId.get(eid);
+        if (!av || !av.isActive) {
+          unavailableEmployees.push({
+            employeeId: eid,
+            employeeName: employeeNameById.get(eid) ?? null,
+            reason:
+              isGerman
+                ? "employee_availability ist fuer diesen Wochentag inaktiv (0=So..6=Sa)."
+                : "employee_availability is inactive for this dayOfWeek (0=Sun..6=Sat).",
+          });
+          continue;
+        }
+
+        const slots = av.availability_time
+          .map((slot) => ({
+            start: parseHHMMToMinutes(slot.startTime),
+            end: parseHHMMToMinutes(slot.endTime),
+          }))
+          .filter(
+            (slot): slot is { start: number; end: number } =>
+              slot.start != null && slot.end != null && slot.end > slot.start,
+          );
+
+        const withinOfficeTime = slots.some(
+          (slot) =>
+            requestedStartMin >= slot.start && requestedEndMin <= slot.end,
+        );
+
+        if (!withinOfficeTime) {
+          unavailableEmployees.push({
+            employeeId: eid,
+            employeeName: av.employee?.employeeName ?? null,
+            reason:
+              isGerman
+                ? "Die angefragte Zeit liegt ausserhalb der aktiven availability_time-Zeiten."
+                : "Requested time is outside active availability_time ranges.",
+          });
+        }
+      }
+
+      if (unavailableEmployees.length > 0) {
+        return res.status(409).json({
+          success: false,
+          outOfOffie: true,
+          message:
+            unavailableEmployees.length === 1
+              ? isGerman
+                ? `Der ausgewaehlte Mitarbeiter liegt ausserhalb der Arbeitszeit fuer dayOfWeek ${appointmentDayOfWeek}.`
+                : `Selected employee is outside office time for dayOfWeek ${appointmentDayOfWeek}.`
+              : isGerman
+                ? `Einige ausgewaehlte Mitarbeiter liegen ausserhalb der Arbeitszeit fuer dayOfWeek ${appointmentDayOfWeek}.`
+                : `Some selected employees are outside office time for dayOfWeek ${appointmentDayOfWeek}.`,
+          dayOfWeek: appointmentDayOfWeek,
+          unavailableEmployees,
+        });
+      }
+    }
 
     if (!allowOverlap && employeeIdsToCheck.length > 0) {
       const dateStart = new Date(
