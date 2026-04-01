@@ -633,6 +633,7 @@ export const getEmployeeFreePercentage = async (
   }
 };
 
+
 const ROOM_OCCUPANCY_CACHE_TTL_SEC = 45;
 
 /**
