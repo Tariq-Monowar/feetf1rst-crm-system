@@ -351,9 +351,14 @@ export const getWerkstattzettelSheetPdf = async (
       order.shoeOrderStep.find((s) => s.status === "Bettungserstellung") ??
       null;
 
+    const language = process.env.LANGUAGE;
+
     return res.status(200).json({
       success: true,
-      message: "Werkstattzettel sheet data fetched successfully",
+      message:
+        language === "de"
+          ? "Werkstattzetteldaten erfolgreich abgerufen"
+          : "Werkstattzettel sheet data fetched successfully",
       data: {
         customerInfo: {
           firstName: order?.customer?.vorname,
