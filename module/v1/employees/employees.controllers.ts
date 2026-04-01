@@ -92,14 +92,26 @@ export const createEmployee = async (req: Request, res: Response) => {
         },
       });
 
-      await tx.employee_availability.createMany({
-        data: Array.from({ length: 7 }, (_, dayOfWeek) => ({
-          employeeId: createdEmployee.id,
-          partnerId: req.user.id,
-          dayOfWeek,
-          isActive: dayOfWeek !== 0 && dayOfWeek !== 6,
-        })),
-      });
+      await Promise.all(
+        Array.from({ length: 7 }, (_, dayOfWeek) =>
+          tx.employee_availability.create({
+            data: {
+              employeeId: createdEmployee.id,
+              partnerId: req.user.id,
+              dayOfWeek,
+              isActive: dayOfWeek !== 0 && dayOfWeek !== 6,
+              availability_time: {
+                create: {
+                  title: "Werkstattzeit",
+                  startTime: "09:00",
+                  endTime: "17:00",
+                  isActive: dayOfWeek !== 0 && dayOfWeek !== 6,
+                },
+              },
+            },
+          }),
+        ),
+      );
 
       return createdEmployee;
     });
