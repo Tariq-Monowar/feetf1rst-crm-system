@@ -8,6 +8,7 @@ import {
   getStoreLocations,
   updateStoreLocations,
   deleteStoreLocations,
+  getSingleStoreLocation,
 } from "./customer_settings.controllers";
 
 const router = express.Router();
@@ -29,7 +30,8 @@ router.post("/store-locations", verifyUser("PARTNER","EMPLOYEE"), setStoreLocati
 router.get("/store-locations", verifyUser("PARTNER","EMPLOYEE"), getStoreLocations);
 
 // GET - Get single store location by ID
-// router.get("/store-locations/:id", verifyUser("PARTNER","EMPLOYEE"), getSingleStoreLocation);
+// {{_baseUrl}}customer-settings/store-locations/:id
+router.get("/store-locations/:id", verifyUser("PARTNER","EMPLOYEE"), getSingleStoreLocation);
 
 // PUT - Update store location by ID
 router.patch("/store-locations/:id", verifyUser("PARTNER","EMPLOYEE"), updateStoreLocations);
