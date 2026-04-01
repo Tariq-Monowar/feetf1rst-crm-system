@@ -431,7 +431,7 @@ function buildDeliveredQuantityShell(
 // export const buyStorage = async (req, res) => {
 //   try {
 //     const { id: userId } = req.user;
-    
+
 //     const {
 //       admin_store_id,
 //       lagerort, // store location (optional)
@@ -610,7 +610,6 @@ function buildDeliveredQuantityShell(
 //   }
 // };
 
-
 export const buyStorage = async (req, res) => {
   try {
     const { id: userId } = req.user;
@@ -709,15 +708,15 @@ export const buyStorage = async (req, res) => {
       price !== undefined
         ? price
         : prise !== undefined
-        ? prise
-        : adminStore.price ?? 0;
+          ? prise
+          : (adminStore.price ?? 0);
 
     const unitPriceFinal = Number(adminStore.price ?? priceFinal ?? 0);
 
     const featuresFinal =
       bodyFeatures !== undefined && bodyFeatures !== ""
         ? bodyFeatures
-        : adminStore.features ?? null;
+        : (adminStore.features ?? null);
 
     const createdStore = await prisma.stores.create({
       data: {
@@ -837,7 +836,6 @@ export const buyStorage = async (req, res) => {
     });
   }
 };
-
 
 export const addStorage = async (req: Request, res: Response) => {
   try {
@@ -1223,8 +1221,11 @@ export const addStorageFromAdminToOverview = async (req: any, res: any) => {
     const effectiveAdminStoreId =
       requestedAdminId ?? store.adminStoreId ?? null;
 
-    let adminForPricing: { id: string; price: number | null; type: StoreType | null } | null =
-      null;
+    let adminForPricing: {
+      id: string;
+      price: number | null;
+      type: StoreType | null;
+    } | null = null;
     if (effectiveAdminStoreId) {
       const adminRow = await prisma.admin_store.findUnique({
         where: { id: effectiveAdminStoreId },
@@ -1507,7 +1508,10 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     };
 
     const limitRaw = parseInt(req.query.limit as string);
-    const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 10, 1), 100);
+    const limit = Math.min(
+      Math.max(Number.isFinite(limitRaw) ? limitRaw : 10, 1),
+      100,
+    );
     const cursor = (req.query.cursor as string)?.trim() || undefined;
     const search = req.query.search as string;
     const sort = ((req.query.sort as string)?.trim().toLowerCase() ||
@@ -1575,7 +1579,7 @@ export const getAllMyStorage = async (req: Request, res: Response) => {
     const allStorage = hasMore ? allStorageRaw.slice(0, limit) : allStorageRaw;
     const nextCursor =
       hasMore && allStorage.length > 0
-        ? allStorage[allStorage.length - 1]?.id ?? null
+        ? (allStorage[allStorage.length - 1]?.id ?? null)
         : null;
 
     const partnerBrandSettings = await prisma.store_brand_settings.findMany({
@@ -2833,6 +2837,42 @@ export const partnerConfirmation = async (req: Request, res: Response) => {
     });
   } catch (error) {
     return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+export const getMyStoreForCreateOrder = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user.id;
+    const userRole = String(req.user?.role || "");
+
+    const store = await prisma.stores.findFirst({
+      where: { userId },
+      select: {
+        id: true,
+        produktname: true,
+        artikelnummer: true,
+        type: true,
+      },
+    });
+
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        message: "Store not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Store fetched successfully",
+      data: store,
+    });
+  } catch (error) {
+    res.status(500).json({
       success: false,
       message: "Something went wrong",
       error: error instanceof Error ? error.message : "Unknown error",

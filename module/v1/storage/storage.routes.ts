@@ -19,6 +19,7 @@ import {
   deleteStoreOverview,
   getStorePrice,
   partnerConfirmation,
+  getMyStoreForCreateOrder,
 } from "./storage.controllers";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
@@ -206,6 +207,14 @@ router.post(
   "/partner-confirmation/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   partnerConfirmation,
+);
+
+//get my store for create order
+// GET {{_baseurl}}store/get-my-store-for-create-order
+router.get(
+  "/get-my-store-for-create-order",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  getMyStoreForCreateOrder,
 );
 
 
