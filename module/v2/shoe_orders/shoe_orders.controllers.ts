@@ -1235,17 +1235,11 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
           total_price: number | null;
           vorname: string | null;
           nachname: string | null;
-          shoeOrderStep: unknown;
         }>
       >(Prisma.sql`
         SELECT so.id, so."orderNumber", so.status, so."branch_location",
                so."createdAt", so."payment_status", so.priority, so."total_price",
-               c.vorname, c.nachname,
-               (SELECT COALESCE(JSON_AGG(
-                 json_build_object('status', s.status, 'isCompleted', s."isCompleted", 'auto_print', s."auto_print", 'createdAt', s."createdAt")
-                 ORDER BY s."createdAt" ASC
-               ), '[]'::json) FROM "shoe_order_step" s
-               WHERE s."orderId" = so.id AND s."isCompleted" = true) AS "shoeOrderStep"
+               c.vorname, c.nachname
         FROM "shoe_order" so
         LEFT JOIN customers c ON c.id = so."customerId"
         WHERE ${whereClause}
@@ -1255,6 +1249,42 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
 
       const hasMore = rows.length > limit;
       const pageRows = hasMore ? rows.slice(0, limit) : rows;
+      const orderIds = pageRows.map((row) => row.id);
+      const stepRows =
+        orderIds.length > 0
+          ? await prisma.shoe_order_step.findMany({
+              where: { orderId: { in: orderIds }, isCompleted: true },
+              orderBy: { createdAt: "asc" },
+              select: {
+                orderId: true,
+                status: true,
+                isCompleted: true,
+                auto_print: true,
+                createdAt: true,
+              },
+            })
+          : [];
+      const stepsByOrderId = new Map<
+        string,
+        Array<{
+          status: string | null;
+          isCompleted: boolean | null;
+          auto_print: boolean | null;
+          createdAt: Date;
+        }>
+      >();
+      for (const s of stepRows) {
+        const key = s.orderId ?? "";
+        if (!key) continue;
+        const list = stepsByOrderId.get(key) ?? [];
+        list.push({
+          status: s.status,
+          isCompleted: s.isCompleted,
+          auto_print: s.auto_print,
+          createdAt: s.createdAt,
+        });
+        stepsByOrderId.set(key, list);
+      }
       const data = pageRows.map((row) => ({
         id: row.id,
         orderNumber: row.orderNumber,
@@ -1265,11 +1295,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         payment_status: row.payment_status,
         priority: row.priority,
         total_price: row.total_price,
-        shoeOrderStep: Array.isArray(row.shoeOrderStep)
-          ? row.shoeOrderStep
-          : typeof row.shoeOrderStep === "string"
-            ? JSON.parse(row.shoeOrderStep as string)
-            : [],
+        shoeOrderStep: stepsByOrderId.get(row.id) ?? [],
       }));
 
       return res.status(200).json({
@@ -1332,21 +1358,51 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         total_price: true,
         insurance_payed: true,
         private_payed: true,
-        shoeOrderStep: {
-          orderBy: { createdAt: "asc" },
-          where: { isCompleted: true },
-          select: {
-            status: true,
-            isCompleted: true,
-            auto_print: true,
-            createdAt: true,
-          },
-        },
       },
     });
 
     const hasMore = shoeOrders.length > limit;
-    const data = hasMore ? shoeOrders.slice(0, limit) : shoeOrders;
+    const pageOrders = hasMore ? shoeOrders.slice(0, limit) : shoeOrders;
+    const orderIds = pageOrders.map((o) => o.id);
+    const stepRows =
+      orderIds.length > 0
+        ? await prisma.shoe_order_step.findMany({
+            where: { orderId: { in: orderIds }, isCompleted: true },
+            orderBy: { createdAt: "asc" },
+            select: {
+              orderId: true,
+              status: true,
+              isCompleted: true,
+              auto_print: true,
+              createdAt: true,
+            },
+          })
+        : [];
+    const stepsByOrderId = new Map<
+      string,
+      Array<{
+        status: string | null;
+        isCompleted: boolean | null;
+        auto_print: boolean | null;
+        createdAt: Date;
+      }>
+    >();
+    for (const s of stepRows) {
+      const key = s.orderId ?? "";
+      if (!key) continue;
+      const list = stepsByOrderId.get(key) ?? [];
+      list.push({
+        status: s.status,
+        isCompleted: s.isCompleted,
+        auto_print: s.auto_print,
+        createdAt: s.createdAt,
+      });
+      stepsByOrderId.set(key, list);
+    }
+    const data = pageOrders.map((o) => ({
+      ...o,
+      shoeOrderStep: stepsByOrderId.get(o.id) ?? [],
+    }));
     // const nextCursor = hasMore ? data[data.length - 1]?.id : null;
 
     return res.status(200).json({
