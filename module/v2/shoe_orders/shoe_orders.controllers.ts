@@ -126,6 +126,7 @@ export const getShoeOrderSchaftBodenDraft = async (
 
 /**
  * DELETE cached Schaft/Boden draft for the current user.
+ * Reads draft first, removes any S3 objects referenced by uploaded URLs, then deletes Redis.
  */
 export const removeShoeOrderSchaftBodenDraft = async (
   req: Request,
@@ -137,13 +138,46 @@ export const removeShoeOrderSchaftBodenDraft = async (
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
     const key = shoeOrderSbDraftRedisKey(userId);
-    const deleted = await redis.del(key);
-    if (deleted === 0) {
+    const raw = await redis.get(key);
+    if (!raw) {
       return res.status(404).json({
         success: false,
         message: "Draft not found",
       });
     }
+
+    let draftData: SchafBodenDraftPayload;
+    try {
+      draftData = JSON.parse(raw) as SchafBodenDraftPayload;
+    } catch {
+      await redis.del(key);
+      return res.status(500).json({
+        success: false,
+        message: "Invalid draft payload in cache",
+      });
+    }
+
+    const s3Urls: string[] = [];
+    const pushUrl = (v: unknown) => {
+      if (typeof v === "string" && v.trim()) s3Urls.push(v.trim());
+    };
+    const m = draftData.massschafterstellung;
+    if (m && typeof m === "object") {
+      const r = m as Record<string, unknown>;
+      pushUrl(r.massschafterstellung_image);
+      pushUrl(r.threeDFile);
+    }
+    const b = draftData.bodenkonstruktion;
+    if (b && typeof b === "object") {
+      const r = b as Record<string, unknown>;
+      pushUrl(r.bodenkonstruktion_image);
+      pushUrl(r.threeDFile);
+    }
+
+    await Promise.all(s3Urls.map((url) => deleteFileFromS3(url)));
+
+    await redis.del(key);
+
     return res.status(200).json({
       success: true,
       message: "Draft removed from cache",
