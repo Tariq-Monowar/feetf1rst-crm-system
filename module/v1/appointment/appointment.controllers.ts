@@ -306,7 +306,7 @@ export const createAppointment = async (req: Request, res: Response) => {
             category: "Termin",
             url: `/appointment/system-appointment/${customerId}/${appointment.id}`,
             methord: "GET",
-            system_note: `Termin zur Laufanalyse am ${formattedDate}`,
+            system_note: `Termin am ${formattedDate}`,
           },
           select: { id: true },
         });
