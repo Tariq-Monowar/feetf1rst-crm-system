@@ -2,6 +2,12 @@ import { Request, Response } from "express";
 import { Prisma, prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 
+function pickUploaded(files: Record<string, unknown>, field: string) {
+  const f = files[field] as { location?: string } | { location?: string }[] | undefined;
+  const one = Array.isArray(f) ? f[0] : f;
+  return one?.location ?? null;
+}
+
 export const manageMassschafterstellung = async (
   req: Request,
   res: Response,
@@ -10,8 +16,11 @@ export const manageMassschafterstellung = async (
   const imageFile = Array.isArray(files.massschafterstellung_image)
     ? files.massschafterstellung_image[0]
     : files.massschafterstellung_image;
-  const cleanup = () =>
-    imageFile?.location && deleteFileFromS3(imageFile.location);
+  const threeDUpload = pickUploaded(files, "threeDFile");
+  const cleanup = () => {
+    if (imageFile?.location) deleteFileFromS3(imageFile.location);
+    if (threeDUpload) deleteFileFromS3(threeDUpload);
+  };
 
   try {
     const orderId = req.params?.orderId;
@@ -24,12 +33,22 @@ export const manageMassschafterstellung = async (
 
     const json = req.body?.massschafterstellung_json;
     const image = imageFile?.location ?? null;
-    if ((json == null || json === "") && !image) {
+    const threeDFileBody =
+      typeof req.body?.threeDFile === "string"
+        ? req.body.threeDFile.trim() || null
+        : null;
+    const threeDFile = threeDUpload ?? threeDFileBody;
+
+    if (
+      (json == null || json === "") &&
+      !image &&
+      !threeDFile
+    ) {
       cleanup();
       return res.status(400).json({
         success: false,
         message:
-          "Either massschafterstellung_json or massschafterstellung_image is required",
+          "Provide at least one of: massschafterstellung_json, massschafterstellung_image, threeDFile (file upload), or threeDFile (URL string in body)",
       });
     }
 
@@ -38,7 +57,11 @@ export const manageMassschafterstellung = async (
       select: {
         id: true,
         massschafterstellung: {
-          select: { id: true, massschafterstellung_image: true },
+          select: {
+            id: true,
+            massschafterstellung_image: true,
+            threeDFile: true,
+          },
         },
       },
     });
@@ -61,8 +84,13 @@ export const manageMassschafterstellung = async (
       createData.massschafterstellung_image = image;
       updateData.massschafterstellung_image = image;
     }
+    if (threeDFile != null) {
+      createData.threeDFile = threeDFile;
+      updateData.threeDFile = threeDFile;
+    }
 
     const prevImage = order.massschafterstellung?.massschafterstellung_image;
+    const prevThreeD = order.massschafterstellung?.threeDFile;
 
     const row = await prisma.shoe_order_massschafterstellung.upsert({
       where: { orderId },
@@ -77,6 +105,14 @@ export const manageMassschafterstellung = async (
       prevImage !== row.massschafterstellung_image
     ) {
       deleteFileFromS3(prevImage);
+    }
+    if (
+      prevThreeD &&
+      threeDFile &&
+      row.threeDFile &&
+      prevThreeD !== row.threeDFile
+    ) {
+      deleteFileFromS3(prevThreeD);
     }
 
     return res.status(200).json({
@@ -122,12 +158,14 @@ export const getMassschafterstellungDetails = async (
           schafttyp_extem_note: row.schafttyp_extem_note,
           massschafterstellung_json: row.massschafterstellung_json,
           massschafterstellung_image: row.massschafterstellung_image,
+          threeDFile: row.threeDFile,
         }
       : {
           schafttyp_intem_note: null,
           schafttyp_extem_note: null,
           massschafterstellung_json: null,
           massschafterstellung_image: null,
+          threeDFile: null,
         };
 
     return res.status(200).json({
@@ -150,8 +188,11 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
   const imageFile = Array.isArray(files.bodenkonstruktion_image)
     ? files.bodenkonstruktion_image[0]
     : files.bodenkonstruktion_image;
-  const cleanup = () =>
-    imageFile?.location && deleteFileFromS3(imageFile.location);
+  const threeDUpload = pickUploaded(files, "threeDFile");
+  const cleanup = () => {
+    if (imageFile?.location) deleteFileFromS3(imageFile.location);
+    if (threeDUpload) deleteFileFromS3(threeDUpload);
+  };
 
   try {
     const orderId = req.params?.orderId;
@@ -164,12 +205,22 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
 
     const json = req.body?.bodenkonstruktion_json;
     const image = imageFile?.location ?? null;
-    if ((json == null || json === "") && !image) {
+    const threeDFileBody =
+      typeof req.body?.threeDFile === "string"
+        ? req.body.threeDFile.trim() || null
+        : null;
+    const threeDFile = threeDUpload ?? threeDFileBody;
+
+    if (
+      (json == null || json === "") &&
+      !image &&
+      !threeDFile
+    ) {
       cleanup();
       return res.status(400).json({
         success: false,
         message:
-          "Either bodenkonstruktion_json or bodenkonstruktion_image is required",
+          "Provide at least one of: bodenkonstruktion_json, bodenkonstruktion_image, threeDFile (file upload), or threeDFile (URL string in body)",
       });
     }
 
@@ -178,7 +229,11 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       select: {
         id: true,
         bodenkonstruktion: {
-          select: { id: true, bodenkonstruktion_image: true },
+          select: {
+            id: true,
+            bodenkonstruktion_image: true,
+            threeDFile: true,
+          },
         },
       },
     });
@@ -202,8 +257,13 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       createData.bodenkonstruktion_image = image;
       updateData.bodenkonstruktion_image = image;
     }
+    if (threeDFile != null) {
+      createData.threeDFile = threeDFile;
+      updateData.threeDFile = threeDFile;
+    }
 
     const prevImage = order.bodenkonstruktion?.bodenkonstruktion_image;
+    const prevThreeD = order.bodenkonstruktion?.threeDFile;
 
     const row = await prisma.shoe_order_bodenkonstruktion.upsert({
       where: { orderId },
@@ -218,6 +278,14 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       prevImage !== row.bodenkonstruktion_image
     ) {
       deleteFileFromS3(prevImage);
+    }
+    if (
+      prevThreeD &&
+      threeDFile &&
+      row.threeDFile &&
+      prevThreeD !== row.threeDFile
+    ) {
+      deleteFileFromS3(prevThreeD);
     }
 
     return res.status(200).json({
@@ -263,12 +331,14 @@ export const getBodenkonstruktionDetails = async (
           bodenkonstruktion_extem_note: row.bodenkonstruktion_extem_note,
           bodenkonstruktion_json: row.bodenkonstruktion_json,
           bodenkonstruktion_image: row.bodenkonstruktion_image,
+          threeDFile: row.threeDFile,
         }
       : {
           bodenkonstruktion_intem_note: null,
           bodenkonstruktion_extem_note: null,
           bodenkonstruktion_json: null,
           bodenkonstruktion_image: null,
+          threeDFile: null,
         };
 
     return res.status(200).json({

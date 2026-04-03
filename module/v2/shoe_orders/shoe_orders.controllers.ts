@@ -1333,8 +1333,10 @@ export const updateShoeOrderStatus = async (req, res) => {
         ...stepWithFiles,
         schafttyp_intem_note: mRow?.schafttyp_intem_note ?? null,
         schafttyp_extem_note: mRow?.schafttyp_extem_note ?? null,
+        massschafterstellung_threeDFile: mRow?.threeDFile ?? null,
         bodenkonstruktion_intem_note: bRow?.bodenkonstruktion_intem_note ?? null,
         bodenkonstruktion_extem_note: bRow?.bodenkonstruktion_extem_note ?? null,
+        bodenkonstruktion_threeDFile: bRow?.threeDFile ?? null,
       },
     });
   } catch (error: any) {
@@ -1592,10 +1594,12 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
         ...stepWithFiles,
         schafttyp_intem_note: mRowStep?.schafttyp_intem_note ?? null,
         schafttyp_extem_note: mRowStep?.schafttyp_extem_note ?? null,
+        massschafterstellung_threeDFile: mRowStep?.threeDFile ?? null,
         bodenkonstruktion_intem_note:
           bRowStep?.bodenkonstruktion_intem_note ?? null,
         bodenkonstruktion_extem_note:
           bRowStep?.bodenkonstruktion_extem_note ?? null,
+        bodenkonstruktion_threeDFile: bRowStep?.threeDFile ?? null,
       },
     });
   } catch (error: any) {

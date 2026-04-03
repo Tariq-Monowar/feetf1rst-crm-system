@@ -15,7 +15,10 @@ const router = express.Router();
 router.post(
   "/massschafterstellung/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
-  upload.fields([{ name: "massschafterstellung_image", maxCount: 1 }]),
+  upload.fields([
+    { name: "massschafterstellung_image", maxCount: 1 },
+    { name: "massschafterstellung_threeDFile", maxCount: 1 },
+  ]),
   manageMassschafterstellung
 );
 
@@ -32,7 +35,10 @@ router.get(
 router.post(
   "/bodenkonstruktion/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
-  upload.fields([{ name: "bodenkonstruktion_image", maxCount: 1 }]),
+  upload.fields([
+    { name: "bodenkonstruktion_image", maxCount: 1 },
+    { name: "bodenkonstruktion_threeDFile", maxCount: 1 },
+  ]),
   manageBodenkonstruktion
 );
 

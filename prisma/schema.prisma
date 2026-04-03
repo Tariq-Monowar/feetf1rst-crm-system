@@ -2244,6 +2244,7 @@ model shoe_order_massschafterstellung {
   schafttyp_extem_note       String?
   massschafterstellung_json  Json?
   massschafterstellung_image String?
+  threeDFile                String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2262,6 +2263,7 @@ model shoe_order_bodenkonstruktion {
   bodenkonstruktion_extem_note String?
   bodenkonstruktion_json       Json?
   bodenkonstruktion_image      String?
+  threeDFile                   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

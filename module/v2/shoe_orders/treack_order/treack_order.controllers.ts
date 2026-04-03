@@ -565,14 +565,16 @@ export const getActiveButton = async (req: Request, res: Response) => {
     const hasInternalSchafttyp =
       Boolean(schaftRow?.schafttyp_intem_note) ||
       Boolean(schaftRow?.massschafterstellung_json) ||
-      Boolean(schaftRow?.massschafterstellung_image);
+      Boolean(schaftRow?.massschafterstellung_image) ||
+      Boolean(schaftRow?.threeDFile);
     const hasExternalSchafttyp =
       Boolean(schaftRow?.schafttyp_extem_note) || externalSchafttyp.length > 0;
 
     const hasInternalBodenkonstruktion =
       Boolean(bodenRow?.bodenkonstruktion_intem_note) ||
       Boolean(bodenRow?.bodenkonstruktion_json) ||
-      Boolean(bodenRow?.bodenkonstruktion_image);
+      Boolean(bodenRow?.bodenkonstruktion_image) ||
+      Boolean(bodenRow?.threeDFile);
     const hasExternalBodenkonstruktion =
       Boolean(bodenRow?.bodenkonstruktion_extem_note) ||
       externalBodenkonstruktion.length > 0;
@@ -581,6 +583,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
       note: schaftRow?.schafttyp_intem_note ?? null,
       json: schaftRow?.massschafterstellung_json ?? null,
       image: schaftRow?.massschafterstellung_image ?? null,
+      threeDFile: schaftRow?.threeDFile ?? null,
       hasData: hasInternalSchafttyp,
     };
     const schafttypExternData = {
@@ -592,6 +595,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
       note: bodenRow?.bodenkonstruktion_intem_note ?? null,
       json: bodenRow?.bodenkonstruktion_json ?? null,
       image: bodenRow?.bodenkonstruktion_image ?? null,
+      threeDFile: bodenRow?.threeDFile ?? null,
       hasData: hasInternalBodenkonstruktion,
     };
     const bodenExternData = {
