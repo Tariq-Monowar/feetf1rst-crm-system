@@ -11,6 +11,7 @@ import {
   getTustomShafts,
   getSingleCustomShaft,
   updateCustomShaftStatus,
+  updateCustomShaftStatusBulk,
   deleteCustomShaft,
   totalPriceResponse,
   createCustomBodenkonstruktionOrder,
@@ -37,6 +38,7 @@ const router = express.Router();
  * | GET | /custom_shafts/get |
  * | GET | /custom_shafts/get/:id |
  * | PATCH | /custom_shafts/update-status/:id |
+ * | PATCH | /custom_shafts/update-status-bulk |
  * | PATCH | /custom_shafts/update-payment-status |
  * | DELETE | /custom_shafts/delete/:id |
  * | GET | /custom_shafts/total-price-resio |
@@ -133,6 +135,13 @@ router.patch(
   "/update-status/:id",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   updateCustomShaftStatus
+);
+
+// PATCH /custom_shafts/update-status-bulk — body: { ids: string[], status: string } (orderIds alias for ids)
+router.patch(
+  "/update-status-bulk",
+  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  updateCustomShaftStatusBulk
 );
 
 // PATCH /custom_shafts/update-payment-status

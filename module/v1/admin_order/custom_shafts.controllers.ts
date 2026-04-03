@@ -1644,6 +1644,17 @@ export const getSingleCustomShaft = async (req: Request, res: Response) => {
   }
 };
 
+/** Workflow `custom_shafts.status` — same list for single and bulk update. */
+export const CUSTOM_SHAFT_WORKFLOW_STATUSES = [
+  "Neu",
+  "Bestellung_eingegangen",
+  "In_Produktiony",
+  "Qualitätskontrolle",
+  "Versandt",
+  "Ausgeführt",
+  "problem",
+] as const;
+
 export const updateCustomShaftStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1656,21 +1667,11 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const validStatuses = [
-      "Neu",
-      "Bestellung_eingegangen",
-      "In_Produktiony", // Fixed: schema has "In_Produktiony" not "In_Produktion"
-      "Qualitätskontrolle",
-      "Versandt",
-      "Ausgeführt",
-      "problem",
-    ] as const;
-
-    if (!validStatuses.includes(status as any)) {
+    if (!CUSTOM_SHAFT_WORKFLOW_STATUSES.includes(status as any)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
-        validStatuses: validStatuses,
+        validStatuses: CUSTOM_SHAFT_WORKFLOW_STATUSES,
       });
     }
 
@@ -1721,6 +1722,115 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Something went wrong while updating custom shaft status",
+      error: error.message,
+    });
+  }
+};
+
+const BULK_UPDATE_CUSTOM_SHAFT_STATUS_MAX = 100;
+
+/** Body: `{ ids: string[], status: string }` — same workflow statuses as PATCH `/update-status/:id`. */
+export const updateCustomShaftStatusBulk = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { status, ids: idsBody } = req.body;
+    const rawIds = idsBody ?? req.body?.orderIds;
+
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must be a non-empty array",
+      });
+    }
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+    if (!CUSTOM_SHAFT_WORKFLOW_STATUSES.includes(status as any)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+        validStatuses: CUSTOM_SHAFT_WORKFLOW_STATUSES,
+      });
+    }
+
+    const uniqueIds = [
+      ...new Set(
+        (rawIds as unknown[]).map((id) =>
+          typeof id === "string" ? id.trim() : String(id ?? "").trim(),
+        ),
+      ),
+    ].filter(Boolean);
+
+    if (uniqueIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must contain at least one valid id",
+      });
+    }
+    if (uniqueIds.length > BULK_UPDATE_CUSTOM_SHAFT_STATUS_MAX) {
+      return res.status(400).json({
+        success: false,
+        message: `At most ${BULK_UPDATE_CUSTOM_SHAFT_STATUS_MAX} ids per request.`,
+      });
+    }
+
+    const existing = await prisma.custom_shafts.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true },
+    });
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No custom shafts found for the given ids",
+      });
+    }
+    if (existing.length !== uniqueIds.length) {
+      const found = new Set(existing.map((r) => r.id));
+      const missing = uniqueIds.filter((id) => !found.has(id));
+      return res.status(400).json({
+        success: false,
+        message: "Some custom shaft IDs were not found",
+        missingIds: missing,
+      });
+    }
+
+    const transitionStatus = status === "Ausgeführt" ? "complated" : "panding";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.custom_shafts.updateMany({
+        where: { id: { in: uniqueIds } },
+        data: {
+          status: status as any,
+          updatedAt: new Date(),
+        },
+      });
+      await tx.admin_order_transitions.updateMany({
+        where: { custom_shafts_id: { in: uniqueIds } },
+        data: { status: transitionStatus as any },
+      });
+    });
+
+    const updated = await prisma.custom_shafts.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, status: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Custom shaft statuses updated successfully",
+      updatedCount: updated.length,
+      data: updated,
+    });
+  } catch (error: any) {
+    console.error("Update Custom Shaft Status Bulk Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating custom shaft statuses",
       error: error.message,
     });
   }
