@@ -9,20 +9,41 @@ export const payPartnerToAdminController = async (
   req: Request,
   res: Response,
 ) => {
+  /** Euro amounts as cents so === max / same payment works (no float drift). */
+  const moneyToCents = (value: number): number => {
+    if (!Number.isFinite(value)) return 0;
+    return Math.round(value * 100);
+  };
+  const centsToMoney = (cents: number): number => Math.round(cents) / 100;
+  const formatDeEuro = (amount: number) =>
+    amount.toLocaleString("de-DE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  const getLanguageIsGerman = () =>
+    (process.env.LANGUAGE || "en").toLowerCase() === "de";
+
   try {
-    const { id } = req.user;
-    const isGerman = (process.env.LANGUAGE || "en").toLowerCase() === "de";
+    const partnerId = req.user?.id;
+    const isGerman = getLanguageIsGerman();
+    const amountInput = req.body?.amount;
+    const requestedAmount = Number(amountInput);
 
-    const { amount } = req.body;
-    const requestedAmount = Number(amount);
+    if (!partnerId) {
+      return res
+        .status(401)
+        .json({
+          success: false,
+          message: isGerman ? "Nicht autorisiert." : "Unauthorized.",
+        });
+    }
 
-    // Validate amount
-    if (!amount) {
+    if (!amountInput) {
       return res.status(400).json({
         success: false,
         message: isGerman
-          ? "Bitte gib einen Auszahlungsbetrag ein."
-          : "Please enter a payout amount.",
+          ? "Bitte gib einen Betrag ein."
+          : "Please enter an amount.",
       });
     }
 
@@ -35,14 +56,14 @@ export const payPartnerToAdminController = async (
       });
     }
 
-    // Available = partner total minus sum of already pending payout requests
+    // Available = partner total minus already pending payout requests.
     const [partnerTotalRow, pendingSumRow] = await Promise.all([
       prisma.partner_total_amount.findFirst({
-        where: { partnerId: id },
+        where: { partnerId },
         select: { totalAmount: true },
       }),
       prisma.request_payout.aggregate({
-        where: { partnerId: id, status: "panding" },
+        where: { partnerId, status: "panding" },
         _sum: { totalAmount: true },
       }),
     ]);
@@ -50,25 +71,48 @@ export const payPartnerToAdminController = async (
     const total = Number(partnerTotalRow?.totalAmount ?? 0);
     const pendingSum = Number(pendingSumRow._sum.totalAmount ?? 0);
     const available = total - pendingSum;
+    const availableCents = moneyToCents(available);
+    const requestedCents = moneyToCents(requestedAmount);
+    const absBalanceCents = Math.abs(availableCents);
+    const absBalanceFormatted = centsToMoney(absBalanceCents);
+    const balanceEuro = centsToMoney(availableCents);
 
-    if (requestedAmount > available) {
+    if (availableCents >= 0) {
       return res.status(400).json({
         success: false,
         message: isGerman
-          ? `Du kannst maximal ${Number(available.toFixed(2))} auszahlen lassen. Bitte gib einen kleineren Betrag ein.`
-          : `You can request up to ${Number(available.toFixed(2))}. Please enter a smaller amount.`,
+          ? "Eine Kontokorrektur ist nur bei negativem Kontostand möglich."
+          : "Account correction is only available when your balance is negative.",
         details: {
-          requestedAmount,
-          availableAmount: Number(available.toFixed(2)),
+          balance: balanceEuro,
+          flow: "balance_not_negative",
         },
       });
     }
 
+    // Negative balance: requested_amount must not exceed abs(balance) (equality allowed).
+    if (requestedCents > absBalanceCents) {
+      return res.status(400).json({
+        success: false,
+        message: isGerman
+          ? `Dein offener Betrag beträgt ${formatDeEuro(absBalanceFormatted)} €.\nBitte gib keinen höheren Betrag an.`
+          : `Your outstanding amount is ${absBalanceFormatted.toFixed(2)} €.\nPlease do not enter a higher amount.`,
+        details: {
+          requestedAmount: centsToMoney(requestedCents),
+          openAmount: absBalanceFormatted,
+          balance: balanceEuro,
+          flow: "negative_balance_correction",
+        },
+      });
+    }
+
+    const totalAmountStored = centsToMoney(requestedCents);
+
     //create request_payout
     const requestPayout = await prisma.request_payout.create({
       data: {
-        partnerId: id,
-        totalAmount: requestedAmount,
+        partnerId,
+        totalAmount: totalAmountStored,
         status: "panding",
       },
     });
@@ -76,18 +120,20 @@ export const payPartnerToAdminController = async (
     return res.status(200).json({
       success: true,
       message: isGerman
-        ? "Auszahlungsanfrage wurde erfolgreich erstellt."
-        : "Payout request created successfully.",
+        ? "Anfrage zur Kontokorrektur wurde erfolgreich erstellt."
+        : "Account correction request created successfully.",
+      meta: {
+        flow: "negative_balance_correction" as const,
+      },
       data: requestPayout,
     });
   } catch (error: any) {
     console.error("Pay Partner To Admin Error:", error);
     res.status(500).json({
       success: false,
-      message:
-        (process.env.LANGUAGE || "en").toLowerCase() === "de"
-          ? "Beim Erstellen der Auszahlungsanfrage ist ein Fehler aufgetreten."
-          : "Something went wrong while creating the payout request.",
+      message: getLanguageIsGerman()
+        ? "Beim Erstellen der Kontokorrektur-Anfrage ist ein Fehler aufgetreten."
+        : "Something went wrong while creating the correction request.",
       error: error.message,
     });
   }
@@ -162,7 +208,12 @@ export const getAllRequestPayoutsForAdmin = async (
             is: {
               OR: [
                 { name: { contains: search, mode: "insensitive" as const } },
-                { busnessName: { contains: search, mode: "insensitive" as const } },
+                {
+                  busnessName: {
+                    contains: search,
+                    mode: "insensitive" as const,
+                  },
+                },
                 { email: { contains: search, mode: "insensitive" as const } },
                 { phone: { contains: search, mode: "insensitive" as const } },
               ],
@@ -296,10 +347,6 @@ export const approvedPayoutRequest = async (req: Request, res: Response) => {
   }
 };
 
-
-
-
-
 export const getCalculations = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -313,24 +360,25 @@ export const getCalculations = async (req: Request, res: Response) => {
       });
     }
 
-    const [partnerTotal, totalPaidSum, lastPayment, pendingSum] = await Promise.all([
-      prisma.partner_total_amount.findFirst({
-        where: { partnerId: id },
-        select: { totalAmount: true },
-      }),
-      prisma.request_payout.aggregate({
-        where: { partnerId: id, status: "complated" },
-        _sum: { totalAmount: true },
-      }),
-      prisma.request_payout.findFirst({
-        where: { partnerId: id, status: "complated" },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      }),
-      prisma.request_payout.count({
-        where: { partnerId: id, status: "panding" },
-      }),
-    ]);
+    const [partnerTotal, totalPaidSum, lastPayment, pendingSum] =
+      await Promise.all([
+        prisma.partner_total_amount.findFirst({
+          where: { partnerId: id },
+          select: { totalAmount: true },
+        }),
+        prisma.request_payout.aggregate({
+          where: { partnerId: id, status: "complated" },
+          _sum: { totalAmount: true },
+        }),
+        prisma.request_payout.findFirst({
+          where: { partnerId: id, status: "complated" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+        prisma.request_payout.count({
+          where: { partnerId: id, status: "panding" },
+        }),
+      ]);
 
     const currentBalance = Number(partnerTotal?.totalAmount ?? 0);
     const totalPaidAmount = Number(totalPaidSum._sum.totalAmount ?? 0);

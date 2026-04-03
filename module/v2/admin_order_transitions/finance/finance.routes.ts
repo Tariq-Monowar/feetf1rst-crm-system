@@ -14,7 +14,7 @@ const router = express.Router();
 
 router.post(
   "/pay-partner-to-admin",
-  verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+  verifyUser("PARTNER", "EMPLOYEE"),
   payPartnerToAdminController,
 );
 
