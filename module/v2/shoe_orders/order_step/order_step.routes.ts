@@ -11,13 +11,18 @@ import {
 const router = express.Router();
 
 // {{_baseUrl}}v2/shoe-orders/order-step/massschafterstellung/:orderId (POST multipart)
-// Allowed file fields only: massschafterstellung_image, threeDFile
+// Allowed file fields only: massschafterstellung_image, threeDFile, zipper_image, custom_models_image, staticImage, ledertyp_image, paintImage
 router.post(
   "/massschafterstellung/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   upload.fields([
     { name: "massschafterstellung_image", maxCount: 1 },
     { name: "threeDFile", maxCount: 1 },
+    { name: "zipper_image", maxCount: 1 },
+    { name: "custom_models_image", maxCount: 1 },
+    { name: "staticImage", maxCount: 1 },
+    { name: "ledertyp_image", maxCount: 1 },
+    { name: "paintImage", maxCount: 1 },
   ]),
   manageMassschafterstellung
 );

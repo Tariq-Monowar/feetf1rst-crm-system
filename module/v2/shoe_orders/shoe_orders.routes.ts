@@ -29,6 +29,11 @@ router.post(
   upload.fields([
     { name: "massschafterstellung_image", maxCount: 1 },
     { name: "massschafterstellung_threeDFile", maxCount: 1 },
+    { name: "zipper_image", maxCount: 1 },
+    { name: "custom_models_image", maxCount: 1 },
+    { name: "staticImage", maxCount: 1 },
+    { name: "ledertyp_image", maxCount: 1 },
+    { name: "paintImage", maxCount: 1 },
     { name: "bodenkonstruktion_image", maxCount: 1 },
     { name: "bodenkonstruktion_threeDFile", maxCount: 1 },
   ]),

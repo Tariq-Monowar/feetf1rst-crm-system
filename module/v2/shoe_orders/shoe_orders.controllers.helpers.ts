@@ -78,31 +78,42 @@ export function buildMassschafterstellungFromDraft(
 ): Prisma.shoe_order_massschafterstellungUncheckedCreateInput | null {
   if (raw == null || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const data: Prisma.shoe_order_massschafterstellungUncheckedCreateInput = {
+  const data: Record<string, unknown> = {
     orderId,
   };
-  const s = (field: keyof typeof data, key: string) => {
+  const s = (field: string, key: string) => {
     const v = r[key];
     if (v == null || v === "") return;
-    if (typeof v === "string")
-      (data as Record<string, unknown>)[field as string] = v.trim();
-    else (data as Record<string, unknown>)[field as string] = v;
+    if (typeof v === "string") data[field] = v.trim();
+    else data[field] = v;
   };
   s("schafttyp_intem_note", "schafttyp_intem_note");
   s("schafttyp_extem_note", "schafttyp_extem_note");
   s("massschafterstellung_image", "massschafterstellung_image");
   s("threeDFile", "threeDFile");
+  s("zipper_image", "zipper_image");
+  s("custom_models_image", "custom_models_image");
+  s("staticImage", "staticImage");
+  s("ledertyp_image", "ledertyp_image");
+  s("paintImage", "paintImage");
   if (r.massschafterstellung_json != null && r.massschafterstellung_json !== "") {
     const j = parseJsonField(r.massschafterstellung_json);
     if (j !== undefined) data.massschafterstellung_json = j;
   }
   const has =
-    data.schafttyp_intem_note != null ||
-    data.schafttyp_extem_note != null ||
-    data.massschafterstellung_json != null ||
-    data.massschafterstellung_image != null ||
-    data.threeDFile != null;
-  return has ? data : null;
+    data["schafttyp_intem_note"] != null ||
+    data["schafttyp_extem_note"] != null ||
+    data["massschafterstellung_json"] != null ||
+    data["massschafterstellung_image"] != null ||
+    data["threeDFile"] != null ||
+    data["zipper_image"] != null ||
+    data["custom_models_image"] != null ||
+    data["staticImage"] != null ||
+    data["ledertyp_image"] != null ||
+    data["paintImage"] != null;
+  return has
+    ? (data as Prisma.shoe_order_massschafterstellungUncheckedCreateInput)
+    : null;
 }
 
 function pickMultipartFileLocation(
@@ -139,6 +150,11 @@ const MASST_DRAFT_KEYS = [
   "massschafterstellung_json",
   "massschafterstellung_image",
   "threeDFile",
+  "zipper_image",
+  "custom_models_image",
+  "staticImage",
+  "ledertyp_image",
+  "paintImage",
 ] as const;
 
 /** Fields of shoe_order_bodenkonstruktion (except id, orderId, timestamps). */
@@ -195,6 +211,16 @@ function pickMassschafterstellungDraft(
     const u = body.massschafterstellung_threeDFile;
     if (typeof u === "string" && u.trim()) out.threeDFile = u.trim();
   }
+  const zipper = pickMultipartFileLocation(files, "zipper_image");
+  if (zipper) out.zipper_image = zipper;
+  const customModels = pickMultipartFileLocation(files, "custom_models_image");
+  if (customModels) out.custom_models_image = customModels;
+  const staticImg = pickMultipartFileLocation(files, "staticImage");
+  if (staticImg) out.staticImage = staticImg;
+  const ledertyp = pickMultipartFileLocation(files, "ledertyp_image");
+  if (ledertyp) out.ledertyp_image = ledertyp;
+  const paint = pickMultipartFileLocation(files, "paintImage");
+  if (paint) out.paintImage = paint;
   return out;
 }
 
@@ -246,7 +272,8 @@ function pickBodenkonstruktionDraft(
  *     "threeDFile": "..."
  *   }
  * }
- * Multipart: same field names inside nested JSON, or flat keys on the form; files: massschafterstellung_image, massschafterstellung_threeDFile, bodenkonstruktion_image, bodenkonstruktion_threeDFile.
+ * Multipart: same field names inside nested JSON, or flat keys on the form; files:
+ * massschafterstellung_image, massschafterstellung_threeDFile, zipper_image, custom_models_image, staticImage, ledertyp_image, paintImage, bodenkonstruktion_image, bodenkonstruktion_threeDFile.
  */
 export function buildSchafBodenDraftFromHttpRequest(
   body: Record<string, unknown>,

@@ -17,6 +17,38 @@ import {
   shoeOrderSbDraftRedisKey,
 } from "./shoe_orders.controllers.helpers";
 
+const MASS_EXTRA_IMAGE_KEYS = [
+  "zipper_image",
+  "custom_models_image",
+  "staticImage",
+  "ledertyp_image",
+  "paintImage",
+] as const;
+
+function stripMassExtraImageKeys(
+  data: Prisma.shoe_order_massschafterstellungUncheckedCreateInput,
+) {
+  const clone = {
+    ...(data as unknown as Record<string, unknown>),
+  };
+  for (const key of MASS_EXTRA_IMAGE_KEYS) delete clone[key];
+  return clone as Prisma.shoe_order_massschafterstellungUncheckedCreateInput;
+}
+
+function isUnknownMassExtraFieldError(err: unknown): boolean {
+  const msg =
+    err && typeof err === "object" && "message" in err
+      ? String((err as { message?: unknown }).message ?? "")
+      : "";
+  return (
+    msg.includes("Unknown argument `zipper_image`") ||
+    msg.includes("Unknown argument `custom_models_image`") ||
+    msg.includes("Unknown argument `staticImage`") ||
+    msg.includes("Unknown argument `ledertyp_image`") ||
+    msg.includes("Unknown argument `paintImage`")
+  );
+}
+
 /**
  * Cache draft in Redis (key = user id). Body matches Prisma only:
  *
@@ -71,7 +103,7 @@ export const saveShoeOrderSchaftBodenDraft = async (
       return res.status(400).json({
         success: false,
         message:
-          "Send at least one field under massschafterstellung and/or bodenkonstruktion (see API docs / Prisma model fields), or upload files massschafterstellung_image, massschafterstellung_threeDFile, bodenkonstruktion_image, bodenkonstruktion_threeDFile",
+          "Send at least one field under massschafterstellung and/or bodenkonstruktion (see API docs / Prisma model fields), or upload files massschafterstellung_image, massschafterstellung_threeDFile, zipper_image, custom_models_image, staticImage, ledertyp_image, paintImage, bodenkonstruktion_image, bodenkonstruktion_threeDFile",
       });
     }
 
@@ -91,6 +123,18 @@ export const saveShoeOrderSchaftBodenDraft = async (
         : null;
     const oldMassThreeD =
       typeof oldM?.threeDFile === "string" ? oldM.threeDFile : null;
+    const oldZipperImage =
+      typeof oldM?.zipper_image === "string" ? oldM.zipper_image : null;
+    const oldCustomModelsImage =
+      typeof oldM?.custom_models_image === "string"
+        ? oldM.custom_models_image
+        : null;
+    const oldStaticImage =
+      typeof oldM?.staticImage === "string" ? oldM.staticImage : null;
+    const oldLedertypImage =
+      typeof oldM?.ledertyp_image === "string" ? oldM.ledertyp_image : null;
+    const oldPaintImage =
+      typeof oldM?.paintImage === "string" ? oldM.paintImage : null;
     const oldBodenThreeD =
       typeof oldB?.threeDFile === "string" ? oldB.threeDFile : null;
 
@@ -125,6 +169,18 @@ export const saveShoeOrderSchaftBodenDraft = async (
         : null;
     const newMassThreeD =
       typeof newM?.threeDFile === "string" ? newM.threeDFile : null;
+    const newZipperImage =
+      typeof newM?.zipper_image === "string" ? newM.zipper_image : null;
+    const newCustomModelsImage =
+      typeof newM?.custom_models_image === "string"
+        ? newM.custom_models_image
+        : null;
+    const newStaticImage =
+      typeof newM?.staticImage === "string" ? newM.staticImage : null;
+    const newLedertypImage =
+      typeof newM?.ledertyp_image === "string" ? newM.ledertyp_image : null;
+    const newPaintImage =
+      typeof newM?.paintImage === "string" ? newM.paintImage : null;
     const newBodenThreeD =
       typeof newB?.threeDFile === "string" ? newB.threeDFile : null;
 
@@ -136,6 +192,29 @@ export const saveShoeOrderSchaftBodenDraft = async (
     }
     if (oldMassThreeD && newMassThreeD && oldMassThreeD !== newMassThreeD) {
       deleteFileFromS3(oldMassThreeD);
+    }
+    if (oldZipperImage && newZipperImage && oldZipperImage !== newZipperImage) {
+      deleteFileFromS3(oldZipperImage);
+    }
+    if (
+      oldCustomModelsImage &&
+      newCustomModelsImage &&
+      oldCustomModelsImage !== newCustomModelsImage
+    ) {
+      deleteFileFromS3(oldCustomModelsImage);
+    }
+    if (oldStaticImage && newStaticImage && oldStaticImage !== newStaticImage) {
+      deleteFileFromS3(oldStaticImage);
+    }
+    if (
+      oldLedertypImage &&
+      newLedertypImage &&
+      oldLedertypImage !== newLedertypImage
+    ) {
+      deleteFileFromS3(oldLedertypImage);
+    }
+    if (oldPaintImage && newPaintImage && oldPaintImage !== newPaintImage) {
+      deleteFileFromS3(oldPaintImage);
     }
     if (oldBodenThreeD && newBodenThreeD && oldBodenThreeD !== newBodenThreeD) {
       deleteFileFromS3(oldBodenThreeD);
@@ -241,6 +320,11 @@ export const removeShoeOrderSchaftBodenDraft = async (
       const r = m as Record<string, unknown>;
       pushUrl(r.massschafterstellung_image);
       pushUrl(r.threeDFile);
+      pushUrl(r.zipper_image);
+      pushUrl(r.custom_models_image);
+      pushUrl(r.staticImage);
+      pushUrl(r.ledertyp_image);
+      pushUrl(r.paintImage);
     }
     const b = draftData.bodenkonstruktion;
     if (b && typeof b === "object") {
@@ -502,28 +586,28 @@ export const createShoeOrder = async (req: Request, res: Response) => {
     const newOrder = await prisma.$transaction(async (tx) => {
       const orderNumber = await getNextShoeOrderNumberForPartner(tx, partnerId);
 
-      // Auto-link a recent prescription (not older than 4 weeks) when order is for insurance/broth
-      let prescriptionId: string | undefined;
-      if (payment_type === "insurance" || payment_type === "broth") {
-        const now = new Date();
-        const fourWeeksAgo = new Date(now.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
-
-        const recentPrescription = await tx.prescription.findFirst({
-          where: {
-            customerId,
-            createdAt: { gte: fourWeeksAgo },
-          },
-          orderBy: { createdAt: "desc" },
-        });
-        if (recentPrescription) {
-          prescriptionId = recentPrescription.id;
-        }
-      }
-
-      const nextKvaNumber =
-        kva === true || kva === "true"
-          ? await getNextShoeKvaNumberForPartner(tx, partnerId)
-          : null;
+      // Run independent lookups in parallel to reduce latency.
+      const needsPrescription =
+        payment_type === "insurance" || payment_type === "broth";
+      const needsKvaNumber = kva === true || kva === "true";
+      const now = new Date();
+      const fourWeeksAgo = new Date(now.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
+      const [recentPrescription, nextKvaNumber] = await Promise.all([
+        needsPrescription
+          ? tx.prescription.findFirst({
+              where: {
+                customerId,
+                createdAt: { gte: fourWeeksAgo },
+              },
+              orderBy: { createdAt: "desc" },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+        needsKvaNumber
+          ? getNextShoeKvaNumberForPartner(tx, partnerId)
+          : Promise.resolve(null),
+      ]);
+      const prescriptionId = recentPrescription?.id;
 
       const order = await tx.shoe_order.create({
         data: {
@@ -581,99 +665,86 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         return Number.isNaN(d.getTime()) ? undefined : d;
       };
 
-      // Step 4 & 5: when half_sample_required is true → take data, isCompleted false; when false → no data, isCompleted true
+      // Build all workflow steps in-memory, then insert in one createMany (fewer round trips).
+      const toStr = (v: unknown) =>
+        v == null || v === "" ? undefined : String(v).trim() || undefined;
+      const stepRows: Prisma.shoe_order_stepCreateManyInput[] = [];
+
+      // Step 4 & 5
       if (halfSampleRequired) {
-        const step4Data: any = {
-          order: { connect: { id: order.id } },
+        stepRows.push({
+          orderId: order.id,
           status: "Halbprobenerstellung",
           isCompleted: false,
           notes: step4_notes ?? undefined,
-        };
-        const fitDate = safeDate(fitting_date);
-        if (fitDate != null) step4Data.fitting_date = fitDate;
-        await tx.shoe_order_step.create({ data: step4Data });
-
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Halbprobe_durchführen",
-            isCompleted: false,
-            notes: step4_notes ?? undefined,
-            adjustments: adjustments ?? undefined,
-            customer_reviews: customer_reviews ?? undefined,
-          },
+          fitting_date: safeDate(fitting_date),
+        });
+        stepRows.push({
+          orderId: order.id,
+          status: "Halbprobe_durchführen",
+          isCompleted: false,
+          notes: step4_notes ?? undefined,
+          adjustments: adjustments ?? undefined,
+          customer_reviews: customer_reviews ?? undefined,
         });
       } else {
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Halbprobenerstellung",
-            isCompleted: true,
-            auto_print: true,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Halbprobenerstellung",
+          isCompleted: true,
+          auto_print: true,
         });
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Halbprobe_durchführen",
-            isCompleted: true,
-            auto_print: true,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Halbprobe_durchführen",
+          isCompleted: true,
+          auto_print: true,
         });
       }
 
-      // Step 2: when has_trim_strips is false → take data, isCompleted false; when true → no data, isCompleted true
+      // Step 2
       if (!hasTrimStrips) {
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Leistenerstellung",
-            isCompleted: false,
-
-            leistentyp: step2Leistentyp?.trim() ?? undefined,
-            material: step2_material ?? undefined,
-            notes: step2_notes ?? undefined,
-            leistengröße: step2_leistengröße?.trim() ?? undefined,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Leistenerstellung",
+          isCompleted: false,
+          leistentyp: step2Leistentyp?.trim() ?? undefined,
+          material: step2_material ?? undefined,
+          notes: step2_notes ?? undefined,
+          leistengröße: step2_leistengröße?.trim() ?? undefined,
         });
       } else {
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Leistenerstellung",
-            isCompleted: true,
-            auto_print: true,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Leistenerstellung",
+          isCompleted: true,
+          auto_print: true,
         });
       }
 
-      // Step 3: zusätzliche_notizen is a top-level field; step3_json is separate (e.g. { "hello": "hi" }).
-      const toStr = (v: unknown) =>
-        v == null || v === "" ? undefined : String(v).trim() || undefined;
+      // Step 3
       if (beddingRequired) {
         const step3JsonValue: Prisma.InputJsonValue | undefined =
           typeof step3_json === "object" && step3_json !== null
             ? (step3_json as Prisma.InputJsonValue)
             : undefined;
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Bettungserstellung",
-            isCompleted: false,
-            zusätzliche_notizen: toStr(zusätzliche_notizen),
-            step3_json: step3JsonValue,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Bettungserstellung",
+          isCompleted: false,
+          zusätzliche_notizen: toStr(zusätzliche_notizen),
+          step3_json: step3JsonValue,
         });
       } else {
-        await tx.shoe_order_step.create({
-          data: {
-            order: { connect: { id: order.id } },
-            status: "Bettungserstellung",
-            isCompleted: true,
-            auto_print: true,
-          },
+        stepRows.push({
+          orderId: order.id,
+          status: "Bettungserstellung",
+          isCompleted: true,
+          auto_print: true,
         });
       }
+
+      await tx.shoe_order_step.createMany({ data: stepRows });
 
       // Insurances
       if (insurancesArr.length > 0) {
@@ -686,23 +757,6 @@ export const createShoeOrder = async (req: Request, res: Response) => {
             vat_country: ins.vat_country ?? undefined,
           })),
         });
-      }
-
-      if (sbDraft) {
-        const mData = buildMassschafterstellungFromDraft(
-          order.id,
-          sbDraft.massschafterstellung,
-        );
-        if (mData) {
-          await tx.shoe_order_massschafterstellung.create({ data: mData });
-        }
-        const bData = buildBodenkonstruktionFromDraft(
-          order.id,
-          sbDraft.bodenkonstruktion,
-        );
-        if (bData) {
-          await tx.shoe_order_bodenkonstruktion.create({ data: bData });
-        }
       }
 
       return order;
@@ -724,36 +778,68 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       },
     });
 
-    const [massschafterstellungRow, bodenkonstruktionRow] = await Promise.all([
-      prisma.shoe_order_massschafterstellung.findUnique({
-        where: { orderId: newOrder.id },
-      }),
-      prisma.shoe_order_bodenkonstruktion.findUnique({
-        where: { orderId: newOrder.id },
-      }),
-    ]);
-
-    // Clear Schaft/Boden Redis draft only after order + response payload succeed (?extern-or-intern=true).
-    if (sbDraftRedisKey) {
-      try {
-        await redis.del(sbDraftRedisKey);
-      } catch (e) {
-        console.error(
-          "createShoeOrder: failed to clear schaft/boden draft cache",
-          e,
-        );
-      }
-    }
-
     res.status(201).json({
       success: true,
       message: "Shoe order created successfully",
       data: {
         ...orderWithRelations,
-        massschafterstellung: massschafterstellungRow,
-        bodenkonstruktion: bodenkonstruktionRow,
+        // Created asynchronously right after response for faster TTFB.
+        massschafterstellung: null,
+        bodenkonstruktion: null,
       },
     });
+
+    // Run non-critical Schaft/Boden insert + cache cleanup in background to reduce response time.
+    void (async () => {
+      try {
+        if (sbDraft) {
+          const mData = buildMassschafterstellungFromDraft(
+            newOrder.id,
+            sbDraft.massschafterstellung,
+          );
+          if (mData) {
+            try {
+              await prisma.shoe_order_massschafterstellung.upsert({
+                where: { orderId: newOrder.id },
+                create: mData,
+                update: mData,
+              });
+            } catch (err) {
+              if (!isUnknownMassExtraFieldError(err)) throw err;
+              const safe = stripMassExtraImageKeys(mData);
+              await prisma.shoe_order_massschafterstellung.upsert({
+                where: { orderId: newOrder.id },
+                create: safe,
+                update: safe,
+              });
+            }
+          }
+
+          const bData = buildBodenkonstruktionFromDraft(
+            newOrder.id,
+            sbDraft.bodenkonstruktion,
+          );
+          if (bData) {
+            await prisma.shoe_order_bodenkonstruktion.upsert({
+              where: { orderId: newOrder.id },
+              create: bData,
+              update: bData,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("createShoeOrder background Schaft/Boden sync failed:", e);
+      } finally {
+        if (sbDraftRedisKey) {
+          await redis.del(sbDraftRedisKey).catch((e) => {
+            console.error(
+              "createShoeOrder: failed to clear schaft/boden draft cache",
+              e,
+            );
+          });
+        }
+      }
+    })();
   } catch (error: any) {
     console.error("Create Shoe Order Error:", error);
     res.status(500).json({

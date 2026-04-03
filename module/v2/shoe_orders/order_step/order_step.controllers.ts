@@ -17,9 +17,19 @@ export const manageMassschafterstellung = async (
     ? files.massschafterstellung_image[0]
     : files.massschafterstellung_image;
   const threeDUpload = pickUploaded(files, "threeDFile");
+  const zipperUpload = pickUploaded(files, "zipper_image");
+  const customModelsUpload = pickUploaded(files, "custom_models_image");
+  const staticImageUpload = pickUploaded(files, "staticImage");
+  const ledertypUpload = pickUploaded(files, "ledertyp_image");
+  const paintUpload = pickUploaded(files, "paintImage");
   const cleanup = () => {
     if (imageFile?.location) deleteFileFromS3(imageFile.location);
     if (threeDUpload) deleteFileFromS3(threeDUpload);
+    if (zipperUpload) deleteFileFromS3(zipperUpload);
+    if (customModelsUpload) deleteFileFromS3(customModelsUpload);
+    if (staticImageUpload) deleteFileFromS3(staticImageUpload);
+    if (ledertypUpload) deleteFileFromS3(ledertypUpload);
+    if (paintUpload) deleteFileFromS3(paintUpload);
   };
 
   try {
@@ -38,21 +48,51 @@ export const manageMassschafterstellung = async (
         ? req.body.threeDFile.trim() || null
         : null;
     const threeDFile = threeDUpload ?? threeDFileBody;
+    const zipperImageBody =
+      typeof req.body?.zipper_image === "string"
+        ? req.body.zipper_image.trim() || null
+        : null;
+    const customModelsImageBody =
+      typeof req.body?.custom_models_image === "string"
+        ? req.body.custom_models_image.trim() || null
+        : null;
+    const staticImageBody =
+      typeof req.body?.staticImage === "string"
+        ? req.body.staticImage.trim() || null
+        : null;
+    const ledertypImageBody =
+      typeof req.body?.ledertyp_image === "string"
+        ? req.body.ledertyp_image.trim() || null
+        : null;
+    const paintImageBody =
+      typeof req.body?.paintImage === "string"
+        ? req.body.paintImage.trim() || null
+        : null;
+    const zipperImage = zipperUpload ?? zipperImageBody;
+    const customModelsImage = customModelsUpload ?? customModelsImageBody;
+    const staticImage = staticImageUpload ?? staticImageBody;
+    const ledertypImage = ledertypUpload ?? ledertypImageBody;
+    const paintImage = paintUpload ?? paintImageBody;
 
     if (
       (json == null || json === "") &&
       !image &&
-      !threeDFile
+      !threeDFile &&
+      !zipperImage &&
+      !customModelsImage &&
+      !staticImage &&
+      !ledertypImage &&
+      !paintImage
     ) {
       cleanup();
       return res.status(400).json({
         success: false,
         message:
-          "Provide at least one of: massschafterstellung_json, massschafterstellung_image, threeDFile (file upload), or threeDFile (URL string in body)",
+          "Provide at least one field: massschafterstellung_json, massschafterstellung_image, threeDFile, zipper_image, custom_models_image, staticImage, ledertyp_image, paintImage",
       });
     }
 
-    const order = await prisma.shoe_order.findFirst({
+    const order = await (prisma as any).shoe_order.findFirst({
       where: { id: orderId },
       select: {
         id: true,
@@ -61,6 +101,11 @@ export const manageMassschafterstellung = async (
             id: true,
             massschafterstellung_image: true,
             threeDFile: true,
+            zipper_image: true,
+            custom_models_image: true,
+            staticImage: true,
+            ledertyp_image: true,
+            paintImage: true,
           },
         },
       },
@@ -71,10 +116,8 @@ export const manageMassschafterstellung = async (
         .json({ success: false, message: "Shoe order not found" });
     }
 
-    const createData: Prisma.shoe_order_massschafterstellungUncheckedCreateInput =
-      { orderId };
-    const updateData: Prisma.shoe_order_massschafterstellungUncheckedUpdateInput =
-      {};
+    const createData: any = { orderId };
+    const updateData: any = {};
     if (json != null) {
       const j = json as Prisma.InputJsonValue;
       createData.massschafterstellung_json = j;
@@ -88,11 +131,36 @@ export const manageMassschafterstellung = async (
       createData.threeDFile = threeDFile;
       updateData.threeDFile = threeDFile;
     }
+    if (zipperImage != null) {
+      createData.zipper_image = zipperImage;
+      updateData.zipper_image = zipperImage;
+    }
+    if (customModelsImage != null) {
+      createData.custom_models_image = customModelsImage;
+      updateData.custom_models_image = customModelsImage;
+    }
+    if (staticImage != null) {
+      createData.staticImage = staticImage;
+      updateData.staticImage = staticImage;
+    }
+    if (ledertypImage != null) {
+      createData.ledertyp_image = ledertypImage;
+      updateData.ledertyp_image = ledertypImage;
+    }
+    if (paintImage != null) {
+      createData.paintImage = paintImage;
+      updateData.paintImage = paintImage;
+    }
 
     const prevImage = order.massschafterstellung?.massschafterstellung_image;
     const prevThreeD = order.massschafterstellung?.threeDFile;
+    const prevZipper = order.massschafterstellung?.zipper_image;
+    const prevCustomModels = order.massschafterstellung?.custom_models_image;
+    const prevStaticImage = order.massschafterstellung?.staticImage;
+    const prevLedertyp = order.massschafterstellung?.ledertyp_image;
+    const prevPaint = order.massschafterstellung?.paintImage;
 
-    const row = await prisma.shoe_order_massschafterstellung.upsert({
+    const row = await (prisma as any).shoe_order_massschafterstellung.upsert({
       where: { orderId },
       create: createData,
       update: updateData,
@@ -113,6 +181,46 @@ export const manageMassschafterstellung = async (
       prevThreeD !== row.threeDFile
     ) {
       deleteFileFromS3(prevThreeD);
+    }
+    if (
+      prevZipper &&
+      zipperImage &&
+      row.zipper_image &&
+      prevZipper !== row.zipper_image
+    ) {
+      deleteFileFromS3(prevZipper);
+    }
+    if (
+      prevCustomModels &&
+      customModelsImage &&
+      row.custom_models_image &&
+      prevCustomModels !== row.custom_models_image
+    ) {
+      deleteFileFromS3(prevCustomModels);
+    }
+    if (
+      prevStaticImage &&
+      staticImage &&
+      row.staticImage &&
+      prevStaticImage !== row.staticImage
+    ) {
+      deleteFileFromS3(prevStaticImage);
+    }
+    if (
+      prevLedertyp &&
+      ledertypImage &&
+      row.ledertyp_image &&
+      prevLedertyp !== row.ledertyp_image
+    ) {
+      deleteFileFromS3(prevLedertyp);
+    }
+    if (
+      prevPaint &&
+      paintImage &&
+      row.paintImage &&
+      prevPaint !== row.paintImage
+    ) {
+      deleteFileFromS3(prevPaint);
     }
 
     return res.status(200).json({
@@ -148,7 +256,7 @@ export const getMassschafterstellungDetails = async (
         .json({ success: false, message: "Order ID is required" });
     }
 
-    const row = await prisma.shoe_order_massschafterstellung.findUnique({
+    const row = await (prisma as any).shoe_order_massschafterstellung.findUnique({
       where: { orderId },
     });
 
@@ -159,6 +267,11 @@ export const getMassschafterstellungDetails = async (
           massschafterstellung_json: row.massschafterstellung_json,
           massschafterstellung_image: row.massschafterstellung_image,
           threeDFile: row.threeDFile,
+          zipper_image: row.zipper_image,
+          custom_models_image: row.custom_models_image,
+          staticImage: row.staticImage,
+          ledertyp_image: row.ledertyp_image,
+          paintImage: row.paintImage,
         }
       : {
           schafttyp_intem_note: null,
@@ -166,6 +279,11 @@ export const getMassschafterstellungDetails = async (
           massschafterstellung_json: null,
           massschafterstellung_image: null,
           threeDFile: null,
+          zipper_image: null,
+          custom_models_image: null,
+          staticImage: null,
+          ledertyp_image: null,
+          paintImage: null,
         };
 
     return res.status(200).json({
