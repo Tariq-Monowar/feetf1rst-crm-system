@@ -2091,6 +2091,11 @@ model shoe_order {
   orderNotes      order_notes[]
   customShafts    custom_shafts[]
 
+  /** Single record per order: Schafttyp / Massschafterstellung (not duplicated per workflow step). */
+  massschafterstellung shoe_order_massschafterstellung?
+  /** Single record per order: Bodenkonstruktion (not duplicated per workflow step). */
+  bodenkonstruktion    shoe_order_bodenkonstruktion?
+
   @@unique([partnerId, orderNumber]) // Unique per partner, starts from 1000
   @@index([partnerId, orderNumber])
   @@index([partnerId, status]) // Statistic cards: single-scan counts by status
@@ -2223,21 +2228,44 @@ model shoe_order_step {
   feedback_status   step5_feedback_status?
   feedback_notes    String?
   Kleine_Nacharbeit Json?
+}
 
-  //schafttyp
+/**
+ * Schafttyp + Massschafterstellung for a shoe order (one row per order).
+ * Previously duplicated on multiple shoe_order_step rows; now updated in one place.
+ */
+model shoe_order_massschafterstellung {
+  id String @id @default(cuid())
+
+  orderId String  @unique
+  order   shoe_order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   schafttyp_intem_note       String?
   schafttyp_extem_note       String?
   massschafterstellung_json  Json?
   massschafterstellung_image String?
 
-  //bodenkonstruktion   
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * Bodenkonstruktion details for a shoe order (one row per order).
+ */
+model shoe_order_bodenkonstruktion {
+  id String @id @default(cuid())
+
+  orderId String  @unique
+  order   shoe_order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
   bodenkonstruktion_intem_note String?
   bodenkonstruktion_extem_note String?
   bodenkonstruktion_json       Json?
   bodenkonstruktion_image      String?
-}
 
-// /// Step-5-specific data. Depends on status (Halbprobe_durchführen): one per order when that step is used, keyed by orderId.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 enum step5_feedback_status {
   Freigeben

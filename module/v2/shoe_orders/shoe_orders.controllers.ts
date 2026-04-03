@@ -1174,10 +1174,6 @@ export const updateShoeOrderStatus = async (req, res) => {
             feedback_status: feedback_status ?? undefined,
             feedback_notes: str(feedback_notes),
             Kleine_Nacharbeit: parseJson(Kleine_Nacharbeit),
-            schafttyp_intem_note: str(schafttyp_intem_note),
-            schafttyp_extem_note: str(schafttyp_extem_note),
-            bodenkonstruktion_intem_note: str(bodenkonstruktion_intem_note),
-            bodenkonstruktion_extem_note: str(bodenkonstruktion_extem_note),
           }
         : {}),
     };
@@ -1209,6 +1205,36 @@ export const updateShoeOrderStatus = async (req, res) => {
       Object.keys(obj).forEach((k) => obj[k] === undefined && delete obj[k]);
       return obj;
     };
+
+    const schaftBodenPromises: Promise<unknown>[] = [];
+    if (status === "Halbprobe_durchführen") {
+      const mPatch = clean({
+        schafttyp_intem_note: str(schafttyp_intem_note),
+        schafttyp_extem_note: str(schafttyp_extem_note),
+      });
+      const bPatch = clean({
+        bodenkonstruktion_intem_note: str(bodenkonstruktion_intem_note),
+        bodenkonstruktion_extem_note: str(bodenkonstruktion_extem_note),
+      });
+      if (Object.keys(mPatch).length > 0) {
+        schaftBodenPromises.push(
+          prisma.shoe_order_massschafterstellung.upsert({
+            where: { orderId: id },
+            create: { orderId: id, ...mPatch },
+            update: mPatch,
+          }),
+        );
+      }
+      if (Object.keys(bPatch).length > 0) {
+        schaftBodenPromises.push(
+          prisma.shoe_order_bodenkonstruktion.upsert({
+            where: { orderId: id },
+            create: { orderId: id, ...bPatch },
+            update: bPatch,
+          }),
+        );
+      }
+    }
 
     let stepId;
     if (existingStep) {
@@ -1255,50 +1281,61 @@ export const updateShoeOrderStatus = async (req, res) => {
         ? prisma.files.createMany({ data: filesToCreate })
         : Promise.resolve(),
       prisma.shoe_order.update({ where: { id }, data: { status } }),
+      ...schaftBodenPromises,
     ]);
 
-    const stepWithFiles = await prisma.shoe_order_step.findUnique({
-      where: { id: stepId },
-      select: {
-        id: true,
-        orderId: true,
-        status: true,
-        isCompleted: true,
-        complatedAt: true,
-        startedAt: true,
-        notes: true,
-        leistentyp: true,
-        material: true,
-        leistengröße: true,
-        step3_json: true,
-        zusätzliche_notizen: true,
-        preparation_date: true,
-        checkliste_halbprobe: true,
-        fitting_date: true,
-        adjustments: true,
-        customer_reviews: true,
-        auto_print: true,
-        employeeId: true,
-        partnerId: true,
-        createdAt: true,
-        updatedAt: true,
-        feedback_status: true,
-        feedback_notes: true,
-        Kleine_Nacharbeit: true,
-        schafttyp_intem_note: true,
-        schafttyp_extem_note: true,
-        bodenkonstruktion_intem_note: true,
-        bodenkonstruktion_extem_note: true,
-        files: { select: { id: true, fileUrl: true, fileName: true } },
-      },
-    });
+    const [stepWithFiles, mRow, bRow] = await Promise.all([
+      prisma.shoe_order_step.findUnique({
+        where: { id: stepId },
+        select: {
+          id: true,
+          orderId: true,
+          status: true,
+          isCompleted: true,
+          complatedAt: true,
+          startedAt: true,
+          notes: true,
+          leistentyp: true,
+          material: true,
+          leistengröße: true,
+          step3_json: true,
+          zusätzliche_notizen: true,
+          preparation_date: true,
+          checkliste_halbprobe: true,
+          fitting_date: true,
+          adjustments: true,
+          customer_reviews: true,
+          auto_print: true,
+          employeeId: true,
+          partnerId: true,
+          createdAt: true,
+          updatedAt: true,
+          feedback_status: true,
+          feedback_notes: true,
+          Kleine_Nacharbeit: true,
+          files: { select: { id: true, fileUrl: true, fileName: true } },
+        },
+      }),
+      prisma.shoe_order_massschafterstellung.findUnique({
+        where: { orderId: id },
+      }),
+      prisma.shoe_order_bodenkonstruktion.findUnique({
+        where: { orderId: id },
+      }),
+    ]);
 
     return res.status(200).json({
       success: true,
       message: existingStep
         ? "Shoe order step updated successfully"
         : "Shoe order status updated successfully",
-      data: stepWithFiles,
+      data: {
+        ...stepWithFiles,
+        schafttyp_intem_note: mRow?.schafttyp_intem_note ?? null,
+        schafttyp_extem_note: mRow?.schafttyp_extem_note ?? null,
+        bodenkonstruktion_intem_note: bRow?.bodenkonstruktion_intem_note ?? null,
+        bodenkonstruktion_extem_note: bRow?.bodenkonstruktion_extem_note ?? null,
+      },
     });
   } catch (error: any) {
     console.error("Update Shoe Order Status Error:", error);
@@ -1504,50 +1541,62 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       prisma.shoe_order.update({ where: { id }, data: { status } }),
     ]);
 
-    const stepWithFiles = await prisma.shoe_order_step.findUnique({
-      where: { id: stepId },
-      select: {
-        id: true,
-        orderId: true,
-        status: true,
-        isCompleted: true,
-        complatedAt: true,
-        startedAt: true,
-        notes: true,
-        leistentyp: true,
-        material: true,
-        leistengröße: true,
-        step3_json: true,
-        zusätzliche_notizen: true,
-        preparation_date: true,
-        checkliste_halbprobe: true,
-        fitting_date: true,
-        adjustments: true,
-        customer_reviews: true,
-        auto_print: true,
-        employeeId: true,
-        partnerId: true,
-        createdAt: true,
-        updatedAt: true,
-        feedback_status: true,
-        feedback_notes: true,
-        Kleine_Nacharbeit: true,
-        schafttyp_intem_note: true,
-        schafttyp_extem_note: true,
-        bodenkonstruktion_intem_note: true,
-        bodenkonstruktion_extem_note: true,
-        files: {
-          select: { id: true, fileUrl: true, fileName: true },
+    const [stepWithFiles, mRowStep, bRowStep] = await Promise.all([
+      prisma.shoe_order_step.findUnique({
+        where: { id: stepId },
+        select: {
+          id: true,
+          orderId: true,
+          status: true,
+          isCompleted: true,
+          complatedAt: true,
+          startedAt: true,
+          notes: true,
+          leistentyp: true,
+          material: true,
+          leistengröße: true,
+          step3_json: true,
+          zusätzliche_notizen: true,
+          preparation_date: true,
+          checkliste_halbprobe: true,
+          fitting_date: true,
+          adjustments: true,
+          customer_reviews: true,
+          auto_print: true,
+          employeeId: true,
+          partnerId: true,
+          createdAt: true,
+          updatedAt: true,
+          feedback_status: true,
+          feedback_notes: true,
+          Kleine_Nacharbeit: true,
+          files: {
+            select: { id: true, fileUrl: true, fileName: true },
+          },
         },
-      },
-    });
+      }),
+      prisma.shoe_order_massschafterstellung.findUnique({
+        where: { orderId: id },
+      }),
+      prisma.shoe_order_bodenkonstruktion.findUnique({
+        where: { orderId: id },
+      }),
+    ]);
 
     return res.status(200).json({
       success: true,
       message: existingStep
         ? "Shoe order step updated successfully"
         : "Shoe order status updated successfully",
-      data: stepWithFiles!,
+      data: {
+        ...stepWithFiles,
+        schafttyp_intem_note: mRowStep?.schafttyp_intem_note ?? null,
+        schafttyp_extem_note: mRowStep?.schafttyp_extem_note ?? null,
+        bodenkonstruktion_intem_note:
+          bRowStep?.bodenkonstruktion_intem_note ?? null,
+        bodenkonstruktion_extem_note:
+          bRowStep?.bodenkonstruktion_extem_note ?? null,
+      },
     });
   } catch (error: any) {
     console.error("Update Shoe Order Step Error:", error);
@@ -1595,89 +1644,92 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const [steps, shoeOrderStep] = await Promise.all([
-      prisma.shoe_order_step.findMany({
-        where: {
-          orderId: id,
-          ...(statusParam ? { status: statusParam } : {}),
-        },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          orderId: true,
-          status: true,
-          isCompleted: true,
-          complatedAt: true,
-          startedAt: true,
-          notes: true,
-          leistentyp: true,
-          material: true,
-          leistengröße: true,
-          step3_json: true,
-          zusätzliche_notizen: true,
-          preparation_date: true,
-          checkliste_halbprobe: true,
-          fitting_date: true,
-          adjustments: true,
-          customer_reviews: true,
-          auto_print: true,
-          employeeId: true,
-          partnerId: true,
-          createdAt: true,
-          updatedAt: true,
-          feedback_status: true,
-          feedback_notes: true,
-          Kleine_Nacharbeit: true,
-          schafttyp_intem_note: true,
-          schafttyp_extem_note: true,
-          bodenkonstruktion_intem_note: true,
-          bodenkonstruktion_extem_note: true,
-          files: true,
-          order: {
-            select: {
-              half_sample_required: true,
-              customer: {
-                select: {
-                  id: true,
-                  customerNumber: true,
-                  vorname: true,
-                  nachname: true,
-                  telefon: true,
+    const [steps, shoeOrderStep, massschafterstellung, bodenkonstruktion] =
+      await Promise.all([
+        prisma.shoe_order_step.findMany({
+          where: {
+            orderId: id,
+            ...(statusParam ? { status: statusParam } : {}),
+          },
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            orderId: true,
+            status: true,
+            isCompleted: true,
+            complatedAt: true,
+            startedAt: true,
+            notes: true,
+            leistentyp: true,
+            material: true,
+            leistengröße: true,
+            step3_json: true,
+            zusätzliche_notizen: true,
+            preparation_date: true,
+            checkliste_halbprobe: true,
+            fitting_date: true,
+            adjustments: true,
+            customer_reviews: true,
+            auto_print: true,
+            employeeId: true,
+            partnerId: true,
+            createdAt: true,
+            updatedAt: true,
+            feedback_status: true,
+            feedback_notes: true,
+            Kleine_Nacharbeit: true,
+            files: true,
+            order: {
+              select: {
+                half_sample_required: true,
+                customer: {
+                  select: {
+                    id: true,
+                    customerNumber: true,
+                    vorname: true,
+                    nachname: true,
+                    telefon: true,
+                  },
                 },
               },
             },
-          },
-          partner: {
-            select: {
-              id: true,
-              name: true,
-              busnessName: true,
-              role: true,
-              image: true,
+            partner: {
+              select: {
+                id: true,
+                name: true,
+                busnessName: true,
+                role: true,
+                image: true,
+              },
+            },
+            employee: {
+              select: {
+                id: true,
+                employeeName: true,
+                accountName: true,
+                role: true,
+                image: true,
+              },
             },
           },
-          employee: {
-            select: {
-              id: true,
-              employeeName: true,
-              accountName: true,
-              role: true,
-              image: true,
-            },
+        }),
+        prisma.shoe_order_step.findMany({
+          where: { orderId: id },
+          orderBy: { createdAt: "asc" },
+          select: {
+            status: true,
+            isCompleted: true,
+            auto_print: true,
+            createdAt: true,
           },
-        },
-      }),
-      prisma.shoe_order_step.findMany({
-        where: { orderId: id },
-        orderBy: { createdAt: "asc" },
-        select: {
-          status: true,
-          isCompleted: true,
-          auto_print: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+        }),
+        prisma.shoe_order_massschafterstellung.findUnique({
+          where: { orderId: id },
+        }),
+        prisma.shoe_order_bodenkonstruktion.findUnique({
+          where: { orderId: id },
+        }),
+      ]);
 
     if (statusParam && steps.length === 0) {
       return res.status(200).json({
@@ -1685,6 +1737,8 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
         message: "No step with this status found for this order",
         data: null,
         shoeOrderStep,
+        massschafterstellung,
+        bodenkonstruktion,
       });
     }
 
@@ -1695,6 +1749,8 @@ export const getShoeOrderStatus = async (req: Request, res: Response) => {
       message: "Shoe order status fetched successfully",
       data,
       shoeOrderStep,
+      massschafterstellung,
+      bodenkonstruktion,
     });
   } catch (error: any) {
     console.error("Get Shoe Order Status Error:", error);

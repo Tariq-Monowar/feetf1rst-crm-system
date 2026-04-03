@@ -1,9 +1,6 @@
 import { Request, Response } from "express";
-import { prisma } from "../../../../db";
+import { Prisma, prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
-
-const STEPS = ["Halbprobe_durchführen", "Schaft_fertigen", "Bodenerstellen"];
-const STEPS_5_7 = ["Halbprobe_durchführen", "Bodenerstellen"];
 
 export const manageMassschafterstellung = async (
   req: Request,
@@ -40,9 +37,8 @@ export const manageMassschafterstellung = async (
       where: { id: orderId },
       select: {
         id: true,
-        shoeOrderStep: {
-          where: { status: { in: STEPS } },
-          select: { id: true, status: true, massschafterstellung_image: true },
+        massschafterstellung: {
+          select: { id: true, massschafterstellung_image: true },
         },
       },
     });
@@ -52,52 +48,41 @@ export const manageMassschafterstellung = async (
         .json({ success: false, message: "Shoe order not found" });
     }
 
-    const payload: any = {};
-    if (json != null) payload.massschafterstellung_json = json;
-    if (image != null) payload.massschafterstellung_image = image;
-
-    const byStatus = new Map(
-      order.shoeOrderStep.map((s) => [s.status ?? "", s]),
-    );
-    const ids: string[] = [];
-
-    for (const status of STEPS) {
-      const existing = byStatus.get(status);
-      if (existing) {
-        const step = await prisma.shoe_order_step.update({
-          where: { id: existing.id },
-          data: payload,
-        });
-        ids.push(step.id);
-        if (
-          existing.massschafterstellung_image &&
-          image &&
-          step.massschafterstellung_image
-        ) {
-          deleteFileFromS3(existing.massschafterstellung_image);
-        }
-      } else {
-        const step = await prisma.shoe_order_step.create({
-          data: { order: { connect: { id: orderId } }, status, ...payload },
-        });
-        ids.push(step.id);
-      }
+    const createData: Prisma.shoe_order_massschafterstellungUncheckedCreateInput =
+      { orderId };
+    const updateData: Prisma.shoe_order_massschafterstellungUncheckedUpdateInput =
+      {};
+    if (json != null) {
+      const j = json as Prisma.InputJsonValue;
+      createData.massschafterstellung_json = j;
+      updateData.massschafterstellung_json = j;
+    }
+    if (image != null) {
+      createData.massschafterstellung_image = image;
+      updateData.massschafterstellung_image = image;
     }
 
-    const data = await prisma.shoe_order_step.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        status: true,
-        massschafterstellung_json: true,
-        massschafterstellung_image: true,
-      },
+    const prevImage = order.massschafterstellung?.massschafterstellung_image;
+
+    const row = await prisma.shoe_order_massschafterstellung.upsert({
+      where: { orderId },
+      create: createData,
+      update: updateData,
     });
+
+    if (
+      prevImage &&
+      image &&
+      row.massschafterstellung_image &&
+      prevImage !== row.massschafterstellung_image
+    ) {
+      deleteFileFromS3(prevImage);
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Steps 5, 6, 7 created/updated",
-      data,
+      message: "Massschafterstellung saved for order",
+      data: row,
     });
   } catch (err: any) {
     cleanup();
@@ -105,7 +90,7 @@ export const manageMassschafterstellung = async (
     if (err?.code === "P2025") {
       return res
         .status(404)
-        .json({ success: false, message: "Shoe order or step not found" });
+        .json({ success: false, message: "Shoe order not found" });
     }
     return res.status(500).json({
       success: false,
@@ -121,53 +106,36 @@ export const getMassschafterstellungDetails = async (
 ) => {
   try {
     const { orderId } = req.params;
-    const status = req.query.status as string | undefined;
     if (!orderId) {
       return res
         .status(400)
         .json({ success: false, message: "Order ID is required" });
     }
-    if (!status || !STEPS.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid status is required",
-        validStatuses: [...STEPS],
-      });
-    }
 
-    const order = await prisma.shoe_order.findFirst({
-      where: { id: orderId },
-      select: {
-        shoeOrderStep: {
-          where: { status },
-          take: 1,
-          select: {
-            massschafterstellung_json: true,
-            massschafterstellung_image: true,
-          },
-        },
-      },
+    const row = await prisma.shoe_order_massschafterstellung.findUnique({
+      where: { orderId },
     });
-    if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shoe order not found" });
-    }
 
-    const step = order.shoeOrderStep[0] ?? null;
-    const data = step
+    const data = row
       ? {
-          massschafterstellung_json: step.massschafterstellung_json,
-          massschafterstellung_image: step.massschafterstellung_image,
+          schafttyp_intem_note: row.schafttyp_intem_note,
+          schafttyp_extem_note: row.schafttyp_extem_note,
+          massschafterstellung_json: row.massschafterstellung_json,
+          massschafterstellung_image: row.massschafterstellung_image,
         }
-      : { massschafterstellung_json: null, massschafterstellung_image: null };
+      : {
+          schafttyp_intem_note: null,
+          schafttyp_extem_note: null,
+          massschafterstellung_json: null,
+          massschafterstellung_image: null,
+        };
 
     return res.status(200).json({
       success: true,
       message: "Shoe order fetched successfully",
       data,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get Massschafterstellung Details Error:", error);
     return res.status(500).json({
       success: false,
@@ -209,9 +177,8 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       where: { id: orderId },
       select: {
         id: true,
-        shoeOrderStep: {
-          where: { status: { in: STEPS_5_7 } },
-          select: { id: true, status: true, bodenkonstruktion_image: true },
+        bodenkonstruktion: {
+          select: { id: true, bodenkonstruktion_image: true },
         },
       },
     });
@@ -221,52 +188,42 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
         .json({ success: false, message: "Shoe order not found" });
     }
 
-    const payload: any = {};
-    if (json != null) payload.bodenkonstruktion_json = json;
-    if (image != null) payload.bodenkonstruktion_image = image;
-
-    const byStatus = new Map(
-      order.shoeOrderStep.map((s) => [s.status ?? "", s]),
-    );
-    const ids: string[] = [];
-
-    for (const status of STEPS_5_7) {
-      const existing = byStatus.get(status);
-      if (existing) {
-        const step = await prisma.shoe_order_step.update({
-          where: { id: existing.id },
-          data: payload,
-        });
-        ids.push(step.id);
-        if (
-          existing.bodenkonstruktion_image &&
-          image &&
-          step.bodenkonstruktion_image
-        ) {
-          deleteFileFromS3(existing.bodenkonstruktion_image);
-        }
-      } else {
-        const step = await prisma.shoe_order_step.create({
-          data: { order: { connect: { id: orderId } }, status, ...payload },
-        });
-        ids.push(step.id);
-      }
+    const createData: Prisma.shoe_order_bodenkonstruktionUncheckedCreateInput = {
+      orderId,
+    };
+    const updateData: Prisma.shoe_order_bodenkonstruktionUncheckedUpdateInput =
+      {};
+    if (json != null) {
+      const j = json as Prisma.InputJsonValue;
+      createData.bodenkonstruktion_json = j;
+      updateData.bodenkonstruktion_json = j;
+    }
+    if (image != null) {
+      createData.bodenkonstruktion_image = image;
+      updateData.bodenkonstruktion_image = image;
     }
 
-    const data = await prisma.shoe_order_step.findMany({
-      where: { id: { in: ids } },
-      select: {
-        id: true,
-        status: true,
-        bodenkonstruktion_json: true,
-        bodenkonstruktion_image: true,
-      },
+    const prevImage = order.bodenkonstruktion?.bodenkonstruktion_image;
+
+    const row = await prisma.shoe_order_bodenkonstruktion.upsert({
+      where: { orderId },
+      create: createData,
+      update: updateData,
     });
+
+    if (
+      prevImage &&
+      image &&
+      row.bodenkonstruktion_image &&
+      prevImage !== row.bodenkonstruktion_image
+    ) {
+      deleteFileFromS3(prevImage);
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Steps 5, 7 created/updated",
-      data,
+      message: "Bodenkonstruktion saved for order",
+      data: row,
     });
   } catch (err: any) {
     cleanup();
@@ -274,7 +231,7 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
     if (err?.code === "P2025") {
       return res
         .status(404)
-        .json({ success: false, message: "Shoe order or step not found" });
+        .json({ success: false, message: "Shoe order not found" });
     }
     return res.status(500).json({
       success: false,
@@ -290,53 +247,36 @@ export const getBodenkonstruktionDetails = async (
 ) => {
   try {
     const { orderId } = req.params;
-    const status = req.query.status as string | undefined;
     if (!orderId) {
       return res
         .status(400)
         .json({ success: false, message: "Order ID is required" });
     }
-    if (!status || !STEPS_5_7.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid status is required",
-        validStatuses: [...STEPS_5_7],
-      });
-    }
 
-    const order = await prisma.shoe_order.findFirst({
-      where: { id: orderId },
-      select: {
-        shoeOrderStep: {
-          where: { status },
-          take: 1,
-          select: {
-            bodenkonstruktion_json: true,
-            bodenkonstruktion_image: true,
-          },
-        },
-      },
+    const row = await prisma.shoe_order_bodenkonstruktion.findUnique({
+      where: { orderId },
     });
-    if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shoe order not found" });
-    }
 
-    const step = order.shoeOrderStep[0] ?? null;
-    const data = step
+    const data = row
       ? {
-          bodenkonstruktion_json: step.bodenkonstruktion_json,
-          bodenkonstruktion_image: step.bodenkonstruktion_image,
+          bodenkonstruktion_intem_note: row.bodenkonstruktion_intem_note,
+          bodenkonstruktion_extem_note: row.bodenkonstruktion_extem_note,
+          bodenkonstruktion_json: row.bodenkonstruktion_json,
+          bodenkonstruktion_image: row.bodenkonstruktion_image,
         }
-      : { bodenkonstruktion_json: null, bodenkonstruktion_image: null };
+      : {
+          bodenkonstruktion_intem_note: null,
+          bodenkonstruktion_extem_note: null,
+          bodenkonstruktion_json: null,
+          bodenkonstruktion_image: null,
+        };
 
     return res.status(200).json({
       success: true,
       message: "Shoe order fetched successfully",
       data,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get Bodenkonstruktion Details Error:", error);
     return res.status(500).json({
       success: false,

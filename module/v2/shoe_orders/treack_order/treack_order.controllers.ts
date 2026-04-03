@@ -480,6 +480,8 @@ export const getActiveButton = async (req: Request, res: Response) => {
       select: {
         id: true,
         partnerId: true,
+        massschafterstellung: true,
+        bodenkonstruktion: true,
       },
     });
 
@@ -490,32 +492,8 @@ export const getActiveButton = async (req: Request, res: Response) => {
       });
     }
 
-    const latestStep = await prisma.shoe_order_step.findFirst({
-      where: {
-        orderId,
-        OR: [
-          { schafttyp_intem_note: { not: null } },
-          { schafttyp_extem_note: { not: null } },
-          { massschafterstellung_json: { not: null } },
-          { massschafterstellung_image: { not: null } },
-          { bodenkonstruktion_intem_note: { not: null } },
-          { bodenkonstruktion_extem_note: { not: null } },
-          { bodenkonstruktion_json: { not: null } },
-          { bodenkonstruktion_image: { not: null } },
-        ],
-      },
-      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-      select: {
-        schafttyp_intem_note: true,
-        schafttyp_extem_note: true,
-        massschafterstellung_json: true,
-        massschafterstellung_image: true,
-        bodenkonstruktion_intem_note: true,
-        bodenkonstruktion_extem_note: true,
-        bodenkonstruktion_json: true,
-        bodenkonstruktion_image: true,
-      },
-    });
+    const schaftRow = order.massschafterstellung;
+    const bodenRow = order.bodenkonstruktion;
 
     type CustomShaftRow = { id: string; catagoary: string | null };
     let customShafts: CustomShaftRow[] = [];
@@ -585,39 +563,39 @@ export const getActiveButton = async (req: Request, res: Response) => {
     );
 
     const hasInternalSchafttyp =
-      Boolean(latestStep?.schafttyp_intem_note) ||
-      Boolean(latestStep?.massschafterstellung_json) ||
-      Boolean(latestStep?.massschafterstellung_image);
+      Boolean(schaftRow?.schafttyp_intem_note) ||
+      Boolean(schaftRow?.massschafterstellung_json) ||
+      Boolean(schaftRow?.massschafterstellung_image);
     const hasExternalSchafttyp =
-      Boolean(latestStep?.schafttyp_extem_note) || externalSchafttyp.length > 0;
+      Boolean(schaftRow?.schafttyp_extem_note) || externalSchafttyp.length > 0;
 
     const hasInternalBodenkonstruktion =
-      Boolean(latestStep?.bodenkonstruktion_intem_note) ||
-      Boolean(latestStep?.bodenkonstruktion_json) ||
-      Boolean(latestStep?.bodenkonstruktion_image);
+      Boolean(bodenRow?.bodenkonstruktion_intem_note) ||
+      Boolean(bodenRow?.bodenkonstruktion_json) ||
+      Boolean(bodenRow?.bodenkonstruktion_image);
     const hasExternalBodenkonstruktion =
-      Boolean(latestStep?.bodenkonstruktion_extem_note) ||
+      Boolean(bodenRow?.bodenkonstruktion_extem_note) ||
       externalBodenkonstruktion.length > 0;
 
     const schafttypInternData = {
-      note: latestStep?.schafttyp_intem_note ?? null,
-      json: latestStep?.massschafterstellung_json ?? null,
-      image: latestStep?.massschafterstellung_image ?? null,
+      note: schaftRow?.schafttyp_intem_note ?? null,
+      json: schaftRow?.massschafterstellung_json ?? null,
+      image: schaftRow?.massschafterstellung_image ?? null,
       hasData: hasInternalSchafttyp,
     };
     const schafttypExternData = {
-      note: latestStep?.schafttyp_extem_note ?? null,
+      note: schaftRow?.schafttyp_extem_note ?? null,
       customShafts: externalSchafttyp,
       hasData: hasExternalSchafttyp,
     };
     const bodenInternData = {
-      note: latestStep?.bodenkonstruktion_intem_note ?? null,
-      json: latestStep?.bodenkonstruktion_json ?? null,
-      image: latestStep?.bodenkonstruktion_image ?? null,
+      note: bodenRow?.bodenkonstruktion_intem_note ?? null,
+      json: bodenRow?.bodenkonstruktion_json ?? null,
+      image: bodenRow?.bodenkonstruktion_image ?? null,
       hasData: hasInternalBodenkonstruktion,
     };
     const bodenExternData = {
-      note: latestStep?.bodenkonstruktion_extem_note ?? null,
+      note: bodenRow?.bodenkonstruktion_extem_note ?? null,
       customShafts: externalBodenkonstruktion,
       hasData: hasExternalBodenkonstruktion,
     };
