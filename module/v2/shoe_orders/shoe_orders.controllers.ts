@@ -1151,6 +1151,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
             .map((x) => x.trim())
             .filter(Boolean)
         : [];
+        
     const hasPaymentTypeFilter = paymentTypes.length > 0;
     const invalidPaymentTypes = paymentTypes.filter(
       (x) => !validPaymentTypes.includes(x as (typeof validPaymentTypes)[number]),
