@@ -3,6 +3,9 @@ import { verifyUser } from "../../../middleware/verifyUsers";
 import upload from "../../../config/multer.config";
 import {
   createShoeOrder,
+  saveShoeOrderSchaftBodenDraft,
+  getShoeOrderSchaftBodenDraft,
+  removeShoeOrderSchaftBodenDraft,
   getAllShoeOrders,
   getShoeOrderStatus,
   updateShoeOrderStatus,
@@ -18,9 +21,41 @@ import {
 
 const router = express.Router();
 
+// {{_baseUrl}}v2/shoe-orders/schaft-boden-draft (POST)
+// Body: nested massschafterstellung + bodenkonstruktion objects (same field names as Prisma models). Optional multipart files for images/3D.
+router.post(
+  "/schaft-boden-draft",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  upload.fields([
+    { name: "massschafterstellung_image", maxCount: 1 },
+    { name: "massschafterstellung_threeDFile", maxCount: 1 },
+    { name: "bodenkonstruktion_image", maxCount: 1 },
+    { name: "bodenkonstruktion_threeDFile", maxCount: 1 },
+  ]),
+  saveShoeOrderSchaftBodenDraft,
+);
+
+// {{_baseUrl}}v2/shoe-orders/schaft-boden-draft (GET)
+// Objective: Read draft for current user.
+router.get(
+  "/schaft-boden-draft",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getShoeOrderSchaftBodenDraft,
+);
+
+// {{_baseUrl}}v2/shoe-orders/schaft-boden-draft (DELETE)
+// Objective: Remove draft for current user without creating an order.
+router.delete(
+  "/schaft-boden-draft",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  removeShoeOrderSchaftBodenDraft,
+);
+
 // {{_baseUrl}}v2/shoe-orders/create
 // Objective: Create a new shoe order.
 router.post("/create", verifyUser("PARTNER", "EMPLOYEE"), createShoeOrder);
+
+
 
 // {{_baseUrl}}v2/shoe-orders/get-all
 // Objective: Get all shoe orders for the partner/employee view.

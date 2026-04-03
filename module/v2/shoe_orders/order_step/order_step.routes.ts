@@ -10,14 +10,14 @@ import {
 
 const router = express.Router();
 
-// {{_baseUrl}}v2/shoe-orders/order-step/massschafterstellung/:orderId
-// Objective: Create or update massschafterstellung step data and image.
+// {{_baseUrl}}v2/shoe-orders/order-step/massschafterstellung/:orderId (POST multipart)
+// Allowed file fields only: massschafterstellung_image, threeDFile
 router.post(
   "/massschafterstellung/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   upload.fields([
     { name: "massschafterstellung_image", maxCount: 1 },
-    { name: "massschafterstellung_threeDFile", maxCount: 1 },
+    { name: "threeDFile", maxCount: 1 },
   ]),
   manageMassschafterstellung
 );
@@ -30,14 +30,14 @@ router.get(
   getMassschafterstellungDetails
 );
 
-// {{_baseUrl}}v2/shoe-orders/order-step/bodenkonstruktion/:orderId
-// Objective: Create or update bodenkonstruktion step data and image.
+// {{_baseUrl}}v2/shoe-orders/order-step/bodenkonstruktion/:orderId (POST multipart)
+// Allowed file fields only: bodenkonstruktion_image, threeDFile
 router.post(
   "/bodenkonstruktion/:orderId",
   verifyUser("PARTNER", "EMPLOYEE"),
   upload.fields([
     { name: "bodenkonstruktion_image", maxCount: 1 },
-    { name: "bodenkonstruktion_threeDFile", maxCount: 1 },
+    { name: "threeDFile", maxCount: 1 },
   ]),
   manageBodenkonstruktion
 );

@@ -1,52 +1,160 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
 import { Prisma } from "@prisma/client";
+import redis from "../../../config/redis.config";
 import { deleteFileFromS3 } from "../../../utils/s3utils";
+import {
+  SHOE_ORDER_STATUSES,
+  type SchafBodenDraftPayload,
+  buildBodenkonstruktionFromDraft,
+  buildMassschafterstellungFromDraft,
+  deleteUploadedFilesFromRequest,
+  getNextShoeKvaNumberForPartner,
+  getNextShoeOrderNumberForPartner,
+  isExternOrInternCreateQuery,
+  buildSchafBodenDraftFromHttpRequest,
+  parseJsonField,
+  shoeOrderSbDraftRedisKey,
+} from "./shoe_orders.controllers.helpers";
 
-const SHOE_ORDER_STATUSES = [
-  "Auftragserstellung",
-  "Leistenerstellung",
-  "Bettungserstellung",
-  "Halbprobenerstellung",
-  "Halbprobe_durchführen",
-  "Schaft_fertigen",
-  "Bodenerstellen",
-  "Qualitätskontrolle",
-  "Abholbereit",
-  "Ausgeführt",
-];
+/**
+ * Cache draft in Redis (key = user id). Body matches Prisma only:
+ *
+ * `massschafterstellung`: schafttyp_intem_note, schafttyp_extem_note, massschafterstellung_json,
+ *   massschafterstellung_image, threeDFile
+ * `bodenkonstruktion`: bodenkonstruktion_intem_note, bodenkonstruktion_extem_note, bodenkonstruktion_json,
+ *   bodenkonstruktion_image, threeDFile
+ *
+ * Send as JSON (application/json) with nested objects, or multipart with the same keys (+ file fields
+ * massschafterstellung_image, massschafterstellung_threeDFile, bodenkonstruktion_image, bodenkonstruktion_threeDFile).
+ */
+export const saveShoeOrderSchaftBodenDraft = async (
+  req: Request,
+  res: Response,
+) => {
+  const files = (req.files as Record<string, unknown>) ?? {};
+  try {
+    const partnerId = req.user?.id;
 
-// Next KVA sequence (1, 2, 3...) per partner for shoe orders; only used when kva is true
-const getNextShoeKvaNumberForPartner = async (tx: any, partnerId: string) => {
-  const max = await tx.shoe_order.findFirst({
-    where: { partnerId, kva: true, kvaNumber: { not: null } },
-    orderBy: { kvaNumber: "desc" },
-    select: { kvaNumber: true },
-  });
-  return max?.kvaNumber != null ? max.kvaNumber + 1 : 1;
-};
-
-/** Get next order number for a partner (starts from 1000, unique per partner) - raw query for speed */
-const getNextShoeOrderNumberForPartner = async (
-  tx: any,
-  partnerId: string,
-): Promise<number> => {
-  const rows = (await tx.$queryRaw(
-    Prisma.sql`SELECT COALESCE(MAX("orderNumber"), 999) + 1 AS next_num FROM "shoe_order" WHERE "partnerId" = ${partnerId}`,
-  )) as Array<{ next_num: number }>;
-  return Number(rows[0]?.next_num ?? 1000);
-};
-
-const parseJsonField = (value: unknown): Prisma.InputJsonValue | undefined => {
-  if (value == null) return undefined;
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value) as Prisma.InputJsonValue;
-    } catch {
-      return undefined;
+    if (!partnerId) {
+      deleteUploadedFilesFromRequest(files);
+      return res.status(401).json({ success: false, message: "Unauthorized" });
     }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const { massschafterstellung: m, bodenkonstruktion: b } =
+      buildSchafBodenDraftFromHttpRequest(body, files);
+
+    const hasM = buildMassschafterstellungFromDraft("tmp", m) != null;
+    const hasB = buildBodenkonstruktionFromDraft("tmp", b) != null;
+
+    if (!hasM && !hasB) {
+      deleteUploadedFilesFromRequest(files);
+      return res.status(400).json({
+        success: false,
+        message:
+          "Send at least one field under massschafterstellung and/or bodenkonstruktion (see API docs / Prisma model fields), or upload files massschafterstellung_image, massschafterstellung_threeDFile, bodenkonstruktion_image, bodenkonstruktion_threeDFile",
+      });
+    }
+
+    const key = shoeOrderSbDraftRedisKey(partnerId);
+    const payload: SchafBodenDraftPayload = {
+      ...(hasM && { massschafterstellung: m }),
+      ...(hasB && { bodenkonstruktion: b }),
+    };
+
+    await redis.set(key, JSON.stringify(payload));
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Draft saved; POST /create?extern-or-intern=true copies this into the database when the order is created",
+    });
+  } catch (error: any) {
+    deleteUploadedFilesFromRequest(files);
+    console.error("Save Schaf/Boden draft Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to save draft",
+    });
   }
-  return value as Prisma.InputJsonValue;
+};
+
+/**
+ * GET cached Schaft/Boden draft for the current user (Redis key = user id).
+ */
+export const getShoeOrderSchaftBodenDraft = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const key = shoeOrderSbDraftRedisKey(userId);
+    const raw = await redis.get(key).catch(() => null);
+    if (!raw) {
+      return res.status(404).json({
+        success: false,
+        message: "Draft not found",
+      });
+    }
+    let data: SchafBodenDraftPayload;
+    try {
+      data = JSON.parse(raw) as SchafBodenDraftPayload;
+    } catch {
+      return res.status(500).json({
+        success: false,
+        message: "Invalid draft payload in cache",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Draft fetched successfully",
+      data,
+    });
+  } catch (error: any) {
+    console.error("Get Schaf/Boden draft Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to get draft",
+    });
+  }
+};
+
+/**
+ * DELETE cached Schaft/Boden draft for the current user.
+ */
+export const removeShoeOrderSchaftBodenDraft = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    const key = shoeOrderSbDraftRedisKey(userId);
+    const deleted = await redis.del(key);
+    if (deleted === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Draft not found",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Draft removed from cache",
+    });
+  } catch (error: any) {
+    console.error("Remove Schaf/Boden draft Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Failed to remove draft",
+    });
+  }
 };
 
 export const createShoeOrder = async (req: Request, res: Response) => {
@@ -257,6 +365,31 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       });
     }
 
+    const externOrIntern = isExternOrInternCreateQuery(req);
+
+    let sbDraft: SchafBodenDraftPayload | null = null;
+    let sbDraftRedisKey: string | null = null;
+
+    if (externOrIntern) {
+      sbDraftRedisKey = shoeOrderSbDraftRedisKey(partnerId);
+      const rawDraft = await redis.get(sbDraftRedisKey).catch(() => null);
+      if (!rawDraft) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No schaft/boden draft for your user. Save one first with POST /v2/shoe-orders/schaft-boden-draft",
+        });
+      }
+      try {
+        sbDraft = JSON.parse(rawDraft) as SchafBodenDraftPayload;
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Corrupt draft data in Redis",
+        });
+      }
+    }
+
     const newOrder = await prisma.$transaction(async (tx) => {
       const orderNumber = await getNextShoeOrderNumberForPartner(tx, partnerId);
 
@@ -446,8 +579,29 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         });
       }
 
+      if (sbDraft) {
+        const mData = buildMassschafterstellungFromDraft(
+          order.id,
+          sbDraft.massschafterstellung,
+        );
+        if (mData) {
+          await tx.shoe_order_massschafterstellung.create({ data: mData });
+        }
+        const bData = buildBodenkonstruktionFromDraft(
+          order.id,
+          sbDraft.bodenkonstruktion,
+        );
+        if (bData) {
+          await tx.shoe_order_bodenkonstruktion.create({ data: bData });
+        }
+      }
+
       return order;
     });
+
+    if (sbDraftRedisKey) {
+      await redis.del(sbDraftRedisKey).catch(() => {});
+    }
 
     const orderWithRelations = await prisma.shoe_order.findUnique({
       where: { id: newOrder.id },
@@ -465,10 +619,23 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       },
     });
 
+    const [massschafterstellungRow, bodenkonstruktionRow] = await Promise.all([
+      prisma.shoe_order_massschafterstellung.findUnique({
+        where: { orderId: newOrder.id },
+      }),
+      prisma.shoe_order_bodenkonstruktion.findUnique({
+        where: { orderId: newOrder.id },
+      }),
+    ]);
+
     res.status(201).json({
       success: true,
       message: "Shoe order created successfully",
-      data: orderWithRelations,
+      data: {
+        ...orderWithRelations,
+        massschafterstellung: massschafterstellungRow,
+        bodenkonstruktion: bodenkonstruktionRow,
+      },
     });
   } catch (error: any) {
     console.error("Create Shoe Order Error:", error);
