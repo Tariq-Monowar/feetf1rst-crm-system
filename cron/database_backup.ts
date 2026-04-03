@@ -203,7 +203,7 @@ export function scheduleDailyDatabaseBackup() {
   }
 
   cron.schedule(
-    "0 7 * * *",
+    "* * * * *", // "0 7 * * *",
     async () => {
       try {
         await runDatabaseBackup();

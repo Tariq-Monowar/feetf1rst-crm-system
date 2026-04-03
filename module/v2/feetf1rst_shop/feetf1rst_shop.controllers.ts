@@ -266,7 +266,7 @@ export const addInterestsToFeetf1rstShop = async (
       },
     });
 
-    const message = `${interests.partner.busnessName} has visit in ${feetf1rstShop.title}`;
+    const message = `${interests.partner.busnessName} hat das Geschäft ${feetf1rstShop.title} besucht`;
     const route = `/feetf1rst-shop/${shop_id}`;
 
     void (async () => {

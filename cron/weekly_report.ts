@@ -8,7 +8,8 @@ const prisma = new PrismaClient({ adapter });
 
 export const dailyReport = () => {
   // every 1 m
-  cron.schedule("0 19 * * 5", async () => { // / every friday at 7:00 PM -> "0 19 * * 5" //"* * * * *",
+  cron.schedule("0 19 * * 5", async () => {
+    // / every friday at 7:00 PM -> "0 19 * * 5" //"* * * * *",
     console.log("=======================");
     try {
       const getInactiveBrandsByPartner = (brandSettings: any[]) => {
@@ -19,9 +20,11 @@ export const dailyReport = () => {
             inactiveBrandsByPartner.set(partnerId, new Set());
           }
 
-          inactiveBrandsByPartner
-            .get(partnerId)
-            ?.add(String(brand ?? "").trim().toLowerCase());
+          inactiveBrandsByPartner.get(partnerId)?.add(
+            String(brand ?? "")
+              .trim()
+              .toLowerCase(),
+          );
         }
 
         return inactiveBrandsByPartner;
@@ -37,11 +40,7 @@ export const dailyReport = () => {
         for (const [size, sizeData] of Object.entries(groessenMengen)) {
           const item: any = sizeData;
 
-          if (
-            !item ||
-            typeof item !== "object" ||
-            item.auto_order_limit <= 0
-          ) {
+          if (!item || typeof item !== "object" || item.auto_order_limit <= 0) {
             continue;
           }
 
@@ -141,7 +140,7 @@ export const dailyReport = () => {
 
       if (!brandSettingsModel || !brandStoreModel || !storeOrderOverviewModel) {
         console.error(
-          "Required Prisma models are not available. Please regenerate Prisma client."
+          "Required Prisma models are not available. Please regenerate Prisma client.",
         );
         return;
       }
@@ -159,7 +158,9 @@ export const dailyReport = () => {
         return;
       }
 
-      const partnerIds = [...new Set(stores.map((store) => String(store.userId)))];
+      const partnerIds = [
+        ...new Set(stores.map((store) => String(store.userId))),
+      ];
 
       const brandSettings = await brandSettingsModel.findMany({
         where: {
@@ -203,14 +204,20 @@ export const dailyReport = () => {
             hersteller: store.hersteller,
           }),
         );
-        const inactiveBrands = inactiveBrandsByPartner.get(String(store.userId));
+        const inactiveBrands = inactiveBrandsByPartner.get(
+          String(store.userId),
+        );
         const brandCandidates = [
-          String(store.hersteller ?? "").trim().toLowerCase(),
-          String(store.artikelnummer ?? "").trim().toLowerCase(),
+          String(store.hersteller ?? "")
+            .trim()
+            .toLowerCase(),
+          String(store.artikelnummer ?? "")
+            .trim()
+            .toLowerCase(),
         ].filter(Boolean);
 
         const isAutoOrderDisabled = brandCandidates.some((candidate) =>
-          inactiveBrands?.has(candidate)
+          inactiveBrands?.has(candidate),
         );
 
         if (isAutoOrderDisabled) {
@@ -237,11 +244,13 @@ export const dailyReport = () => {
         }
 
         try {
-          const deliveredQuantity =
-            buildDeliveredQuantityData(overviewGroessenMengen, {
+          const deliveredQuantity = buildDeliveredQuantityData(
+            overviewGroessenMengen,
+            {
               storeId: String(store.id),
               partnerId: String(store.userId),
-            });
+            },
+          );
 
           const unitPrice =
             Number((store as any).unit_price ?? 0) ||
@@ -270,7 +279,9 @@ export const dailyReport = () => {
             Math.floor(Number(brandDurationRow?.delivered_duration ?? 14)),
           );
           const deliveredDate = new Date();
-          deliveredDate.setDate(deliveredDate.getDate() + deliveredDurationDays);
+          deliveredDate.setDate(
+            deliveredDate.getDate() + deliveredDurationDays,
+          );
 
           console.log(
             "[auto-order][calc]",
@@ -301,7 +312,9 @@ export const dailyReport = () => {
             },
           });
 
-          const transition = await (prisma as any).admin_order_transitions.create({
+          const transition = await (
+            prisma as any
+          ).admin_order_transitions.create({
             data: {
               orderNumber,
               orderFor: "store",
@@ -362,7 +375,6 @@ export const appointmentReminderCron = () => {
     return appointmentDate;
   }
 
-  
   cron.schedule("* * * * *", async () => {
     console.log("++++++++++++++++");
     try {
@@ -389,23 +401,21 @@ export const appointmentReminderCron = () => {
       for (const appointment of appointments) {
         const appointmentDateTime = getAppointmentDateTime(
           appointment.date,
-          appointment.time
+          appointment.time,
         );
 
         const reminderTime = new Date(
-          appointmentDateTime.getTime() - appointment.reminder! * 60 * 1000
+          appointmentDateTime.getTime() - appointment.reminder! * 60 * 1000,
         );
 
         if (now >= reminderTime) {
           await notificationSend(
             appointment.userId,
             "Appointment_Reminder",
-            `Reminder: You have an appointment scheduled on ${appointment.date.toDateString()} at ${
-              appointment.time
-            }`,
+            `Erinnerung: Sie haben einen Termin am ${appointment.date.toDateString()} um ${appointment.time} geplant`,
             appointment.id,
             false,
-            `/dashboard/calendar`
+            `/dashboard/calendar`,
           );
 
           await prisma.appointment.update({

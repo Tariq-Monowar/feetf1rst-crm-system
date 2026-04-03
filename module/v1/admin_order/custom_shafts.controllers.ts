@@ -6,9 +6,7 @@ import {
   deleteFileFromS3,
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
-import {
-  generateNextCustomShaftOrderNumber,
-} from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
+import { generateNextCustomShaftOrderNumber } from "../../v2/admin_order_transitions/admin_order_transitions.controllers";
 import {
   sendCustomShaftOrderNotification,
   sendLeistenerstellungAccessRequestEmail,
@@ -43,8 +41,16 @@ export const createMaßschaftKollektion = async (
       return undefined;
     };
 
-    const { name, price, catagoary, gender, description, verschlussart, is_zipper, ziernaht } =
-      req.body;
+    const {
+      name,
+      price,
+      catagoary,
+      gender,
+      description,
+      verschlussart,
+      is_zipper,
+      ziernaht,
+    } = req.body;
 
     const missingField = [
       "name",
@@ -240,8 +246,16 @@ export const updateMaßschaftKollektion = async (
       return undefined;
     };
 
-    const { name, price, catagoary, gender, description, verschlussart, is_zipper, ziernaht } =
-      req.body;
+    const {
+      name,
+      price,
+      catagoary,
+      gender,
+      description,
+      verschlussart,
+      is_zipper,
+      ziernaht,
+    } = req.body;
 
     const updateData: any = {};
 
@@ -713,7 +727,9 @@ export const createTustomShafts = async (req, res) => {
     // Link shoe order after create (Prisma client may not expose relation/scalar input)
     if (shoeOrderId) {
       try {
-        const linkColumnRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        const linkColumnRows = await prisma.$queryRaw<
+          Array<{ column_name: string }>
+        >`
           SELECT kcu.column_name
           FROM information_schema.table_constraints tc
           JOIN information_schema.key_column_usage kcu
@@ -729,7 +745,9 @@ export const createTustomShafts = async (req, res) => {
           LIMIT 1
         `;
 
-        const fallbackColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        const fallbackColumns = await prisma.$queryRaw<
+          Array<{ column_name: string }>
+        >`
           SELECT column_name
           FROM information_schema.columns
           WHERE table_schema = 'public'
@@ -748,8 +766,12 @@ export const createTustomShafts = async (req, res) => {
         `;
 
         const rawColumn =
-          linkColumnRows[0]?.column_name ?? fallbackColumns[0]?.column_name ?? null;
-        const linkColumn = rawColumn ? `"${rawColumn.replace(/"/g, "\"\"")}"` : null;
+          linkColumnRows[0]?.column_name ??
+          fallbackColumns[0]?.column_name ??
+          null;
+        const linkColumn = rawColumn
+          ? `"${rawColumn.replace(/"/g, '""')}"`
+          : null;
 
         if (linkColumn) {
           await prisma.$executeRawUnsafe(
@@ -852,7 +874,9 @@ export const createTustomShafts = async (req, res) => {
         await sendCustomShaftOrderNotification({
           orderId: customShaft.id,
           partnerName:
-            customShaft.user?.busnessName || customShaft.user?.name || "Partner",
+            customShaft.user?.busnessName ||
+            customShaft.user?.name ||
+            "Partner",
           partnerEmail: customShaft.user?.email || "",
           partnerImage: customShaft.user?.image ?? null,
           category,
@@ -871,7 +895,11 @@ export const createTustomShafts = async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
-      data: { ...customShaft, custom_models: customModel, shoe_order_id: shoeOrderId },
+      data: {
+        ...customShaft,
+        custom_models: customModel,
+        shoe_order_id: shoeOrderId,
+      },
       Courier_contact: courierData,
     });
   } catch (err) {
@@ -1051,21 +1079,21 @@ export const createCustomBodenkonstruktionOrder = async (
     const shaftOrderNumber = await generateNextCustomShaftOrderNumber(id);
     // Create custom shaft order without customer or order connections
     const shaftData: any = {
-        user: {
-          connect: { id: id },
-        },
-        other_customer_name: other_customer_name,
-        totalPrice: parsedTotalPrice,
-        bodenkonstruktion_json: parsedJson,
-        deliveryDate: parsedDeliveryDate,
-        invoice,
-        staticImage: staticImage || null,
-        threeDFile: threeDFile || null,
-        isCustomBodenkonstruktion: true,
-        orderNumber: shaftOrderNumber,
-        catagoary: "Bodenkonstruktion",
-        ...(customer?.id && { customer: { connect: { id: customer.id } } }),
-      };
+      user: {
+        connect: { id: id },
+      },
+      other_customer_name: other_customer_name,
+      totalPrice: parsedTotalPrice,
+      bodenkonstruktion_json: parsedJson,
+      deliveryDate: parsedDeliveryDate,
+      invoice,
+      staticImage: staticImage || null,
+      threeDFile: threeDFile || null,
+      isCustomBodenkonstruktion: true,
+      orderNumber: shaftOrderNumber,
+      catagoary: "Bodenkonstruktion",
+      ...(customer?.id && { customer: { connect: { id: customer.id } } }),
+    };
 
     const data = await prisma.custom_shafts.create({
       data: shaftData,
@@ -1092,7 +1120,9 @@ export const createCustomBodenkonstruktionOrder = async (
     // Link it using raw SQL when DB column exists.
     if (shoeOrderId) {
       try {
-        const linkColumnRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        const linkColumnRows = await prisma.$queryRaw<
+          Array<{ column_name: string }>
+        >`
           SELECT kcu.column_name
           FROM information_schema.table_constraints tc
           JOIN information_schema.key_column_usage kcu
@@ -1108,7 +1138,9 @@ export const createCustomBodenkonstruktionOrder = async (
           LIMIT 1
         `;
 
-        const fallbackColumns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+        const fallbackColumns = await prisma.$queryRaw<
+          Array<{ column_name: string }>
+        >`
           SELECT column_name
           FROM information_schema.columns
           WHERE table_schema = 'public'
@@ -1128,9 +1160,11 @@ export const createCustomBodenkonstruktionOrder = async (
         `;
 
         const rawColumn =
-          linkColumnRows[0]?.column_name ?? fallbackColumns[0]?.column_name ?? null;
+          linkColumnRows[0]?.column_name ??
+          fallbackColumns[0]?.column_name ??
+          null;
         const linkColumn = rawColumn
-          ? `"${rawColumn.replace(/"/g, "\"\"")}"`
+          ? `"${rawColumn.replace(/"/g, '""')}"`
           : null;
 
         if (linkColumn) {
@@ -1203,7 +1237,8 @@ export const createCustomBodenkonstruktionOrder = async (
       try {
         await sendCustomShaftOrderNotification({
           orderId: (data as any).id,
-          partnerName: partnerUser?.busnessName || partnerUser?.name || "Partner",
+          partnerName:
+            partnerUser?.busnessName || partnerUser?.name || "Partner",
           partnerEmail: partnerUser?.email || "",
           partnerImage: partnerUser?.image ?? null,
           category: "Bodenkonstruktion",
@@ -1221,7 +1256,11 @@ export const createCustomBodenkonstruktionOrder = async (
     return res.status(200).json({
       success: true,
       message: "Custom Bodenkonstruktion order created successfully",
-      data: { ...data, shoe_order_id: shoeOrderId, customer_id: customer?.id ?? null },
+      data: {
+        ...data,
+        shoe_order_id: shoeOrderId,
+        customer_id: customer?.id ?? null,
+      },
     });
   } catch (error: any) {
     console.error("Create Custom Bodenkonstruktion Order Error:", error);
@@ -1687,7 +1726,6 @@ export const updateCustomShaftStatus = async (req: Request, res: Response) => {
   }
 };
 
-
 export const updatePaymentStatus = async (req: Request, res: Response) => {
   try {
     // ids: string[] — custom_shafts ids, e.g. ["id1", "id2"]
@@ -2053,7 +2091,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
           await notificationSend(
             order.user.id,
             "admin_order_canceled" as any,
-            `The order #${order.orderNumber} has been canceled by the admin. Customer: ${order.customer.vorname} ${order.customer.nachname} (Customer Number: ${order.customer.customerNumber})`,
+            `Die Bestellung #${order.orderNumber} wurde vom Admin storniert. Kunde: ${order.customer.vorname} ${order.customer.nachname} (Kundennummer: ${order.customer.customerNumber})`,
             order.id,
             false,
             `/dashboard/custom-shafts/${order.id}`,
@@ -2062,7 +2100,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
           await notificationSend(
             order.user.id,
             "admin_order_canceled" as any,
-            `The order #${order.orderNumber} has been canceled by the admin.`,
+            `Die Bestellung #${order.orderNumber} wurde vom Admin storniert.`,
             order.id,
             false,
             `/dashboard/custom-shafts/${order.id}`,
@@ -2107,7 +2145,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
           notificationSend(
             admin.id,
             "admin_order_canceled" as any,
-            `The order #${order.orderNumber} has been canceled by the partner ${order.user?.name}.`,
+            `Die Bestellung #${order.orderNumber} wurde vom Partner ${order.user?.name} storniert.`,
             order.id,
             false,
             `/dashboard/custom-shafts/${order.id}`,
