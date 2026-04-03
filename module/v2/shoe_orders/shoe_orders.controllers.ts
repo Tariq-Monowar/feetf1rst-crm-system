@@ -633,10 +633,6 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       return order;
     });
 
-    if (sbDraftRedisKey) {
-      await redis.del(sbDraftRedisKey).catch(() => {});
-    }
-
     const orderWithRelations = await prisma.shoe_order.findUnique({
       where: { id: newOrder.id },
       include: {
@@ -661,6 +657,18 @@ export const createShoeOrder = async (req: Request, res: Response) => {
         where: { orderId: newOrder.id },
       }),
     ]);
+
+    // Clear Schaft/Boden Redis draft only after order + response payload succeed (?extern-or-intern=true).
+    if (sbDraftRedisKey) {
+      try {
+        await redis.del(sbDraftRedisKey);
+      } catch (e) {
+        console.error(
+          "createShoeOrder: failed to clear schaft/boden draft cache",
+          e,
+        );
+      }
+    }
 
     res.status(201).json({
       success: true,
