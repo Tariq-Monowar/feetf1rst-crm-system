@@ -2457,6 +2457,7 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2480,6 +2481,7 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
    * /**
    * /**
    * /**
@@ -2769,12 +2771,21 @@ model partner_total_amount {
 
   totalAmount Float?
 
+  amount_type amount_type? @default(negative)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([partnerId])
   @@index([createdAt])
   @@index([updatedAt])
+}
+
+//thare nagatime meand partner -> admin 
+//positive meand admin -> partner
+enum amount_type {
+  positive
+  negative
 }
 
 model request_payout {
@@ -2785,8 +2796,10 @@ model request_payout {
 
   totalAmount Float?
   status      request_payout_status @default(panding)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+
+  amount_type amount_type? @default(negative)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([partnerId])
 }
@@ -2798,8 +2811,8 @@ model partner_payout_history {
   partner   User?   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   totalAmount Float?
-
-  createdAt DateTime @default(now())
+  amount_type amount_type? @default(negative)
+  createdAt   DateTime     @default(now())
 
   @@index([partnerId])
   @@index([createdAt])

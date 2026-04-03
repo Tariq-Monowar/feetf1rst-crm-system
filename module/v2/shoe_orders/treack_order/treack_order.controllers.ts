@@ -579,32 +579,42 @@ export const getActiveButton = async (req: Request, res: Response) => {
       Boolean(bodenRow?.bodenkonstruktion_extem_note) ||
       externalBodenkonstruktion.length > 0;
 
+    const schafttypNoteIntern = schaftRow?.schafttyp_intem_note ?? null;
+    const schafttypNoteExtern = schaftRow?.schafttyp_extem_note ?? null;
+    const bodenNoteIntern = bodenRow?.bodenkonstruktion_intem_note ?? null;
+    const bodenNoteExtern = bodenRow?.bodenkonstruktion_extem_note ?? null;
+
+    const schafttypNotes = {
+      intern: schafttypNoteIntern,
+      extern: schafttypNoteExtern,
+    };
+    const bodenkonstruktionNotes = {
+      intern: bodenNoteIntern,
+      extern: bodenNoteExtern,
+    };
+
     const schafttypInternData = {
-      note: schaftRow?.schafttyp_intem_note ?? null,
       json: schaftRow?.massschafterstellung_json ?? null,
       image: schaftRow?.massschafterstellung_image ?? null,
       threeDFile: schaftRow?.threeDFile ?? null,
       hasData: hasInternalSchafttyp,
     };
     const schafttypExternData = {
-      note: schaftRow?.schafttyp_extem_note ?? null,
       customShafts: externalSchafttyp,
       hasData: hasExternalSchafttyp,
     };
     const bodenInternData = {
-      note: bodenRow?.bodenkonstruktion_intem_note ?? null,
       json: bodenRow?.bodenkonstruktion_json ?? null,
       image: bodenRow?.bodenkonstruktion_image ?? null,
       threeDFile: bodenRow?.threeDFile ?? null,
       hasData: hasInternalBodenkonstruktion,
     };
     const bodenExternData = {
-      note: bodenRow?.bodenkonstruktion_extem_note ?? null,
       customShafts: externalBodenkonstruktion,
       hasData: hasExternalBodenkonstruktion,
     };
 
-    // Mode 1 (default): only active booleans
+    // Mode 1 (default): active booleans + notes (intern/extern) at section level
     if (!schafttypQuery && !bodenkonstruktionQuery) {
       return res.status(200).json({
         success: true,
@@ -614,10 +624,12 @@ export const getActiveButton = async (req: Request, res: Response) => {
           schafttyp: {
             intern: hasInternalSchafttyp,
             extern: hasExternalSchafttyp,
+            note: schafttypNotes,
           },
           bodenkonstruktion: {
             intern: hasInternalBodenkonstruktion,
             extern: hasExternalBodenkonstruktion,
+            note: bodenkonstruktionNotes,
           },
         },
       });
@@ -633,6 +645,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
             intern: hasInternalSchafttyp,
             extern: hasExternalSchafttyp,
           },
+          note: schafttypNotes,
           ...(schafttypQuery === "intern"
             ? { intern: schafttypInternData }
             : {}),
@@ -645,6 +658,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
             intern: hasInternalBodenkonstruktion,
             extern: hasExternalBodenkonstruktion,
           },
+          note: bodenkonstruktionNotes,
           ...(bodenkonstruktionQuery === "intern"
             ? { intern: bodenInternData }
             : {}),
