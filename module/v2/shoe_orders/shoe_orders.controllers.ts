@@ -172,7 +172,7 @@ export const getShoeOrderSchaftBodenDraft = async (
     const raw = await redis.get(key).catch(() => null);
     if (!raw) {
       return res.status(404).json({
-        success: false,
+        success: true,
         message: "Draft not found",
       });
     }
@@ -1151,7 +1151,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
             .map((x) => x.trim())
             .filter(Boolean)
         : [];
-        
+
     const hasPaymentTypeFilter = paymentTypes.length > 0;
     const invalidPaymentTypes = paymentTypes.filter(
       (x) => !validPaymentTypes.includes(x as (typeof validPaymentTypes)[number]),
@@ -1235,11 +1235,21 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
           total_price: number | null;
           vorname: string | null;
           nachname: string | null;
+          has_massschafterstellung: boolean;
+          has_bodenkonstruktion: boolean;
         }>
       >(Prisma.sql`
         SELECT so.id, so."orderNumber", so.status, so."branch_location",
                so."createdAt", so."payment_status", so.priority, so."total_price",
-               c.vorname, c.nachname
+               c.vorname, c.nachname,
+               EXISTS(
+                 SELECT 1 FROM "shoe_order_massschafterstellung" m
+                 WHERE m."orderId" = so.id
+               ) AS has_massschafterstellung,
+               EXISTS(
+                 SELECT 1 FROM "shoe_order_bodenkonstruktion" b
+                 WHERE b."orderId" = so.id
+               ) AS has_bodenkonstruktion
         FROM "shoe_order" so
         LEFT JOIN customers c ON c.id = so."customerId"
         WHERE ${whereClause}
@@ -1295,6 +1305,8 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         payment_status: row.payment_status,
         priority: row.priority,
         total_price: row.total_price,
+        massschafterstellung: Boolean(row.has_massschafterstellung),
+        bodenkonstruktion: Boolean(row.has_bodenkonstruktion),
         shoeOrderStep: stepsByOrderId.get(row.id) ?? [],
       }));
 
@@ -1358,6 +1370,12 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         total_price: true,
         insurance_payed: true,
         private_payed: true,
+        massschafterstellung: {
+          select: { id: true },
+        },
+        bodenkonstruktion: {
+          select: { id: true },
+        },
       },
     });
 
@@ -1401,6 +1419,8 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     }
     const data = pageOrders.map((o) => ({
       ...o,
+      massschafterstellung: Boolean(o.massschafterstellung),
+      bodenkonstruktion: Boolean(o.bodenkonstruktion),
       shoeOrderStep: stepsByOrderId.get(o.id) ?? [],
     }));
     // const nextCursor = hasMore ? data[data.length - 1]?.id : null;
