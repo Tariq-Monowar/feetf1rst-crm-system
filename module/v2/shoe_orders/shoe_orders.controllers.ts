@@ -1143,15 +1143,24 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const validPaymentTypes = ["insurance", "private", "broth"];
-    if (
-      paymentTypeParam &&
-      !validPaymentTypes.includes(paymentTypeParam.toString())
-    ) {
+    const validPaymentTypes = ["insurance", "private", "broth"] as const;
+    const paymentTypes =
+      typeof paymentTypeParam === "string"
+        ? paymentTypeParam
+            .split(/[|,\s]+/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : [];
+    const hasPaymentTypeFilter = paymentTypes.length > 0;
+    const invalidPaymentTypes = paymentTypes.filter(
+      (x) => !validPaymentTypes.includes(x as (typeof validPaymentTypes)[number]),
+    );
+    if (hasPaymentTypeFilter && invalidPaymentTypes.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid paymentType value",
+        message: "Invalid paymentType value(s)",
         validPaymentTypes,
+        invalidPaymentTypes,
       });
     }
 
@@ -1171,10 +1180,11 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       if (priorityParam && typeof priorityParam === "string") {
         conditions.push(Prisma.sql`so.priority = ${priorityParam}::text`);
       }
-      if (paymentTypeParam && typeof paymentTypeParam === "string") {
-        conditions.push(
-          Prisma.sql`so."payment_type" = ${paymentTypeParam}::text`,
+      if (hasPaymentTypeFilter) {
+        const ptConds = paymentTypes.map(
+          (pt) => Prisma.sql`so."payment_type" = ${pt}::text`,
         );
+        conditions.push(Prisma.sql`(${Prisma.join(ptConds, " OR ")})`);
       }
       if (
         branchLocationTitleParam &&
@@ -1276,8 +1286,9 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     if (priorityParam && typeof priorityParam === "string") {
       whereCondition.priority = priorityParam;
     }
-    if (paymentTypeParam && typeof paymentTypeParam === "string") {
-      whereCondition.payment_type = paymentTypeParam;
+    if (hasPaymentTypeFilter) {
+      whereCondition.payment_type =
+        paymentTypes.length === 1 ? paymentTypes[0] : { in: paymentTypes };
     }
     if (
       branchLocationTitleParam &&
