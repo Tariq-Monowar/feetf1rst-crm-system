@@ -42,14 +42,31 @@ export const saveShoeOrderSchaftBodenDraft = async (
     }
 
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const key = shoeOrderSbDraftRedisKey(partnerId);
 
-    const { massschafterstellung: m, bodenkonstruktion: b } =
+    let existingPayload: SchafBodenDraftPayload = {};
+    const rawExisting = await redis.get(key).catch(() => null);
+    if (rawExisting) {
+      try {
+        existingPayload = JSON.parse(rawExisting) as SchafBodenDraftPayload;
+      } catch {
+        existingPayload = {};
+      }
+    }
+
+    const { massschafterstellung: mPatch, bodenkonstruktion: bPatch } =
       buildSchafBodenDraftFromHttpRequest(body, files);
 
-    const hasM = buildMassschafterstellungFromDraft("tmp", m) != null;
-    const hasB = buildBodenkonstruktionFromDraft("tmp", b) != null;
+    const hasMPatch = buildMassschafterstellungFromDraft("tmp", mPatch) != null;
+    const hasBPatch = buildBodenkonstruktionFromDraft("tmp", bPatch) != null;
+    const hasMExisting =
+      buildMassschafterstellungFromDraft("tmp", existingPayload.massschafterstellung) !=
+      null;
+    const hasBExisting =
+      buildBodenkonstruktionFromDraft("tmp", existingPayload.bodenkonstruktion) !=
+      null;
 
-    if (!hasM && !hasB) {
+    if (!hasMPatch && !hasBPatch && !hasMExisting && !hasBExisting) {
       deleteUploadedFilesFromRequest(files);
       return res.status(400).json({
         success: false,
@@ -58,13 +75,71 @@ export const saveShoeOrderSchaftBodenDraft = async (
       });
     }
 
-    const key = shoeOrderSbDraftRedisKey(partnerId);
+    const oldM = existingPayload.massschafterstellung as
+      | Record<string, unknown>
+      | undefined;
+    const oldB = existingPayload.bodenkonstruktion as
+      | Record<string, unknown>
+      | undefined;
+    const oldMassImage =
+      typeof oldM?.massschafterstellung_image === "string"
+        ? oldM.massschafterstellung_image
+        : null;
+    const oldBodenImage =
+      typeof oldB?.bodenkonstruktion_image === "string"
+        ? oldB.bodenkonstruktion_image
+        : null;
+    const oldMassThreeD =
+      typeof oldM?.threeDFile === "string" ? oldM.threeDFile : null;
+    const oldBodenThreeD =
+      typeof oldB?.threeDFile === "string" ? oldB.threeDFile : null;
+
     const payload: SchafBodenDraftPayload = {
-      ...(hasM && { massschafterstellung: m }),
-      ...(hasB && { bodenkonstruktion: b }),
+      ...(hasMExisting && { massschafterstellung: existingPayload.massschafterstellung }),
+      ...(hasBExisting && { bodenkonstruktion: existingPayload.bodenkonstruktion }),
+      ...(hasMPatch && {
+        massschafterstellung: {
+          ...((existingPayload.massschafterstellung as Record<string, unknown>) ?? {}),
+          ...mPatch,
+        },
+      }),
+      ...(hasBPatch && {
+        bodenkonstruktion: {
+          ...((existingPayload.bodenkonstruktion as Record<string, unknown>) ?? {}),
+          ...bPatch,
+        },
+      }),
     };
 
     await redis.set(key, JSON.stringify(payload));
+
+    const newM = payload.massschafterstellung as Record<string, unknown> | undefined;
+    const newB = payload.bodenkonstruktion as Record<string, unknown> | undefined;
+    const newMassImage =
+      typeof newM?.massschafterstellung_image === "string"
+        ? newM.massschafterstellung_image
+        : null;
+    const newBodenImage =
+      typeof newB?.bodenkonstruktion_image === "string"
+        ? newB.bodenkonstruktion_image
+        : null;
+    const newMassThreeD =
+      typeof newM?.threeDFile === "string" ? newM.threeDFile : null;
+    const newBodenThreeD =
+      typeof newB?.threeDFile === "string" ? newB.threeDFile : null;
+
+    if (oldMassImage && newMassImage && oldMassImage !== newMassImage) {
+      deleteFileFromS3(oldMassImage);
+    }
+    if (oldBodenImage && newBodenImage && oldBodenImage !== newBodenImage) {
+      deleteFileFromS3(oldBodenImage);
+    }
+    if (oldMassThreeD && newMassThreeD && oldMassThreeD !== newMassThreeD) {
+      deleteFileFromS3(oldMassThreeD);
+    }
+    if (oldBodenThreeD && newBodenThreeD && oldBodenThreeD !== newBodenThreeD) {
+      deleteFileFromS3(oldBodenThreeD);
+    }
 
     return res.status(201).json({
       success: true,
