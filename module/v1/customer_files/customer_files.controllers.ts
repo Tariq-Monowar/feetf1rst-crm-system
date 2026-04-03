@@ -360,6 +360,14 @@ export const getCustomerFiles = async (req, res) => {
       createdAt: Date;
       pdf: string | null;
     }> = [];
+    let shoeOrderStepFilesRows: Array<{
+      id: string;
+      createdAt: Date;
+      fileName: string | null;
+      fileUrl: string | null;
+      fileType: string | null;
+      shoeOrderStepId: string | null;
+    }> = [];
     let barcodeRows = [];
     let invoiceRows = [];
 
@@ -405,6 +413,28 @@ export const getCustomerFiles = async (req, res) => {
           id: true,
           createdAt: true,
           url: true,
+        },
+      });
+    }
+
+    // shoe_order_step files (files table linked via shoeOrderStep -> shoe_order -> customer)
+    if (table === "all" || table === "shoe_order_step" || table === "files") {
+      shoeOrderStepFilesRows = await prisma.files.findMany({
+        where: {
+          shoeOrderStep: {
+            order: {
+              customerId,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          createdAt: true,
+          fileName: true,
+          fileUrl: true,
+          fileType: true,
+          shoeOrderStepId: true,
         },
       });
     }
@@ -543,6 +573,21 @@ export const getCustomerFiles = async (req, res) => {
           id: row.id,
           fileType: getFileType(row.url),
           createdAt: row.createdAt,
+        });
+      }
+    }
+
+    // Shoe Order Step Files (files model)
+    for (const row of shoeOrderStepFilesRows) {
+      if (row.fileUrl) {
+        allEntries.push({
+          fieldName: row.fileName || "file",
+          table: "shoe_order_step_files",
+          url: row.fileUrl,
+          id: row.id,
+          fileType: row.fileType || getFileType(row.fileUrl),
+          createdAt: row.createdAt,
+          shoeOrderStepId: row.shoeOrderStepId,
         });
       }
     }
