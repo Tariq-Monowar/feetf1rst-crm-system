@@ -2034,6 +2034,105 @@ export const totalPriceResponse = async (req: Request, res: Response) => {
   }
 };
 
+const cancelOrderSelect = {
+  id: true,
+  orderNumber: true,
+  status: true,
+  order_status: true,
+  user: {
+    select: {
+      id: true,
+      name: true,
+    },
+  },
+  customer: {
+    select: {
+      customerNumber: true,
+      vorname: true,
+      nachname: true,
+    },
+  },
+} as const;
+
+type CancelOrderRow = {
+  id: string;
+  orderNumber: string | null;
+  status: string | null;
+  order_status: string | null;
+  user: { id: string; name: string | null } | null;
+  customer: {
+    customerNumber: number | null;
+    vorname: string | null;
+    nachname: string | null;
+  } | null;
+};
+
+async function commitCancelAdminOrder(order: CancelOrderRow, role: string) {
+  const updatedOrder = await prisma.custom_shafts.update({
+    where: { id: order.id },
+    data: { order_status: "canceled" },
+    select: { id: true },
+  });
+
+  if (role === "ADMIN") {
+    if (order.user?.id) {
+      if (order.customer?.customerNumber) {
+        await notificationSend(
+          order.user.id,
+          "admin_order_canceled" as any,
+          `Die Bestellung #${order.orderNumber} wurde vom Admin storniert. Kunde: ${order.customer.vorname} ${order.customer.nachname} (Kundennummer: ${order.customer.customerNumber})`,
+          order.id,
+          false,
+          `/dashboard/custom-shafts/${order.id}`,
+        );
+      } else {
+        await notificationSend(
+          order.user.id,
+          "admin_order_canceled" as any,
+          `Die Bestellung #${order.orderNumber} wurde vom Admin storniert.`,
+          order.id,
+          false,
+          `/dashboard/custom-shafts/${order.id}`,
+        );
+      }
+    }
+  } else if (role === "PARTNER" || role === "EMPLOYEE") {
+    const admins = await prisma.user.findMany({
+      where: { role: "ADMIN" },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        notificationSend(
+          admin.id,
+          "admin_order_canceled" as any,
+          `Die Bestellung #${order.orderNumber} wurde vom Partner ${order.user?.name} storniert.`,
+          order.id,
+          false,
+          `/dashboard/custom-shafts/${order.id}`,
+        ),
+      ),
+    );
+  }
+
+  return updatedOrder;
+}
+
+/** Sets `custom_shafts.order_status` (admin_order_status enum). Cancel path keeps existing partner notifications. */
+async function applyAdminOrderStatusBulk(
+  order: CancelOrderRow,
+  target: "active" | "canceled" | "completed",
+) {
+  if (target === "canceled") {
+    return commitCancelAdminOrder(order, "ADMIN");
+  }
+  return prisma.custom_shafts.update({
+    where: { id: order.id },
+    data: { order_status: target },
+    select: { id: true },
+  });
+}
+
 export const cancelAdminOrder = async (req: Request, res: Response) => {
   try {
     const { role } = req.user;
@@ -2041,25 +2140,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
 
     const order = await prisma.custom_shafts.findUnique({
       where: { id: orderId },
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        order_status: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        customer: {
-          select: {
-            customerNumber: true,
-            vorname: true,
-            nachname: true,
-          },
-        },
-      },
+      select: cancelOrderSelect,
     });
 
     if (!order) {
@@ -2076,38 +2157,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
     }
 
     if (role === "ADMIN") {
-      const updatedOrder = await prisma.custom_shafts.update({
-        where: { id: orderId },
-        data: {
-          order_status: "canceled",
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      if (order.user?.id) {
-        if (order?.customer?.customerNumber) {
-          await notificationSend(
-            order.user.id,
-            "admin_order_canceled" as any,
-            `Die Bestellung #${order.orderNumber} wurde vom Admin storniert. Kunde: ${order.customer.vorname} ${order.customer.nachname} (Kundennummer: ${order.customer.customerNumber})`,
-            order.id,
-            false,
-            `/dashboard/custom-shafts/${order.id}`,
-          );
-        } else {
-          await notificationSend(
-            order.user.id,
-            "admin_order_canceled" as any,
-            `Die Bestellung #${order.orderNumber} wurde vom Admin storniert.`,
-            order.id,
-            false,
-            `/dashboard/custom-shafts/${order.id}`,
-          );
-        }
-      }
-
+      const updatedOrder = await commitCancelAdminOrder(order, role);
       return res.status(200).json({
         success: true,
         message: "Order canceled successfully",
@@ -2124,35 +2174,7 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
         });
       }
 
-      const updatedOrder = await prisma.custom_shafts.update({
-        where: { id: orderId },
-        data: {
-          order_status: "canceled",
-        },
-        select: {
-          id: true,
-        },
-      });
-
-      // Send notification to all admins
-      const admins = await prisma.user.findMany({
-        where: { role: "ADMIN" },
-        select: { id: true },
-      });
-
-      await Promise.all(
-        admins.map((admin) =>
-          notificationSend(
-            admin.id,
-            "admin_order_canceled" as any,
-            `Die Bestellung #${order.orderNumber} wurde vom Partner ${order.user?.name} storniert.`,
-            order.id,
-            false,
-            `/dashboard/custom-shafts/${order.id}`,
-          ),
-        ),
-      );
-
+      const updatedOrder = await commitCancelAdminOrder(order, role);
       return res.status(200).json({
         success: true,
         message: "Order canceled successfully",
@@ -2169,6 +2191,112 @@ export const cancelAdminOrder = async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       message: "Something went wrong while canceling the order",
+      error: error.message,
+    });
+  }
+};
+
+const BULK_ADMIN_ORDER_STATUS_MAX_IDS = 100;
+
+const ADMIN_ORDER_STATUS_BULK = ["active", "canceled", "completed"] as const;
+
+export const cancelAdminOrdersBulk = async (req: Request, res: Response) => {
+  try {
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can use bulk admin order status.",
+      });
+    }
+
+    const rawStatus = req.body?.order_status ?? req.body?.orderStatus;
+    const targetRaw =
+      rawStatus !== undefined &&
+      rawStatus !== null &&
+      String(rawStatus).trim() !== ""
+        ? String(rawStatus).trim()
+        : "canceled";
+    if (
+      !ADMIN_ORDER_STATUS_BULK.includes(
+        targetRaw as (typeof ADMIN_ORDER_STATUS_BULK)[number],
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order_status",
+        validOrderStatuses: [...ADMIN_ORDER_STATUS_BULK],
+      });
+    }
+    const target = targetRaw as (typeof ADMIN_ORDER_STATUS_BULK)[number];
+
+    const raw = req.body?.ids ?? req.body?.orderIds;
+    const ids = [
+      ...new Set(
+        (Array.isArray(raw) ? raw : [])
+          .map((id: unknown) => String(id ?? "").trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Body must include ids: ["id1", "id2"] (orderIds also works). Optional order_status defaults to canceled.',
+      });
+    }
+    if (ids.length > BULK_ADMIN_ORDER_STATUS_MAX_IDS) {
+      return res.status(400).json({
+        success: false,
+        message: `Maximum ${BULK_ADMIN_ORDER_STATUS_MAX_IDS} ids per request.`,
+      });
+    }
+
+    const rows = await prisma.custom_shafts.findMany({
+      where: { id: { in: ids } },
+      select: cancelOrderSelect,
+    });
+    const byId = new Map(rows.map((o) => [o.id, o]));
+
+    const updated: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+
+    for (const id of ids) {
+      const order = byId.get(id);
+      if (!order) {
+        skipped.push({ id, reason: "not_found" });
+      } else if (order.order_status === target) {
+        skipped.push({ id, reason: "already_set" });
+      } else {
+        await applyAdminOrderStatusBulk(order, target);
+        updated.push(id);
+      }
+    }
+
+    const label =
+      target === "canceled"
+        ? "canceled"
+        : target === "completed"
+          ? "marked completed"
+          : "set to active";
+
+    return res.status(200).json({
+      success: true,
+      message:
+        updated.length > 0
+          ? `${updated.length} order(s) ${label}.`
+          : "No orders were updated.",
+      data: {
+        order_status: target,
+        updated,
+        skipped,
+      },
+    });
+  } catch (error: any) {
+    console.error("Bulk admin order_status Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while updating orders",
       error: error.message,
     });
   }

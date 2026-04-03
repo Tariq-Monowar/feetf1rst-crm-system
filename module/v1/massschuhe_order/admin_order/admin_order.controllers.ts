@@ -1186,7 +1186,29 @@ export const getAllAdminOrders = async (req: Request, res: Response) => {
       });
     }
 
-    const where: any = { order_status: { not: "canceled" } };
+    /** Same as getAllAdminOrdersByPartner: `active` | `canceled` | `completed`. Omit to exclude canceled (default list). */
+    const validAdminOrderStatuses = [
+      "active",
+      "canceled",
+      "completed",
+    ] as const;
+    const adminOrderStatusRaw = (req.query.order_status as string)?.trim();
+    if (
+      adminOrderStatusRaw &&
+      !validAdminOrderStatuses.includes(
+        adminOrderStatusRaw as (typeof validAdminOrderStatuses)[number],
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order_status value",
+        validOrderStatuses: validAdminOrderStatuses,
+      });
+    }
+
+    const where: any = adminOrderStatusRaw
+      ? { order_status: adminOrderStatusRaw }
+      : { order_status: { not: "canceled" } };
     const and: any[] = [];
 
     if (status) {

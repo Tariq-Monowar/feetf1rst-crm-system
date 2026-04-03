@@ -21,7 +21,8 @@
     "defaults:massschaft-kollektion:false": "ts-node scripts/set-massschaft-kollektion-defaults-false.ts",
     "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts",
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts",
-    "delete:canceled-custom-shafts": "ts-node scripts/delete-canceled-custom-shafts.ts"
+    "delete:canceled-custom-shafts": "ts-node scripts/delete-canceled-custom-shafts.ts",
+    "trim:timeline-analytics-per-partner": "ts-node scripts/trim-timeline-analytics-per-partner.ts"
   },
   "keywords": [],
   "author": "",

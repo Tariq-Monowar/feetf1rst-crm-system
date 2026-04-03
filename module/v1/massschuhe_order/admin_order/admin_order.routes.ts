@@ -102,6 +102,8 @@ router.post(
 
 //get all admin orders
 // GET {{_baseurl}}admin_order/get
+// Query: limit, cursor, search, status (workflow), catagoary,
+//   order_status=active|canceled|completed — omit order_status to hide canceled (default).
 router.get(
   "/get",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),

@@ -16,6 +16,7 @@ import {
   createCustomBodenkonstruktionOrder,
   requestForLeistenerstellungAccess,
   cancelAdminOrder,
+  cancelAdminOrdersBulk,
   getDamianCount,
   manageDamianCount,
   updateDeliveryDateByAdmin,
@@ -40,6 +41,7 @@ const router = express.Router();
  * | DELETE | /custom_shafts/delete/:id |
  * | GET | /custom_shafts/total-price-resio |
  * | POST | /custom_shafts/cancel-order/:orderId |
+ * | POST | /custom_shafts/cancel-orders |
  * | GET | /custom_shafts/damian-count |
  * | POST | /custom_shafts/manage/damian-count |
  * | POST | /custom_shafts/create/mabschaft_kollektion |
@@ -155,6 +157,15 @@ router.post(
   "/cancel-order/:orderId",
   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
   cancelAdminOrder
+);
+
+// POST /custom_shafts/cancel-orders — ADMIN. Body: { ids, order_status? }
+// order_status: active | canceled | completed (default canceled). Max 100 ids.
+// {{_baseurl}}custom_shafts/manage-cancelation
+router.post(
+  "/manage-cancelation",
+  verifyUser("ADMIN"),
+  cancelAdminOrdersBulk
 );
 
 // GET /custom_shafts/damian-count
