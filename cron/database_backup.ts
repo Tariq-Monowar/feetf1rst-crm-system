@@ -26,7 +26,11 @@ function logWarn(message: string) {
 function logErr(phase: string, err: unknown) {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`${LOG} ${phase}: ${msg}`);
-  if (process.env.NODE_ENV !== "production" && err instanceof Error && err.stack) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    err instanceof Error &&
+    err.stack
+  ) {
     console.error(err.stack);
   }
 }
@@ -203,7 +207,7 @@ export function scheduleDailyDatabaseBackup() {
   }
 
   cron.schedule(
-    "* * * * *", // "0 7 * * *",
+    "0 7 * * *",
     async () => {
       try {
         await runDatabaseBackup();
