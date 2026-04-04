@@ -218,5 +218,13 @@ router.get(
 );
 
 
+// //get store overview pdf data
+// // GET {{_baseurl}}store/get-store-overview-pdf-data
+// router.get(
+//   "/get-store-overview-pdf-data",
+//   verifyUser("PARTNER", "ADMIN", "EMPLOYEE"),
+//   getStoreOverviewPdf,
+// );
+
 
 export default router;

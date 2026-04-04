@@ -2,12 +2,13 @@ import express from "express";
 import multer from "multer";
 import { verifyUser } from "../../../middleware/verifyUsers";
 import {
+  bulkUpdateInsuranceStatus,
   getCalculationData,
   getInsurancePaymentExpectationData,
   getInsuranceList,
   managePrescription,
   validateInsuranceChangelog,
-  approvedData
+  approvedData,
 } from "./insurance.cotrollers";
 
 const router = express.Router();
@@ -24,6 +25,13 @@ router.get(
   getInsuranceList,
 );
 
+// Body: { "ids": ["..."], "status": "pending" | "approved" | "rejected" } — insole + shoe order ids may be mixed
+router.patch(
+  "/bulk-insurance-status",
+  verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
+  bulkUpdateInsuranceStatus,
+);
+
 router.post(
   "/manage-prescription",
   verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
@@ -38,7 +46,6 @@ router.post(
 );
 
 //approved data from excel
-
 router.post(
   "/approved-data",
   verifyUser("EMPLOYEE", "PARTNER"),

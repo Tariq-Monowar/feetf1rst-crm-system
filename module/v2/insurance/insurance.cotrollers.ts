@@ -259,6 +259,113 @@ export const getInsuranceList = async (req: Request, res: Response) => {
   }
 };
 
+const BULK_INSURANCE_STATUS_VALUES = [
+  "pending",
+  "approved",
+  "rejected",
+] as const satisfies readonly insurance_status[];
+
+/** Bulk-set `insurance_status` on insole (`customerOrders`) and/or shoe (`shoe_order`) rows. IDs may mix types; only rows belonging to the current user as `partnerId` are updated. */
+export const bulkUpdateInsuranceStatus = async (req: Request, res: Response) => {
+  const MAX_IDS = 200;
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { ids, status } = req.body as { ids?: unknown; status?: unknown };
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ids must be a non-empty array of order ids",
+      });
+    }
+    if (ids.length > MAX_IDS) {
+      return res.status(400).json({
+        success: false,
+        message: `Too many ids (max ${MAX_IDS})`,
+      });
+    }
+
+    const idList = [...new Set(
+      ids
+        .map((x) => (typeof x === "string" ? x.trim() : null))
+        .filter((x): x is string => Boolean(x)),
+    )];
+
+    if (idList.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid string ids in ids array",
+      });
+    }
+
+    if (
+      typeof status !== "string" ||
+      !BULK_INSURANCE_STATUS_VALUES.includes(
+        status as (typeof BULK_INSURANCE_STATUS_VALUES)[number],
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "status must be one of: pending, approved, rejected",
+        validStatuses: [...BULK_INSURANCE_STATUS_VALUES],
+      });
+    }
+
+    const statusValue = status as insurance_status;
+
+    const wherePartner = { id: { in: idList }, partnerId };
+
+    const [insoleMatches, shoeMatches] = await Promise.all([
+      prisma.customerOrders.findMany({
+        where: wherePartner,
+        select: { id: true },
+      }),
+      prisma.shoe_order.findMany({
+        where: wherePartner,
+        select: { id: true },
+      }),
+    ]);
+
+    const insoleIds = insoleMatches.map((r) => r.id);
+    const shoeIds = shoeMatches.map((r) => r.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (insoleIds.length > 0) {
+        await tx.customerOrders.updateMany({
+          where: { id: { in: insoleIds }, partnerId },
+          data: { insurance_status: statusValue },
+        });
+      }
+      if (shoeIds.length > 0) {
+        await tx.shoe_order.updateMany({
+          where: { id: { in: shoeIds }, partnerId },
+          data: { insurance_status: statusValue },
+        });
+      }
+    });
+
+    const data = [...insoleIds, ...shoeIds];
+
+    return res.status(200).json({
+      success: true,
+      message: "Insurance status updated",
+      status: statusValue,
+      data,
+    });
+  } catch (error: any) {
+    console.error("bulkUpdateInsuranceStatus:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const managePrescription = async (req: Request, res: Response) => {
   const getActiveInsuranceOrders = async (partnerId: string) => {
     const [insole, shoe] = await Promise.all([
