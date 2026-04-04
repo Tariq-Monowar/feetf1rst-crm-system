@@ -16,6 +16,9 @@ const COMPLETED_ORDER_STATUSES: any = [
   "Einlage_Abholbereit",
 ];
 
+/** `shoe_order.status` when the workflow is done (see `shoe_order_status` in schema). */
+const SHOE_ORDER_STATUS_COMPLETED = "Ausgeführt";
+
 const targetCells = [
   "B58", // fusslange1
   "C58", // fusslange2
@@ -2558,56 +2561,76 @@ export const filterCustomer = async (req: Request, res: Response) => {
     }
 
     if (completedOrdersFilter) {
-      // Customers with orders that have "Ausgeführt" status
       whereConditions.push({
-        customerOrders: {
-          some: {
-            orderStatus: "Ausgeführt",
+        OR: [
+          {
+            customerOrders: {
+              some: { orderStatus: "Ausgeführt" },
+            },
           },
-        },
+          {
+            shoeOrders: {
+              some: { status: SHOE_ORDER_STATUS_COMPLETED },
+            },
+          },
+        ],
       });
     }
 
     if (noOrderFilter) {
-      // Customers with no customerOrders records
+      // No insole orders and no shoe (Massschuhe) orders
       whereConditions.push({
-        customerOrders: {
-          none: {},
-        },
+        customerOrders: { none: {} },
+      });
+      whereConditions.push({
+        shoeOrders: { none: {} },
       });
     }
 
     if (finishedOrdersFilter) {
-      // Customers who have at least one order with "Ausgeführt" status
       whereConditions.push({
-        customerOrders: {
-          some: {
-            orderStatus: "Ausgeführt",
+        OR: [
+          {
+            customerOrders: {
+              some: { orderStatus: "Ausgeführt" },
+            },
           },
-        },
+          {
+            shoeOrders: {
+              some: { status: SHOE_ORDER_STATUS_COMPLETED },
+            },
+          },
+        ],
       });
     }
 
-    // Add initial filtering for count-based filters (exact count will be checked in post-processing)
     if (oneAllOrdersFilter) {
-      // Customers with at least one order (exact count of 1 will be checked in post-processing)
       whereConditions.push({
-        customerOrders: {
-          some: {},
-        },
+        OR: [
+          { customerOrders: { some: {} } },
+          { shoeOrders: { some: {} } },
+        ],
       });
     }
 
     if (oneOrdersInProductionFilter) {
-      // Customers with at least one order that is NOT "Ausgeführt" (exact count will be checked in post-processing)
       whereConditions.push({
-        customerOrders: {
-          some: {
-            orderStatus: {
-              not: "Ausgeführt",
+        OR: [
+          {
+            customerOrders: {
+              some: {
+                orderStatus: { not: "Ausgeführt" },
+              },
             },
           },
-        },
+          {
+            shoeOrders: {
+              some: {
+                NOT: { status: SHOE_ORDER_STATUS_COMPLETED },
+              },
+            },
+          },
+        ],
       });
     }
 
@@ -2666,6 +2689,12 @@ export const filterCustomer = async (req: Request, res: Response) => {
         take: needsPostFilter ? fetchLimit : limitNumber,
         orderBy: { createdAt: "desc" },
         include: {
+          _count: {
+            select: {
+              customerOrders: true,
+              shoeOrders: true,
+            },
+          },
           customerOrders: {
             orderBy: { createdAt: "desc" },
             select: {
@@ -2677,12 +2706,13 @@ export const filterCustomer = async (req: Request, res: Response) => {
               geschaeftsstandort: true,
             },
           },
-          massschuheOrders: {
+          shoeOrders: {
             orderBy: { createdAt: "desc" },
-            take: 1,
             select: {
               id: true,
               createdAt: true,
+              status: true,
+              orderNumber: true,
             },
           },
           screenerFile: {
@@ -2724,17 +2754,28 @@ export const filterCustomer = async (req: Request, res: Response) => {
           }
         : null;
 
-    // Map customers to response data
+    // Map customers to response data (Einlagen + shoe_order / Massschuhe)
     let responseData = customers.map((customer) => {
-      const completedOrdersCount = customer.customerOrders.filter((order) =>
+      const insoleOrders = customer.customerOrders;
+      const shoeOrderList = customer.shoeOrders ?? [];
+
+      const completedInsoleCount = insoleOrders.filter((order) =>
         completedStatusesForCount.has(order.orderStatus),
       ).length;
+      const completedShoeCount = shoeOrderList.filter(
+        (o) => o.status === SHOE_ORDER_STATUS_COMPLETED,
+      ).length;
+      const completedOrdersCount = completedInsoleCount + completedShoeCount;
 
-      const latestOrder = customer.customerOrders[0] || null;
+      const latestOrder = insoleOrders[0] || null;
       const latestScreener = formatScreener(customer.screenerFile[0]);
-      const latestMassschuheOrder = customer.massschuheOrders?.[0] || null;
+      const latestShoeOrder = shoeOrderList[0] || null;
       // Use customer's own billingType first; fallback to latest order's bezahlt for display
       const billingType = customer.billingType ?? latestOrder?.bezahlt ?? null;
+
+      const totalInsole =
+        customer._count?.customerOrders ?? insoleOrders.length;
+      const totalShoe = customer._count?.shoeOrders ?? shoeOrderList.length;
 
       return {
         id: customer.id,
@@ -2745,13 +2786,16 @@ export const filterCustomer = async (req: Request, res: Response) => {
         // telefonnummer: customer.telefonnummer,
         wohnort: customer.wohnort,
         createdAt: customer.createdAt,
-        totalOrders: customer.customerOrders.length,
+        totalOrders: totalInsole + totalShoe,
         completedOrders: completedOrdersCount,
         latestOrder,
         latestScreener,
-        latestMassschuheOrder,
+        latestShoeOrder,
+        /** @deprecated same as latestShoeOrder; kept for older clients */
+        latestMassschuheOrder: latestShoeOrder,
         billingType,
-        _customerOrders: customer.customerOrders,
+        _customerOrders: insoleOrders,
+        _shoeOrders: shoeOrderList,
       };
     });
 
@@ -2773,21 +2817,27 @@ export const filterCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    // Post-process filters that require exact counts
+    // Post-process filters that require exact counts (Einlagen + shoe_order)
     if (oneAllOrdersFilter) {
-      // Customers with exactly one customerOrders record (any status)
       responseData = responseData.filter((customer) => {
         return customer.totalOrders === 1;
       });
     }
 
     if (oneOrdersInProductionFilter) {
-      // Customers with exactly one order that is NOT "Ausgeführt"
       responseData = responseData.filter((customer: any) => {
-        const nonFinishedOrders = customer._customerOrders.filter(
+        const nonFinishedInsole = customer._customerOrders.filter(
           (order: any) => order.orderStatus !== "Ausgeführt",
         );
-        return nonFinishedOrders.length === 1 && customer.totalOrders === 1;
+        const nonFinishedShoe = customer._shoeOrders.filter(
+          (o: any) => o.status !== SHOE_ORDER_STATUS_COMPLETED,
+        );
+        const total =
+          customer._customerOrders.length + customer._shoeOrders.length;
+        return (
+          total === 1 &&
+          nonFinishedInsole.length + nonFinishedShoe.length === 1
+        );
       });
     }
 
@@ -2800,7 +2850,7 @@ export const filterCustomer = async (req: Request, res: Response) => {
 
     // Remove internal fields before sending response
     responseData = responseData.map((customer: any) => {
-      const { _customerOrders, ...rest } = customer;
+      const { _customerOrders, _shoeOrders, ...rest } = customer;
       return rest;
     });
 
