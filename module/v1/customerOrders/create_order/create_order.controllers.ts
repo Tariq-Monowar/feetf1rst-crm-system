@@ -582,24 +582,12 @@ export const createOrder = async (req: Request, res: Response) => {
     if (alternateStoreIdRaw) {
       const altStore = await prisma.stores.findFirst({
         where: { id: alternateStoreIdRaw, userId: partnerId },
-        select: { id: true, type: true },
+        select: { id: true },
       });
       if (!altStore) {
         return bad(400, "Alternate store not found or not owned by this partner.", {
           anotherStoreSameSupply: alternateStoreIdRaw,
         });
-      }
-      if (versorgung.storeId) {
-        const origStore = await prisma.stores.findUnique({
-          where: { id: versorgung.storeId },
-          select: { type: true },
-        });
-        if (origStore && origStore.type !== altStore.type) {
-          return bad(400, "Alternate store must match the supply store type (rady_insole vs milling_block).", {
-            supplyStoreType: origStore.type,
-            alternateStoreType: altStore.type,
-          });
-        }
       }
       fulfillmentStoreId = altStore.id;
       alternateStoreUsed = true;
