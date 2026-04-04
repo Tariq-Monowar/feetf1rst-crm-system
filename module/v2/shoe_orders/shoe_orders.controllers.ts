@@ -1251,6 +1251,22 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
       });
     }
 
+    /**
+     * Mixed (`broth`) spans both sides; insurance/private tabs should each see the other
+     * side plus broth (e.g. insurance → insurance + broth + private; private → private + broth + insurance).
+     */
+    const paymentTypesForFilter = hasPaymentTypeFilter
+      ? Array.from(
+          new Set(
+            paymentTypes.flatMap((pt) => {
+              if (pt === "insurance") return ["insurance", "broth", "private"];
+              if (pt === "private") return ["private", "broth", "insurance"];
+              return [pt];
+            }),
+          ),
+        )
+      : [];
+
     const search =
       typeof searchParam === "string" && searchParam.trim()
         ? searchParam.trim().replace(/\s+/g, " ")
@@ -1268,7 +1284,7 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
         conditions.push(Prisma.sql`so.priority = ${priorityParam}::text`);
       }
       if (hasPaymentTypeFilter) {
-        const ptConds = paymentTypes.map(
+        const ptConds = paymentTypesForFilter.map(
           (pt) => Prisma.sql`so."payment_type" = ${pt}::text`,
         );
         conditions.push(Prisma.sql`(${Prisma.join(ptConds, " OR ")})`);
@@ -1413,7 +1429,9 @@ export const getAllShoeOrders = async (req: Request, res: Response) => {
     }
     if (hasPaymentTypeFilter) {
       whereCondition.payment_type =
-        paymentTypes.length === 1 ? paymentTypes[0] : { in: paymentTypes };
+        paymentTypesForFilter.length === 1
+          ? paymentTypesForFilter[0]
+          : { in: paymentTypesForFilter };
     }
     if (
       branchLocationTitleParam &&
