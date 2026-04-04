@@ -73,7 +73,7 @@ export const getOrderRequiredFields = async (req: Request, res: Response) => {
       diagnosisList: "Diagnoseliste",
       employeeId: "Mitarbeiter-ID",
       kva: "KVA (Kostenvoranschlag)",
-      halbprobe: "Halbprobe",
+      halbprobe: "Verordnungsvorschlag",
       einlagentyp: "Einlagentyp",
       überzug: "Überzug",
       quantity: "Menge",

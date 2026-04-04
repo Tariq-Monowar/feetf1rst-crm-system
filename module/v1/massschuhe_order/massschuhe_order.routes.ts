@@ -32,6 +32,7 @@ router.get("/", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getMassschuheOrder);
 router.get("/get/:id", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getMassschuheOrderById);
 //upload multiple pdfs
 
+//{{baseurl}}massschuhe_order/update-status
 router.patch(
   "/update-status",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
@@ -47,6 +48,7 @@ router.post(
   ]),
   uploadMassschuheOrderPdf
 );
+
 router.patch(
   "/update-order/:id",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
@@ -54,6 +56,7 @@ router.patch(
 );
 
 router.get("/stats", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), getMassschuheOrderStats);
+
 router.get(
   "/stats/revenue",
   verifyUser("ADMIN", "PARTNER", "EMPLOYEE"),
