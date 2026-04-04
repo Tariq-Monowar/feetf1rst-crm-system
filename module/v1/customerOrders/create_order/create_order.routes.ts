@@ -8,6 +8,7 @@ import {
 
 export const router = express.Router();
 
+/** POST /please — optional query: ?another-store-same-supply=<storeId> (same Versorgung / key snapshot, different partner store for stock). */
 router.post("/please", verifyUser("ADMIN", "PARTNER", "EMPLOYEE"), createOrder);
 
 /** Create order without Versorgung or store (e.g. Sonstiges, manual fulfillment). */

@@ -425,14 +425,27 @@ export const createOrder = async (req: Request, res: Response) => {
       return bad(400, msg);
     }
 
+    /* Parse once: used for private-supply path (skip persisting Versorgungen) + fulfillment store. */
+    const qAltStoreEarly =
+      req.query["another-store-same-supply"] ??
+      (req.query as Record<string, unknown>).another_store_same_supply;
+    const alternateStoreIdRaw =
+      typeof qAltStoreEarly === "string"
+        ? qAltStoreEarly.trim()
+        : Array.isArray(qAltStoreEarly) && typeof qAltStoreEarly[0] === "string"
+          ? qAltStoreEarly[0].trim()
+          : "";
+
     /*--------------------------
              RESOLVE VERSORGUNG
              If privetSupply (key): get JSON from Redis, validate partner/customer,
-             CREATE a new Versorgung in DB from that data, and use it. Otherwise
-             use the versorgung we already fetched by versorgungId.
+             CREATE a new Versorgung in DB from that data, and use it — except when
+             `another-store-same-supply` is set: then only snapshot fields are used for
+             customerProduct (no Versorgungen row). Otherwise use the versorgung fetched
+             by versorgungId.
     ----------------------------*/
     let versorgung: any;
-    let effectiveVersorgungId: string | null;
+    let effectiveVersorgungId: string | null = null;
 
     if (privetSupply) {
       const raw = rawShadowOrVersorgung as string | null;
@@ -455,71 +468,152 @@ export const createOrder = async (req: Request, res: Response) => {
           "Shadow supply customer does not match order customerId",
         );
 
-      const createData: any = {
-        name: shadow.name,
-        rohlingHersteller: shadow.rohlingHersteller ?? "",
-        artikelHersteller: shadow.artikelHersteller ?? "",
-        versorgung: shadow.versorgung,
-        material: normalizeShadowMaterial(shadow.material),
-        diagnosis_status: Array.isArray(shadow.diagnosis_status)
-          ? shadow.diagnosis_status
-          : [],
-        supplyType: "private",
+      const runShadowStoreValidation = async (storeFromDb: {
+        groessenMengen: unknown;
+        type: string;
+      } | null) => {
+        if (storeFromDb) {
+          const gm = storeFromDb.groessenMengen;
+          if (!gm || typeof gm !== "object" || !Object.keys(gm).length)
+            return bad(
+              400,
+              "Store has no sizes configured (groessenMengen). Add sizes to the store first.",
+            );
+          if (resolvedFootLengthMm != null) {
+            const footMm = resolvedFootLengthMm;
+            const sizes = gm as Record<string, any>;
+            const sizeKey =
+              storeFromDb.type === "milling_block"
+                ? findBlockSizeKey(sizes, footMm)
+                : findClosestSizeKey(sizes, footMm + 5);
+            if (!sizeKey)
+              return bad(
+                400,
+                "No matching size in store for this customer's foot length. Add a suitable size or choose another store.",
+              );
+          }
+        } else if (shadow.storeId) {
+          return bad(404, "Store not found for this private supply");
+        }
+        return null;
       };
-      if (shadow.partnerId)
-        createData.partner = { connect: { id: shadow.partnerId } };
-      if (shadow.storeId)
-        createData.store = { connect: { id: shadow.storeId } };
-      if (shadow.supplyStatusId)
-        createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
 
-      const [storeFromDb, createdVersorgung] = await Promise.all([
-        shadow.storeId
-          ? prisma.stores.findUnique({
+      if (alternateStoreIdRaw) {
+        const supplyStatusRow = shadow.supplyStatusId
+          ? await prisma.supplyStatus.findUnique({
+              where: { id: shadow.supplyStatusId },
+              select: { vatRate: true },
+            })
+          : null;
+        const storeFromDb = shadow.storeId
+          ? await prisma.stores.findUnique({
               where: { id: shadow.storeId },
               select: { id: true, groessenMengen: true, type: true },
             })
-          : Promise.resolve(null),
-        prisma.versorgungen.create({
-          data: createData,
-          select: VERSORGUNG_SELECT,
-        }),
-      ]);
-      versorgung = createdVersorgung;
+          : null;
+        const storeErr = await runShadowStoreValidation(storeFromDb);
+        if (storeErr) return storeErr;
 
-      if (storeFromDb) {
-        const gm = storeFromDb.groessenMengen;
-        if (!gm || typeof gm !== "object" || !Object.keys(gm).length)
-          return bad(
-            400,
-            "Store has no sizes configured (groessenMengen). Add sizes to the store first.",
-          );
-        if (resolvedFootLengthMm != null) {
-          const footMm = resolvedFootLengthMm;
-          const sizes = gm as Record<string, any>;
-          const sizeKey =
-            storeFromDb.type === "milling_block"
-              ? findBlockSizeKey(sizes, footMm)
-              : findClosestSizeKey(sizes, footMm + 5);
-          if (!sizeKey)
-            return bad(
-              400,
-              "No matching size in store for this customer's foot length. Add a suitable size or choose another store.",
-            );
-        }
-      } else if (shadow.storeId) {
-        return bad(404, "Store not found for this private supply");
+        versorgung = {
+          name: shadow.name,
+          rohlingHersteller: shadow.rohlingHersteller ?? "",
+          artikelHersteller: shadow.artikelHersteller ?? "",
+          versorgung: shadow.versorgung,
+          material: normalizeShadowMaterial(shadow.material),
+          diagnosis_status: Array.isArray(shadow.diagnosis_status)
+            ? shadow.diagnosis_status
+            : [],
+          storeId: shadow.storeId,
+          supplyStatus: supplyStatusRow,
+        };
+        effectiveVersorgungId = null;
+      } else {
+        const createData: any = {
+          name: shadow.name,
+          rohlingHersteller: shadow.rohlingHersteller ?? "",
+          artikelHersteller: shadow.artikelHersteller ?? "",
+          versorgung: shadow.versorgung,
+          material: normalizeShadowMaterial(shadow.material),
+          diagnosis_status: Array.isArray(shadow.diagnosis_status)
+            ? shadow.diagnosis_status
+            : [],
+          supplyType: "private",
+        };
+        if (shadow.partnerId)
+          createData.partner = { connect: { id: shadow.partnerId } };
+        if (shadow.storeId)
+          createData.store = { connect: { id: shadow.storeId } };
+        if (shadow.supplyStatusId)
+          createData.supplyStatus = { connect: { id: shadow.supplyStatusId } };
+
+        const [storeFromDb, createdVersorgung] = await Promise.all([
+          shadow.storeId
+            ? prisma.stores.findUnique({
+                where: { id: shadow.storeId },
+                select: { id: true, groessenMengen: true, type: true },
+              })
+            : Promise.resolve(null),
+          prisma.versorgungen.create({
+            data: createData,
+            select: VERSORGUNG_SELECT,
+          }),
+        ]);
+        versorgung = createdVersorgung;
+        effectiveVersorgungId = versorgung.id;
+
+        const storeErr = await runShadowStoreValidation(storeFromDb);
+        if (storeErr) return storeErr;
       }
     } else {
       versorgung = rawShadowOrVersorgung;
       if (!versorgung) return bad(404, "Versorgung not found");
+      effectiveVersorgungId = versorgung.id;
     }
-    effectiveVersorgungId = versorgung.id;
+
+    /**
+     * Inventory / size matching store (groessenMengen). Defaults to the Versorgung's store
+     * or shadow supply store. Query `?another-store-same-supply=<storeId>` uses the same
+     * snapshot fields for customerProduct but fulfills from another partner store.
+     */
+
+    let fulfillmentStoreId: string | null = versorgung.storeId ?? null;
+    let alternateStoreUsed = false;
+
+    if (alternateStoreIdRaw) {
+      const altStore = await prisma.stores.findFirst({
+        where: { id: alternateStoreIdRaw, userId: partnerId },
+        select: { id: true, type: true },
+      });
+      if (!altStore) {
+        return bad(400, "Alternate store not found or not owned by this partner.", {
+          anotherStoreSameSupply: alternateStoreIdRaw,
+        });
+      }
+      if (versorgung.storeId) {
+        const origStore = await prisma.stores.findUnique({
+          where: { id: versorgung.storeId },
+          select: { type: true },
+        });
+        if (origStore && origStore.type !== altStore.type) {
+          return bad(400, "Alternate store must match the supply store type (rady_insole vs milling_block).", {
+            supplyStoreType: origStore.type,
+            alternateStoreType: altStore.type,
+          });
+        }
+      }
+      fulfillmentStoreId = altStore.id;
+      alternateStoreUsed = true;
+    }
+
+    /** Alternate fulfillment: snapshot only on customerProduct; do not link Versorgungen. */
+    if (alternateStoreUsed) {
+      effectiveVersorgungId = null;
+    }
 
     /** For size matching: longest foot in mm; rady_insole uses foot + 5mm. */
     const footLengthMm = resolvedFootLengthMm;
     const customerFootLength = resolvedFootLengthMm;
-    const targetLengthRady = versorgung.storeId ? footLengthMm + 5 : 0;
+    const targetLengthRady = fulfillmentStoreId ? footLengthMm + 5 : 0;
     const orderQuantity = quantity ? parseInt(String(quantity), 10) : 1;
     const discountPercent = discount ? parseFloat(String(discount)) : 0;
     const explicitVatRate =
@@ -549,8 +643,10 @@ export const createOrder = async (req: Request, res: Response) => {
         partnerId,
         customerId,
         versorgungId: effectiveVersorgungId ?? null,
-        hasVersorgungStoreId: !!versorgung?.storeId,
-        storeId: versorgung?.storeId ?? null,
+        hasVersorgungStoreId: !!fulfillmentStoreId,
+        storeId: fulfillmentStoreId ?? null,
+        versorgungCatalogStoreId: versorgung?.storeId ?? null,
+        alternateStoreUsed,
         storeLoaded: false,
         storeType: null as any,
         groessenMengenType: null as any,
@@ -592,9 +688,9 @@ export const createOrder = async (req: Request, res: Response) => {
                 where: { partnerId },
                 select: { id: true },
               }),
-          versorgung.storeId
+          fulfillmentStoreId
             ? tx.stores.findUnique({
-                where: { id: versorgung.storeId },
+                where: { id: fulfillmentStoreId },
                 select: {
                   id: true,
                   groessenMengen: true,
@@ -614,10 +710,10 @@ export const createOrder = async (req: Request, res: Response) => {
           ? Object.keys(store.groessenMengen as any).length
           : null;
 
-      // If the supply references a store, it must exist.
-      if (versorgung.storeId && !store) {
+      // If we resolve a fulfillment store, it must exist.
+      if (fulfillmentStoreId && !store) {
         const err: any = new Error("STORE_NOT_FOUND");
-        err.storeId = versorgung.storeId;
+        err.storeId = fulfillmentStoreId;
         throw err;
       }
 
@@ -705,8 +801,8 @@ export const createOrder = async (req: Request, res: Response) => {
         ...(effectiveVersorgungId && {
           Versorgungen: { connect: { id: effectiveVersorgungId } },
         }),
-        ...(versorgung.storeId && {
-          store: { connect: { id: versorgung.storeId } },
+        ...(fulfillmentStoreId && {
+          store: { connect: { id: fulfillmentStoreId } },
         }),
         ...(finalEmployeeId && {
           employee: { connect: { id: finalEmployeeId } },
@@ -842,7 +938,7 @@ export const createOrder = async (req: Request, res: Response) => {
         };
       } else {
         // Size matching skipped → explain why.
-        sizeDebug.reason = !versorgung?.storeId
+        sizeDebug.reason = !fulfillmentStoreId
           ? "VERSORGUNG_HAS_NO_STORE"
           : !store
             ? "STORE_NOT_LOADED"
@@ -1085,6 +1181,8 @@ export const createOrder = async (req: Request, res: Response) => {
       foorSize: order.foorSize ?? null,
       supplyType: privetSupply ? "private" : "public",
       appointment: appointmentMeta,
+      fulfillmentStoreId: fulfillmentStoreId ?? null,
+      alternateStoreUsed,
     });
   } catch (err: any) {
     /*--------------------------
