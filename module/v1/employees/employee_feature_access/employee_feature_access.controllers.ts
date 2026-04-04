@@ -29,6 +29,7 @@ const defaultEmployeeFeatureAccessData = {
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
   statistiken: true,
+  biomechanical_calculation: true,
 };
 
 const validateEmployee = async (employeeId: string, partnerId: string) => {
@@ -68,6 +69,7 @@ const defaultPartnerFeatureAccessData = {
   finanzen_and_kasse: true,
   einnahmen_and_rechnungen: true,
   statistiken: true,
+  biomechanical_calculation: true,
 };
 
 const FEATURE_KEYS = Object.keys(
@@ -277,6 +279,11 @@ const convertToJSONFormat = (featureAccess: any) => {
       field: "statistiken",
       title: "Statistiken",
       path: "/dashboard/statistiken",
+    },
+    {
+      field: "biomechanical_calculation",
+      title: "Biomechanical Calculation",
+      path: "/dashboard/biomechanical_calculation",
     },
   ];
 

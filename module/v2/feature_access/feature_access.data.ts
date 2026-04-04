@@ -62,6 +62,11 @@ export const FEATURES: FeatureItem[] = [
   { key: "warenwirtschaft", title: "Warenwirtschaft", path: "/dashboard/warenwirtschaft" },
   { key: "leistenerstellung", title: "Leistenerstellung", path: "/dashboard/digitale-leistenerstellung" },
   { key: "crmConnection", title: "CRM Connection", path: "/dashboard/crm-cunnection" },
+  {
+    key: "biomechanical_calculation",
+    title: "Biomechanical Calculation",
+    path: "/dashboard/biomechanical_calculation",
+  },
 ];
 
 /** Legacy format for consumers that expect { title, action, path, nested }. */

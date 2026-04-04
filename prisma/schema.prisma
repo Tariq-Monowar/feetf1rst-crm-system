@@ -2897,6 +2897,9 @@ model FeatureAccess {
 
   crmConnection Boolean @default(true)
 
+  /// /dashboard/biomechanical_calculation
+  biomechanical_calculation Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -2950,6 +2953,8 @@ model employee_feature_access {
   leistenerstellung          Boolean @default(false)
 
   crmConnection Boolean @default(true)
+
+  biomechanical_calculation Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
