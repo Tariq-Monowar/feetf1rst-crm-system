@@ -19,6 +19,7 @@ import {
   getHalbprobeData,
   getWerkstattzettelA3Pdf,
   identifyKvaData,
+  getExcldata
 } from "./track_orders.controllers";
 // import { getNewOrderHistory } from "../customerOrders.controllers";
 
@@ -121,6 +122,13 @@ router.get(
   identifyKvaData,
 );
 
+// Excel: one order — Product Name, Order Number, Date of insole finished
+// GET {{_baseurl}}customer-orders/track/get-excldata/074b6aff-a88c-43fc-b565-a227a6da2058
+router.get(
+  "/get-excldata/:orderId",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  getExcldata,
+);
 
 
 export default router;

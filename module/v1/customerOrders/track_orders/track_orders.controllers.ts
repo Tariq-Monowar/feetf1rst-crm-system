@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma } from "../../../../db";
+import { Prisma, prisma } from "../../../../db";
 import fs from "fs";
 import iconv from "iconv-lite";
 import csvParser from "csv-parser";
@@ -2938,6 +2938,62 @@ export const identifyKvaData = async (req: Request, res: Response) => {
       success: false,
       message: "Something went wrong while identifying kva data",
       error: error?.message,
+    });
+  }
+};
+
+export const getExcldata = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    const { orderId } = req.params;
+
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    if (!orderId?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    const order = await prisma.customerOrders.findFirst({
+      where: { id: orderId, partnerId },
+      select: {
+        id: true,
+        product: { select: { name: true } },
+        fertigstellungBis: true,
+        orderNumber: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or access denied",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Excel data fetched successfully",
+      data: order,
+    });
+  } catch (error: unknown) {
+    console.error("Get Excldata Error:", error);
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or access denied",
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong while exporting Excel data",
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
