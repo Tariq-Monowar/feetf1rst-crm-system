@@ -6,6 +6,7 @@ import {
   getCalculationData,
   getInsurancePaymentExpectationData,
   getInsuranceList,
+  getPrescriptionDoctorInfo,
   managePrescription,
   validateInsuranceChangelog,
   approvedData,
@@ -24,6 +25,15 @@ router.get(
   verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
   getInsuranceList,
 );
+
+// Query: type=insole|shoe — Body JSON: { "id": "<orderId>" }. Use POST if your client cannot send a body on GET; ?id= works as fallback.
+// GET {{_baseurl}}insurance/doctor-info?type=insole&id=...
+router.get(
+  "/doctor-info",
+  verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
+  getPrescriptionDoctorInfo,
+);
+
 
 // Body: { "ids": ["..."], "status": "pending" | "approved" | "rejected" } — insole + shoe order ids may be mixed
 router.patch(

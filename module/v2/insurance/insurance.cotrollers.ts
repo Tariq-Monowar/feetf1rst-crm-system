@@ -366,6 +366,117 @@ export const bulkUpdateInsuranceStatus = async (req: Request, res: Response) => 
   }
 };
 
+/**
+ * Arztinformationen from `prescription` via shoe or insole order.
+ * Query: `type=insole|shoe` (or `shoes`). Body (JSON): `{ "id": "<orderId>" }`.
+ * Same `id` can be passed as query `?id=` if the client cannot send a body on GET.
+ * Maps: Arzt → doctor_name, Ort Arzt → doctor_location, Arztnummer (LANR) → establishment_number, Betriebsstättennummer (BSNR) → practice_number.
+ */
+export const getPrescriptionDoctorInfo = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const typeRaw = String(req.query.type ?? body.type ?? "")
+      .trim()
+      .toLowerCase();
+    const orderId = String(
+      body.id ?? body.orderId ?? req.query.id ?? "",
+    ).trim();
+
+    if (!typeRaw || !orderId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Query param `type` (insole | shoe) and order `id` (JSON body, or query id=) are required",
+      });
+    }
+
+    const isShoe = typeRaw === "shoe" || typeRaw === "shoes";
+    const isInsole = typeRaw === "insole";
+
+    if (!isShoe && !isInsole) {
+      return res.status(400).json({
+        success: false,
+        message: "type must be insole or shoe",
+        validTypes: ["insole", "shoe"],
+      });
+    }
+
+    let prescriptionId: string | null = null;
+
+    if (isShoe) {
+      const order = await prisma.shoe_order.findFirst({
+        where: { id: orderId, partnerId },
+        select: { prescriptionId: true },
+      });
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Shoe order not found or access denied",
+        });
+      }
+      prescriptionId = order.prescriptionId;
+    } else {
+      const order = await prisma.customerOrders.findFirst({
+        where: { id: orderId, partnerId },
+        select: { prescriptionId: true },
+      });
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer order not found or access denied",
+        });
+      }
+      prescriptionId = order.prescriptionId;
+    }
+
+    if (!prescriptionId) {
+      return res.status(404).json({
+        success: false,
+        message: "No prescription linked to this order",
+      });
+    }
+
+    const p = await prisma.prescription.findFirst({
+      where: { id: prescriptionId },
+      select: {
+        doctor_name: true,
+        doctor_location: true,
+        establishment_number: true,
+        practice_number: true,
+      },
+    });
+
+    if (!p) {
+      return res.status(404).json({
+        success: false,
+        message: "Prescription not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        arzt: p.doctor_name ?? null,
+        ortArzt: p.doctor_location ?? null,
+        arztnummer: p.establishment_number ?? null,
+        betriebsstaettennummer: p.practice_number ?? null,
+      },
+    });
+  } catch (error: any) {
+    console.error("getPrescriptionDoctorInfo:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const managePrescription = async (req: Request, res: Response) => {
   const getActiveInsuranceOrders = async (partnerId: string) => {
     const [insole, shoe] = await Promise.all([
