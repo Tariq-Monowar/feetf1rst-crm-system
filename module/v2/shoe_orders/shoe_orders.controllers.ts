@@ -14,6 +14,7 @@ import {
   isExternOrInternCreateQuery,
   buildSchafBodenDraftFromHttpRequest,
   parseJsonField,
+  parseStepMaterialJson,
   shoeOrderSbDraftRedisKey,
 } from "./shoe_orders.controllers.helpers";
 
@@ -375,9 +376,9 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       half_sample_required,
 
       /**
-       * has_trim_strips: if true → skip step 2.
-       * if false → get extra input:
-       *   step 2: material, leistentyp, notes, leistengröße
+       * has_trim_strips: if true → step 2 Leistenerstellung is auto-completed (no leistentyp required).
+       *   Optional: step2_material (JSON), step2_notes, step2_leistengröße or step2_size — still stored if sent.
+       * if false → step2_material (JSON) + step2_leistentyp required; optional notes, leistengröße.
        */
       has_trim_strips,
 
@@ -404,11 +405,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       adjustments,
       customer_reviews,
 
-      // Step 2 data (when has_trim_strips is false); accept step2_leistentyp or leistentyp
+      // Step 2: accept step2_leistentyp or leistentyp; step2_size aliases leistengröße
       step2_material,
       step2_leistentyp,
       step2_notes,
       step2_leistengröße,
+      step2_size,
       leistentyp: body_leistentyp,
 
       // Step 3 data (when bedding_required is true)
@@ -525,13 +527,14 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       // }
     }
 
+    const step2MaterialJson = parseStepMaterialJson(step2_material);
     if (!hasTrimStrips) {
       // Need step 2 data only (leistentyp can be sent as step2_leistentyp or leistentyp)
-      if (step2_material == null || step2Leistentyp == null) {
+      if (step2MaterialJson === undefined || step2Leistentyp == null) {
         return res.status(400).json({
           success: false,
           message:
-            "When has_trim_strips is false, step2_material and step2_leistentyp (or leistentyp) are required",
+            "When has_trim_strips is false, step2_material (JSON) and step2_leistentyp (or leistentyp) are required",
         });
       }
     }
@@ -642,7 +645,12 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           supply_note: supply_note ?? undefined,
           customerId: customerId ?? undefined,
           partnerId,
-          deposit_provision: Number(deposit_provision),
+          deposit_provision:
+            deposit_provision != null &&
+            deposit_provision !== "" &&
+            !Number.isNaN(Number(deposit_provision))
+              ? Number(deposit_provision)
+              : undefined,
           foot_analysis_price: footAnalysisPrice ?? undefined,
           discount: hasDiscount ? Number(discount) : undefined,
           ...(prescriptionId && { prescriptionId }),
@@ -677,13 +685,14 @@ export const createShoeOrder = async (req: Request, res: Response) => {
           status: "Halbprobenerstellung",
           isCompleted: false,
           notes: step4_notes ?? undefined,
-          fitting_date: safeDate(fitting_date),
+          preparation_date: safeDate(preparation_date),
         });
         stepRows.push({
           orderId: order.id,
           status: "Halbprobe_durchführen",
           isCompleted: false,
           notes: step4_notes ?? undefined,
+          fitting_date: safeDate(fitting_date),
           adjustments: adjustments ?? undefined,
           customer_reviews: customer_reviews ?? undefined,
         });
@@ -703,35 +712,72 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       }
 
       // Step 2
+      const step2LeistengrößeCombined =
+        toStr(step2_leistengröße) ?? toStr(step2_size);
+
       if (!hasTrimStrips) {
         stepRows.push({
           orderId: order.id,
           status: "Leistenerstellung",
           isCompleted: false,
           leistentyp: step2Leistentyp?.trim() ?? undefined,
-          material: step2_material ?? undefined,
+          material: step2MaterialJson,
           notes: step2_notes ?? undefined,
-          leistengröße: step2_leistengröße?.trim() ?? undefined,
+          leistengröße: step2LeistengrößeCombined,
         });
       } else {
-        stepRows.push({
+        const leistenAuto: Prisma.shoe_order_stepCreateManyInput = {
           orderId: order.id,
           status: "Leistenerstellung",
           isCompleted: true,
           auto_print: true,
-        });
+        };
+        if (step2MaterialJson !== undefined) {
+          leistenAuto.material = step2MaterialJson;
+        }
+        const step2NotesStr = toStr(step2_notes);
+        if (step2NotesStr) leistenAuto.notes = step2NotesStr;
+        if (step2LeistengrößeCombined) {
+          leistenAuto.leistengröße = step2LeistengrößeCombined;
+        }
+        stepRows.push(leistenAuto);
       }
 
-      // Step 3
+      // Step 3 — persist step3_json (object or JSON string) merged with step3_material / step3_thickness; step3_notes → notes
       if (beddingRequired) {
-        const step3JsonValue: Prisma.InputJsonValue | undefined =
+        const fromBodyObject =
           typeof step3_json === "object" && step3_json !== null
-            ? (step3_json as Prisma.InputJsonValue)
+            ? { ...(step3_json as Record<string, unknown>) }
+            : null;
+        const fromParsed =
+          fromBodyObject ??
+          (() => {
+            const p = parseJsonField(step3_json as unknown);
+            if (p === undefined) return {};
+            if (
+              typeof p === "object" &&
+              p !== null &&
+              !Array.isArray(p)
+            ) {
+              return { ...(p as Record<string, unknown>) };
+            }
+            return { payload: p as unknown };
+          })();
+        const merged: Record<string, unknown> = { ...fromParsed };
+        const mat3 = parseStepMaterialJson(step3_material);
+        if (mat3 !== undefined) merged.material = mat3;
+        if (step3_thickness != null && String(step3_thickness).trim() !== "") {
+          merged.thickness = String(step3_thickness).trim();
+        }
+        const step3JsonValue =
+          Object.keys(merged).length > 0
+            ? (merged as Prisma.InputJsonValue)
             : undefined;
         stepRows.push({
           orderId: order.id,
           status: "Bettungserstellung",
           isCompleted: false,
+          notes: toStr(step3_notes),
           zusätzliche_notizen: toStr(zusätzliche_notizen),
           step3_json: step3JsonValue,
         });
@@ -1620,7 +1666,7 @@ export const updateShoeOrderStatus = async (req, res) => {
     const stepPayload = {
       notes: str(notes),
       leistentyp: str(leistentyp),
-      material: str(material),
+      material: parseStepMaterialJson(material),
       step3_json: parseJson(step3_json),
       preparation_date: parseDate(preparation_date),
       checkliste_halbprobe: parseJson(checkliste_halbprobe),
@@ -1894,7 +1940,7 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
           ? (leistentyp?.trim() ?? undefined)
           : undefined,
       material:
-        material !== undefined ? (material?.trim() ?? undefined) : undefined,
+        material !== undefined ? parseStepMaterialJson(material) : undefined,
       preparation_date:
         preparation_date !== undefined && preparation_date !== ""
           ? new Date(preparation_date)

@@ -51,6 +51,26 @@ export const parseJsonField = (
   return value as Prisma.InputJsonValue;
 };
 
+/**
+ * `shoe_order_step.material` (step 2): any JSON value.
+ * Accepts parsed JSON body (object/array/primitive), or a string that is either JSON or a plain legacy string.
+ */
+export function parseStepMaterialJson(
+  value: unknown,
+): Prisma.InputJsonValue | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (!t) return undefined;
+    try {
+      return JSON.parse(t) as Prisma.InputJsonValue;
+    } catch {
+      return t as unknown as Prisma.InputJsonValue;
+    }
+  }
+  return value as Prisma.InputJsonValue;
+}
+
 export const SHOE_ORDER_SB_DRAFT_PREFIX = "shoe_order:sb_draft:";
 
 /** One Schaft/Boden draft per authenticated user (user id = partner id from JWT). */

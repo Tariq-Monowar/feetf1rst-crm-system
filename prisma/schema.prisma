@@ -2168,7 +2168,8 @@ model shoe_order_step {
   // files files[]
   // notes String?
   leistentyp     String?
-  material       String?
+  /// Arbitrary JSON (object/array/string/number) from client; not limited to a string.
+  material       Json?
   leistengröße String?
 
   // step 3
