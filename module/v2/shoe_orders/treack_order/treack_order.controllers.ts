@@ -46,11 +46,6 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
             image: true,
             busnessName: true,
             hauptstandort: true,
-            accountInfos: {
-              select: {
-                barcodeLabel: true,
-              },
-            },
           },
         },
       },
@@ -108,9 +103,7 @@ export const getBarcodeLabel = async (req: Request, res: Response) => {
         partner: {
           name: order.partner?.busnessName || order.partner?.name || null,
           image: order.partner?.image || null,
-          barcodeLabel:
-            order.partner?.accountInfos?.[0]?.barcodeLabel ||
-            `SO${order.orderNumber ?? ""}`,
+          barcodeLabel: `MS${order.orderNumber ?? ""}`,
         },
         customer: [order.customer?.vorname, order.customer?.nachname]
           .filter(Boolean)
