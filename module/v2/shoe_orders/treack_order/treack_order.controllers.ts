@@ -488,7 +488,12 @@ export const getActiveButton = async (req: Request, res: Response) => {
     const schaftRow = order.massschafterstellung;
     const bodenRow = order.bodenkonstruktion;
 
-    type CustomShaftRow = { id: string; catagoary: string | null };
+    type CustomShaftRow = {
+      id: string;
+      catagoary: string | null;
+      invoice: string | null;
+      invoice2: string | null;
+    };
     let customShafts: CustomShaftRow[] = [];
 
     const fkColumnRows = await prisma.$queryRaw<Array<{ column_name: string }>>`
@@ -535,7 +540,7 @@ export const getActiveButton = async (req: Request, res: Response) => {
       const safeCol = `"${col.replace(/"/g, '""')}"`;
       const rows = await prisma.$queryRawUnsafe<CustomShaftRow[]>(
         `
-          SELECT id, catagoary
+          SELECT id, catagoary, invoice, invoice2
           FROM custom_shafts
           WHERE ${safeCol} = $1
           ORDER BY "createdAt" DESC
