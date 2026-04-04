@@ -6,6 +6,7 @@ import {
   getCalculationData,
   getInsurancePaymentExpectationData,
   getInsuranceList,
+  getInsurancePriceData,
   getPrescriptionDoctorInfo,
   managePrescription,
   validateInsuranceChangelog,
@@ -32,6 +33,14 @@ router.get(
   "/doctor-info",
   verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
   getPrescriptionDoctorInfo,
+);
+
+// Query: type=insole|shoe — id= order id. Insurance price fields + line items + prescription proved_number.
+// GET {{_baseurl}}insurance/insurance-price?type=insole&id=...
+router.get(
+  "/insurance-price",
+  verifyUser("EMPLOYEE", "ADMIN", "PARTNER"),
+  getInsurancePriceData,
 );
 
 

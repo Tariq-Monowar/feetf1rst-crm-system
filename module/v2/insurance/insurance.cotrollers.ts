@@ -477,6 +477,152 @@ export const getPrescriptionDoctorInfo = async (req: Request, res: Response) => 
   }
 };
 
+const insurancePriceOrderSelectInsole = {
+  totalPrice: true,
+  insuranceTotalPrice: true,
+  fußanalyse: true,
+  einlagenversorgung: true,
+  fussanalysePreis: true,
+  einlagenversorgungPreis: true,
+  austria_price: true,
+  paymnentType: true,
+  bezahlt: true,
+  insurance_status: true,
+  insurance_payed: true,
+  private_payed: true,
+  net_price: true,
+  vatRate: true,
+  service_name: true,
+  sonstiges_category: true,
+  customerOrderInsurances: {
+    select: {
+      id: true,
+      price: true,
+      description: true,
+      vat_country: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  prescription: {
+    select: { proved_number: true },
+  },
+} as const;
+
+const insurancePriceOrderSelectShoe = {
+  payment_status: true,
+  payment_type: true,
+  insurance_status: true,
+  insurance_payed: true,
+  private_payed: true,
+  insurance_price: true,
+  private_price: true,
+  addon_price: true,
+  discount: true,
+  total_price: true,
+  vat_rate: true,
+  insurances: {
+    select: {
+      id: true,
+      orderId: true,
+      price: true,
+      description: true,
+      vat_country: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  prescription: {
+    select: { proved_number: true },
+  },
+} as const;
+
+/**
+ * Single endpoint: order `id` + `type` (insole | shoe | shoes) → insurance-related prices on the order,
+ * insurance line items (`customerOrderInsurance` / `shoe_order_insurance`), and `prescription.proved_number`.
+ * Query: `?type=insole|shoe&id=` or JSON body `{ "id", "type" }` on POST-capable clients; `id` query fallback matches doctor-info.
+ */
+export const getInsurancePriceData = async (req: Request, res: Response) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const typeRaw = String(req.query.type ?? body.type ?? "")
+      .trim()
+      .toLowerCase();
+    const orderId = String(
+      body.id ?? body.orderId ?? req.query.id ?? "",
+    ).trim();
+
+    if (!typeRaw || !orderId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Query param `type` (insole | shoe) and order `id` (JSON body, or query id=) are required",
+      });
+    }
+
+    const isShoe = typeRaw === "shoe" || typeRaw === "shoes";
+    const isInsole = typeRaw === "insole";
+
+    if (!isShoe && !isInsole) {
+      return res.status(400).json({
+        success: false,
+        message: "type must be insole or shoe",
+        validTypes: ["insole", "shoe"],
+      });
+    }
+
+    if (isShoe) {
+      const order = await prisma.shoe_order.findFirst({
+        where: { id: orderId, partnerId },
+        select: insurancePriceOrderSelectShoe,
+      });
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Shoe order not found or access denied",
+        });
+      }
+      return res.status(200).json({
+        success: true,
+        data: {
+          type: "shoe" as const,
+          order,
+        },
+      });
+    }
+
+    const order = await prisma.customerOrders.findFirst({
+      where: { id: orderId, partnerId },
+      select: insurancePriceOrderSelectInsole,
+    });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer order not found or access denied",
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      data: {
+        type: "insole" as const,
+        order,
+      },
+    });
+  } catch (error: any) {
+    console.error("getInsurancePriceData:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Something went wrong",
+      error: error.message,
+    });
+  }
+};
+
 export const managePrescription = async (req: Request, res: Response) => {
   const getActiveInsuranceOrders = async (partnerId: string) => {
     const [insole, shoe] = await Promise.all([
