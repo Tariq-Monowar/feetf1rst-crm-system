@@ -517,6 +517,148 @@ export const getAllOrders_v1 = async (req: Request, res: Response) => {
   }
 };
 
+/** Legacy ?bezahlt=… filters: map to paymnentType + flags (broth counts in both lanes). */
+const LEGACY_BEZAHLT_VALUES = [
+  "Privat_Bezahlt",
+  "Privat_offen",
+  "Krankenkasse_Ungenehmigt",
+  "Krankenkasse_Genehmigt",
+];
+
+function parseBezahltQueryParam(req: Request): string[] {
+  const raw = req.query.bezahlt;
+  if (raw == null || raw === "") return [];
+  const parts = Array.isArray(raw)
+    ? raw.flatMap((v) => String(v).split(","))
+    : String(raw).split(",");
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
+function validateLegacyBezahltValues(values: string[]): string | null {
+  const invalid = values.filter((s) => !LEGACY_BEZAHLT_VALUES.includes(s));
+  return invalid.length ? invalid.join(", ") : null;
+}
+
+/** Raw SQL: OR of each legacy status (for getAllOrders search branch). */
+function legacyBezahltSqlOrClause(values: string[]): Prisma.Sql {
+  const fragments: Prisma.Sql[] = [];
+  for (const value of values) {
+    switch (value) {
+      case "Privat_Bezahlt":
+        fragments.push(Prisma.sql`(
+          (co."paymnentType" IN ('private'::"paymnentType", 'broth'::"paymnentType") AND co."private_payed" = true)
+          OR (co."paymnentType" IS NULL AND co.bezahlt = 'Privat_Bezahlt'::"paymnentStatus")
+        )`);
+        break;
+      case "Privat_offen":
+        fragments.push(Prisma.sql`(
+          (co."paymnentType" IN ('private'::"paymnentType", 'broth'::"paymnentType") AND COALESCE(co."private_payed", false) = false)
+          OR (co."paymnentType" IS NULL AND co.bezahlt = 'Privat_offen'::"paymnentStatus")
+        )`);
+        break;
+      case "Krankenkasse_Genehmigt":
+        fragments.push(Prisma.sql`(
+          (co."paymnentType" IN ('insurance'::"paymnentType", 'broth'::"paymnentType") AND (co."insurance_payed" = true OR co."insurance_status" = 'approved'::"insurance_status"))
+          OR (co."paymnentType" IS NULL AND co.bezahlt = 'Krankenkasse_Genehmigt'::"paymnentStatus")
+        )`);
+        break;
+      case "Krankenkasse_Ungenehmigt":
+        fragments.push(Prisma.sql`(
+          (co."paymnentType" IN ('insurance'::"paymnentType", 'broth'::"paymnentType") AND NOT (co."insurance_payed" = true OR co."insurance_status" = 'approved'::"insurance_status"))
+          OR (co."paymnentType" IS NULL AND co.bezahlt = 'Krankenkasse_Ungenehmigt'::"paymnentStatus")
+        )`);
+        break;
+      default:
+        break;
+    }
+  }
+  return Prisma.join(fragments, " OR ");
+}
+
+/** Prisma where fragment for legacy bezahlt (non-search branch). */
+function legacyBezahltWhereInput(values: string[]) {
+  return {
+    OR: values.map((value) => {
+      switch (value) {
+        case "Privat_Bezahlt":
+          return {
+            OR: [
+              {
+                AND: [
+                  { paymnentType: { in: ["private", "broth"] } },
+                  { private_payed: true },
+                ],
+              },
+              { AND: [{ paymnentType: null }, { bezahlt: "Privat_Bezahlt" }] },
+            ],
+          };
+        case "Privat_offen":
+          return {
+            OR: [
+              {
+                AND: [
+                  { paymnentType: { in: ["private", "broth"] } },
+                  {
+                    OR: [{ private_payed: false }, { private_payed: null }],
+                  },
+                ],
+              },
+              { AND: [{ paymnentType: null }, { bezahlt: "Privat_offen" }] },
+            ],
+          };
+        case "Krankenkasse_Genehmigt":
+          return {
+            OR: [
+              {
+                AND: [
+                  { paymnentType: { in: ["insurance", "broth"] } },
+                  {
+                    OR: [
+                      { insurance_payed: true },
+                      { insurance_status: "approved" },
+                    ],
+                  },
+                ],
+              },
+              {
+                AND: [
+                  { paymnentType: null },
+                  { bezahlt: "Krankenkasse_Genehmigt" },
+                ],
+              },
+            ],
+          };
+        case "Krankenkasse_Ungenehmigt":
+          return {
+            OR: [
+              {
+                AND: [
+                  { paymnentType: { in: ["insurance", "broth"] } },
+                  {
+                    NOT: {
+                      OR: [
+                        { insurance_payed: true },
+                        { insurance_status: "approved" },
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                AND: [
+                  { paymnentType: null },
+                  { bezahlt: "Krankenkasse_Ungenehmigt" },
+                ],
+              },
+            ],
+          };
+        default:
+          return {};
+      }
+    }),
+  };
+}
+
 export const getAllOrders = async (req: Request, res: Response) => {
   try {
     const limit = Number(req.query.limit) || 10;
@@ -654,37 +796,19 @@ export const getAllOrders = async (req: Request, res: Response) => {
         }
       }
 
-      if (req.query.bezahlt) {
-        const validBezahlt = [
-          "Privat_Bezahlt",
-          "Privat_offen",
-          "Krankenkasse_Ungenehmigt",
-          "Krankenkasse_Genehmigt",
-        ];
-        const values = String(req.query.bezahlt)
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        const invalid = values.filter((s) => !validBezahlt.includes(s));
-        if (invalid.length > 0) {
+      const bezahltValuesSearch = parseBezahltQueryParam(req);
+      if (bezahltValuesSearch.length > 0) {
+        const invalid = validateLegacyBezahltValues(bezahltValuesSearch);
+        if (invalid) {
           return res.status(400).json({
             success: false,
-            message: `Invalid bezahlt value: ${invalid.join(", ")}`,
-            validValues: validBezahlt,
+            message: `Invalid bezahlt value: ${invalid}`,
+            validValues: LEGACY_BEZAHLT_VALUES,
           });
         }
-        if (values.length === 1) {
-          conditions.push(
-            Prisma.sql`co.bezahlt = ${values[0]}::"paymnentStatus"`,
-          );
-        } else if (values.length > 1) {
-          conditions.push(
-            Prisma.sql`co.bezahlt IN (${Prisma.join(
-              values.map((v) => Prisma.sql`${v}::"paymnentStatus"`),
-              ", ",
-            )})`,
-          );
-        }
+        conditions.push(
+          Prisma.sql`(${legacyBezahltSqlOrClause(bezahltValuesSearch)})`,
+        );
       }
       tokens.forEach((token) => {
         const term = `%${token}%`;
@@ -771,12 +895,15 @@ export const getAllOrders = async (req: Request, res: Response) => {
           co."privatePrice", co."insuranceTotalPrice",
           c.id AS cust_id, c.vorname, c.nachname, c.email, c.wohnort, c."customerNumber",
           e."accountName", e."employeeName", e.email AS emp_email,
-          (SELECT row_to_json(prod) FROM "customerProduct" prod WHERE prod.id = co."productId" LIMIT 1) AS product,
-          (SELECT json_build_object('type', s.type) FROM stores s WHERE s.id = co."storeId" LIMIT 1) AS store,
-          (SELECT row_to_json(v) FROM "Versorgungen" v WHERE v.id = co."versorgungId" LIMIT 1) AS versorgung
+          CASE WHEN prod.id IS NOT NULL THEN row_to_json(prod) ELSE NULL END AS product,
+          CASE WHEN s.id IS NOT NULL THEN json_build_object('type', s.type) ELSE NULL END AS store,
+          CASE WHEN v.id IS NOT NULL THEN row_to_json(v) ELSE NULL END AS versorgung
         FROM "customerOrders" co
         LEFT JOIN customers c ON c.id = co."customerId"
         LEFT JOIN "Employees" e ON e.id = co."employeeId"
+        LEFT JOIN "customerProduct" prod ON prod.id = co."productId"
+        LEFT JOIN stores s ON s.id = co."storeId"
+        LEFT JOIN "Versorgungen" v ON v.id = co."versorgungId"
         WHERE ${whereClause}
         ORDER BY co."createdAt" DESC, co.id DESC
         LIMIT ${limit + 1}
@@ -925,35 +1052,28 @@ export const getAllOrders = async (req: Request, res: Response) => {
         statuses.length === 1 ? statuses[0] : { in: statuses };
     }
 
-    if (req.query.bezahlt) {
-      const validBezahlt = [
-        "Privat_Bezahlt",
-        "Privat_offen",
-        "Krankenkasse_Ungenehmigt",
-        "Krankenkasse_Genehmigt",
-      ];
-      const values = String(req.query.bezahlt)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const invalid = values.filter((s) => !validBezahlt.includes(s));
-      if (invalid.length > 0) {
+    const bezahltValuesList = parseBezahltQueryParam(req);
+    if (bezahltValuesList.length > 0) {
+      const invalid = validateLegacyBezahltValues(bezahltValuesList);
+      if (invalid) {
         return res.status(400).json({
           success: false,
-          message: `Invalid bezahlt value: ${invalid.join(", ")}`,
-          validValues: validBezahlt,
+          message: `Invalid bezahlt value: ${invalid}`,
+          validValues: LEGACY_BEZAHLT_VALUES,
         });
       }
-      if (values.length > 0) {
-        where.bezahlt = values.length === 1 ? values[0] : { in: values };
-      }
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        legacyBezahltWhereInput(bezahltValuesList),
+      ];
     }
 
     const orders = await prisma.customerOrders.findMany({
       where,
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
-      orderBy: { createdAt: "desc" },
+      // Composite sort matches @@index([partnerId, createdAt(sort: Desc), id(sort: Desc)]) for fast partner lists
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: selectFields,
     });
 

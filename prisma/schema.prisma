@@ -1210,6 +1210,8 @@ model customerOrders {
   @@unique([partnerId, orderNumber])
   @@index([customerId])
   @@index([partnerId])
+  // List orders by partner (getAllOrders default): WHERE partnerId = ? ORDER BY createdAt DESC, id DESC
+  @@index([partnerId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([partnerId, orderStatus, fertigstellungBis]) // getPickupCalculation: single-scan raw query
   @@index([partnerId, orderNumber]) // createOrder: getNextOrderNumberForPartner
   @@index([createdAt])
