@@ -22,7 +22,8 @@
     "backfill:admin-transitions-store-overview": "ts-node scripts/backfill-admin-transitions-store-overview.ts",
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts",
     "delete:canceled-custom-shafts": "ts-node scripts/delete-canceled-custom-shafts.ts",
-    "trim:timeline-analytics-per-partner": "ts-node scripts/trim-timeline-analytics-per-partner.ts"
+    "trim:timeline-analytics-per-partner": "ts-node scripts/trim-timeline-analytics-per-partner.ts",
+    "massschuhe_order:remove": "ts-node scripts/remove-all-massschuhe-order-data.ts"
   },
   "keywords": [],
   "author": "",
