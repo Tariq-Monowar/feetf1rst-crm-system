@@ -8,7 +8,7 @@ import v2 from "./module/v2/index";
 import v3 from "./module/v3/index";
 import sponsor_models from "./sponsor_models/v1/index";
 import path from "path";
-import { searchLocation } from "./utils/location";
+import locationRouter from "./utils/location_routes";
 
 const app = express();
 
@@ -73,7 +73,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/", v1);
 app.use("/v2", v2);
 app.use("/v3", v3);
-app.use("/location", searchLocation);
+app.use("/location", locationRouter);
+
 app.use("/sponsor", sponsor_models);
 
 // Image proxy – fetches S3 assets server-side so the browser avoids CORS issues
