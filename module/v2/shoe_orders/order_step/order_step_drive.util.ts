@@ -11,6 +11,7 @@ import { prisma, type Prisma } from "../../../../db";
 import {
   copyS3ObjectAsNewFile,
   deleteMultipleFilesFromS3,
+  headS3ObjectMetadata,
 } from "../../../../utils/s3utils";
 
 const ROOT_NAME = "Maßschäfte";
@@ -98,6 +99,10 @@ function typeFromUploadRef(ref: StepDriveUploadRef): string | null {
   return `.${sub}`;
 }
 
+function isHttpStorageUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s.trim());
+}
+
 export function collectStepUploadRefs(
   files: Record<string, any[]> | undefined | null,
   fieldKeys: readonly string[],
@@ -109,15 +114,125 @@ export function collectStepUploadRefs(
     const f = files[key]?.[0];
     const location = s3UrlFromMulterPart(f);
     if (!location) continue;
+    const rawSize = f?.size;
+    const sizeNum =
+      typeof rawSize === "number"
+        ? rawSize
+        : typeof rawSize === "string" && rawSize !== ""
+          ? Number(rawSize)
+          : undefined;
     out.push({
       fieldKey: key,
       location,
-      originalname: f.originalname,
-      size: typeof f.size === "number" ? f.size : undefined,
-      mimetype: f.mimetype,
+      originalname: f.originalname ?? f.originalName,
+      size:
+        typeof sizeNum === "number" && !Number.isNaN(sizeNum)
+          ? sizeNum
+          : undefined,
+      mimetype: f.mimetype ?? f.contentType,
     });
   }
   return out;
+}
+
+/**
+ * Multer refs plus any field that was set to a new http(s) URL in the body (already-uploaded assets).
+ * Skips URLs unchanged from `prev` so routine saves do not duplicate drive files.
+ */
+export function collectMassschafterstellungDriveRefs(params: {
+  files: Record<string, any[]> | undefined | null;
+  row: Record<string, string | null | undefined>;
+  prev?: Record<string, string | null | undefined> | null;
+}): StepDriveUploadRef[] {
+  const refs = collectStepUploadRefs(params.files, MASST_STEP_UPLOAD_FIELD_KEYS);
+  const seen = new Set(refs.map((r) => r.location));
+  const prev = params.prev ?? {};
+  for (const key of MASST_STEP_UPLOAD_FIELD_KEYS) {
+    const cur = params.row[key];
+    if (typeof cur !== "string" || !isHttpStorageUrl(cur)) continue;
+    const trimmed = cur.trim();
+    const p = prev[key];
+    if (trimmed === p) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    refs.push({ fieldKey: key, location: trimmed });
+  }
+  return refs;
+}
+
+export function collectBodenkonstruktionDriveRefs(params: {
+  files: Record<string, any[]> | undefined | null;
+  row: Record<string, string | null | undefined>;
+  prev?: Record<string, string | null | undefined> | null;
+}): StepDriveUploadRef[] {
+  const refs = collectStepUploadRefs(params.files, BODEN_STEP_UPLOAD_FIELD_KEYS);
+  const seen = new Set(refs.map((r) => r.location));
+  const prev = params.prev ?? {};
+  for (const key of BODEN_STEP_UPLOAD_FIELD_KEYS) {
+    const cur = params.row[key];
+    if (typeof cur !== "string" || !isHttpStorageUrl(cur)) continue;
+    const trimmed = cur.trim();
+    const p = prev[key];
+    if (trimmed === p) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    refs.push({ fieldKey: key, location: trimmed });
+  }
+  return refs;
+}
+
+async function enrichStepUploadRef(ref: StepDriveUploadRef): Promise<StepDriveUploadRef> {
+  const name = ref.originalname?.trim() ?? "";
+  const hasMime = Boolean(ref.mimetype && String(ref.mimetype).trim());
+  const hasSize =
+    typeof ref.size === "number" && !Number.isNaN(ref.size) && ref.size >= 0;
+  const nameHasExt = Boolean(path.extname(name));
+  if (name && hasMime && hasSize && nameHasExt) return { ...ref };
+
+  const meta = await headS3ObjectMetadata(ref.location);
+  if (!meta) return { ...ref };
+
+  const mimetype =
+    (ref.mimetype && String(ref.mimetype).trim()) || meta.contentType;
+  const size =
+    typeof ref.size === "number" && !Number.isNaN(ref.size)
+      ? ref.size
+      : meta.contentLength;
+
+  let originalname = name || undefined;
+  if (!originalname) {
+    let base = meta.keyBasename || ref.fieldKey;
+    if (!path.extname(base)) {
+      const syntheticExt = typeFromUploadRef({
+        ...ref,
+        mimetype,
+        originalname: "",
+      });
+      if (syntheticExt) base += syntheticExt;
+    }
+    originalname = base;
+  } else if (!path.extname(originalname)) {
+    const syntheticExt = typeFromUploadRef({
+      ...ref,
+      mimetype,
+      originalname: "",
+    });
+    if (syntheticExt) originalname = `${originalname}${syntheticExt}`;
+  }
+
+  return {
+    ...ref,
+    originalname,
+    mimetype: mimetype ?? ref.mimetype,
+    size,
+  };
+}
+
+/** Fills missing name / mimetype / size from S3 HeadObject before archiving to customer drive. */
+export async function enrichStepUploadRefsForDrive(
+  uploads: StepDriveUploadRef[],
+): Promise<StepDriveUploadRef[]> {
+  return Promise.all(uploads.map((u) => enrichStepUploadRef(u)));
 }
 
 async function getOrCreateMasschaftLeafFolder(
@@ -220,7 +335,8 @@ export async function archiveMasschaftStepUploadsToDrive(params: {
   category: MasschaftDriveCategory;
   uploads: StepDriveUploadRef[];
 }): Promise<void> {
-  const { partnerId, customerId, category, uploads } = params;
+  const { partnerId, customerId, category } = params;
+  const uploads = await enrichStepUploadRefsForDrive(params.uploads);
   const n = uploads.length;
   if (n === 0) return;
 
@@ -294,6 +410,8 @@ export function scheduleMasschaftDrive(
     category: MasschaftDriveCategory;
     uploadFieldKeys: readonly string[];
     files?: Record<string, any[]> | null | undefined;
+    /** If set, used instead of collecting from `files` (merged multer + new body URLs). */
+    uploadRefs?: StepDriveUploadRef[] | null;
   },
 ): void {
   const frozen = {
@@ -302,14 +420,15 @@ export function scheduleMasschaftDrive(
     category: ctx.category,
     uploadFieldKeys: ctx.uploadFieldKeys,
     files: ctx.files,
+    uploadRefs: ctx.uploadRefs,
   };
 
   res.once("finish", () => {
     setImmediate(() => {
-      const uploads = collectStepUploadRefs(
-        frozen.files,
-        frozen.uploadFieldKeys,
-      );
+      const uploads =
+        frozen.uploadRefs != null
+          ? frozen.uploadRefs.map((u) => ({ ...u }))
+          : collectStepUploadRefs(frozen.files, frozen.uploadFieldKeys);
       const payload = {
         partnerId: frozen.partnerId,
         customerId: frozen.customerId,

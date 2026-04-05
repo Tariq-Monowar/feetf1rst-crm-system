@@ -9,7 +9,10 @@ import {
   copyS3ObjectAsNewFile,
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
-import type { StepDriveUploadRef } from "./order_step/order_step_drive.util";
+import {
+  enrichStepUploadRefsForDrive,
+  type StepDriveUploadRef,
+} from "./order_step/order_step_drive.util";
 import type { SchafBodenDraftPayload } from "./shoe_orders.controllers.helpers";
 
 const ROOT_NAME = "Maßschuhaufträge";
@@ -79,17 +82,29 @@ export function collectShoeOrderMultipartFileRefs(
     const f = fileList[i] as {
       location?: string;
       originalname?: string;
-      size?: number;
+      originalName?: string;
+      size?: number | string;
       mimetype?: string;
+      contentType?: string;
     };
     const loc = f?.location;
     if (typeof loc !== "string" || !loc.length) continue;
+    const rawSize = f?.size;
+    const sizeNum =
+      typeof rawSize === "number"
+        ? rawSize
+        : typeof rawSize === "string" && rawSize !== ""
+          ? Number(rawSize)
+          : undefined;
     out.push({
       fieldKey: `files_${i}`,
       location: loc,
-      originalname: f.originalname,
-      size: typeof f.size === "number" ? f.size : undefined,
-      mimetype: f.mimetype,
+      originalname: f.originalname ?? f.originalName,
+      size:
+        typeof sizeNum === "number" && !Number.isNaN(sizeNum)
+          ? sizeNum
+          : undefined,
+      mimetype: f.mimetype ?? f.contentType,
     });
   }
   return out;
@@ -151,7 +166,8 @@ export async function archiveMasschuhauftraegeUploadsToDrive(params: {
   orderNumber: number;
   uploads: StepDriveUploadRef[];
 }): Promise<void> {
-  const { partnerId, customerId, orderNumber, uploads } = params;
+  const { partnerId, customerId, orderNumber } = params;
+  const uploads = await enrichStepUploadRefsForDrive(params.uploads);
   const n = uploads.length;
   if (n === 0) return;
 

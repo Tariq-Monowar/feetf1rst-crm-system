@@ -3,6 +3,8 @@ import { Prisma, prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
 import {
   BODEN_STEP_UPLOAD_FIELD_KEYS,
+  collectBodenkonstruktionDriveRefs,
+  collectMassschafterstellungDriveRefs,
   MASST_STEP_UPLOAD_FIELD_KEYS,
   scheduleMasschaftDrive,
 } from "./order_step_drive.util";
@@ -231,12 +233,37 @@ export const manageMassschafterstellung = async (
     }
 
     if (order.customerId && order.partnerId) {
+      const mPrev = order.massschafterstellung;
+      const uploadRefs = collectMassschafterstellungDriveRefs({
+        files,
+        row: {
+          massschafterstellung_image: row.massschafterstellung_image ?? undefined,
+          threeDFile: row.threeDFile ?? undefined,
+          zipper_image: row.zipper_image ?? undefined,
+          custom_models_image: row.custom_models_image ?? undefined,
+          staticImage: row.staticImage ?? undefined,
+          ledertyp_image: row.ledertyp_image ?? undefined,
+          paintImage: row.paintImage ?? undefined,
+        },
+        prev: mPrev
+          ? {
+              massschafterstellung_image:
+                mPrev.massschafterstellung_image ?? undefined,
+              threeDFile: mPrev.threeDFile ?? undefined,
+              zipper_image: mPrev.zipper_image ?? undefined,
+              custom_models_image: mPrev.custom_models_image ?? undefined,
+              staticImage: mPrev.staticImage ?? undefined,
+              ledertyp_image: mPrev.ledertyp_image ?? undefined,
+              paintImage: mPrev.paintImage ?? undefined,
+            }
+          : null,
+      });
       scheduleMasschaftDrive(res, {
         partnerId: order.partnerId,
         customerId: order.customerId,
         category: "Massschafterstellung",
         uploadFieldKeys: MASST_STEP_UPLOAD_FIELD_KEYS,
-        files,
+        uploadRefs,
       });
     }
 
@@ -440,12 +467,27 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
     }
 
     if (order.customerId && order.partnerId) {
+      const bPrev = order.bodenkonstruktion;
+      const uploadRefs = collectBodenkonstruktionDriveRefs({
+        files,
+        row: {
+          bodenkonstruktion_image: row.bodenkonstruktion_image ?? undefined,
+          threeDFile: row.threeDFile ?? undefined,
+        },
+        prev: bPrev
+          ? {
+              bodenkonstruktion_image:
+                bPrev.bodenkonstruktion_image ?? undefined,
+              threeDFile: bPrev.threeDFile ?? undefined,
+            }
+          : null,
+      });
       scheduleMasschaftDrive(res, {
         partnerId: order.partnerId,
         customerId: order.customerId,
         category: "Bodenkonstruktion",
         uploadFieldKeys: BODEN_STEP_UPLOAD_FIELD_KEYS,
-        files,
+        uploadRefs,
       });
     }
 

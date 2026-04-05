@@ -2,6 +2,7 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -15,6 +16,35 @@ const BUCKET_NAME = process.env.AWS_BUCKET_NAME;
 
 if (!BUCKET_NAME) {
   throw new Error("AWS_BUCKET_NAME environment variable is not set");
+}
+
+/**
+ * S3 object metadata for drive rows when multer omits originalname / mimetype / size
+ * (e.g. client reuses an existing URL or sends an empty filename).
+ */
+export async function headS3ObjectMetadata(
+  s3UrlOrKey: string,
+): Promise<{
+  contentType?: string;
+  contentLength?: number;
+  keyBasename: string;
+} | null> {
+  try {
+    const key = extractS3Key(s3UrlOrKey);
+    const out = await s3.send(
+      new HeadObjectCommand({ Bucket: BUCKET_NAME, Key: key }),
+    );
+    const basename =
+      key.includes("/") ? key.slice(key.lastIndexOf("/") + 1) : key;
+    return {
+      contentType: out.ContentType ?? undefined,
+      contentLength:
+        typeof out.ContentLength === "number" ? out.ContentLength : undefined,
+      keyBasename: basename,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
