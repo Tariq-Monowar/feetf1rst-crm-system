@@ -210,6 +210,7 @@ async function enrichStepUploadRef(ref: StepDriveUploadRef): Promise<StepDriveUp
       });
       if (syntheticExt) base += syntheticExt;
     }
+    
     originalname = base;
   } else if (!path.extname(originalname)) {
     const syntheticExt = typeFromUploadRef({
