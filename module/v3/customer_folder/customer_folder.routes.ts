@@ -1,6 +1,10 @@
 import express from "express";
 import { verifyUser } from "../../../middleware/verifyUsers";
-import { moveCustomerFolderOrFile, updateCustomerFolderOrFileName } from "./customer_folder.controllers";
+import {
+  deleteCustomerFolderOrFileItems,
+  moveCustomerFolderOrFile,
+  updateCustomerFolderOrFileName,
+} from "./customer_folder.controllers";
 
 const router = express.Router();
 
@@ -33,5 +37,16 @@ router.post(
   moveCustomerFolderOrFile,
 );
 
+
+/**
+ * delete many files and/or folders (each folder: full subtree). Removes S3 objects for affected files.
+ * @route POST {{_baseurl}}v3/customer-folder/delete
+ * @body { items: [{ type: "folder"|"file", id: string | string[] }, ...] } (same shape as /move)
+ */
+router.delete(
+  "/delete",
+  verifyUser("PARTNER", "EMPLOYEE"),
+  deleteCustomerFolderOrFileItems,
+);
 
 export default router;

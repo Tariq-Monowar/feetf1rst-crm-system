@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Prisma, prisma } from "../../../db";
+import { deleteMultipleFilesFromS3 } from "../../../utils/s3utils";
 
 export const updateCustomerFolderOrFileName = async (
   req: Request,
@@ -79,117 +80,6 @@ export const updateCustomerFolderOrFileName = async (
   }
 };
 
-
-/** True if targetFolderId lies inside the subtree of any folder in movedFolderIds (one query). */
-async function targetInsideMovedFolderSubtrees(
-  partnerId: string,
-  movedFolderIds: string[],
-  targetFolderId: string,
-): Promise<boolean> {
-  if (movedFolderIds.length === 0) return false;
-  const idSql = Prisma.join(
-    movedFolderIds.map((fid) => Prisma.sql`${fid}`),
-  );
-  const rows = await prisma.$queryRaw<{ ok: number }[]>(Prisma.sql`
-    WITH RECURSIVE down AS (
-      SELECT f.id
-      FROM folder f
-      WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
-      UNION ALL
-      SELECT c.id
-      FROM folder c
-      INNER JOIN down d ON c."parentId" = d.id
-      WHERE c."partnerId" = ${partnerId}
-    )
-    SELECT 1 AS ok FROM down WHERE id = ${targetFolderId} LIMIT 1
-  `);
-  return rows.length > 0;
-}
-
-/** All folder ids in the subtrees rooted at `rootIds` (includes roots). */
-async function subtreeFolderIds(
-  partnerId: string,
-  rootIds: string[],
-): Promise<string[]> {
-  if (rootIds.length === 0) return [];
-  const idSql = Prisma.join(rootIds.map((id) => Prisma.sql`${id}`));
-  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
-    WITH RECURSIVE down AS (
-      SELECT f.id
-      FROM folder f
-      WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
-      UNION ALL
-      SELECT c.id
-      FROM folder c
-      INNER JOIN down d ON c."parentId" = d.id
-      WHERE c."partnerId" = ${partnerId}
-    )
-    SELECT id FROM down
-  `);
-  return rows.map((r) => r.id);
-}
-
-function normalizeIdList(idField: unknown): string[] {
-  if (idField == null) return [];
-  if (Array.isArray(idField)) {
-    return [
-      ...new Set(
-        idField.map((x) => String(x).trim()).filter((s) => s.length > 0),
-      ),
-    ];
-  }
-  const s = String(idField).trim();
-  return s ? [s] : [];
-}
-
-type MoveItemGroup = { type?: unknown; id?: unknown };
-
-function flattenMoveItems(
-  body: Record<string, unknown>,
-):
-  | { error: string }
-  | { folderIds: string[]; fileIds: string[] } {
-  const folderIds: string[] = [];
-  const fileIds: string[] = [];
-
-  const pushGroup = (raw: MoveItemGroup): string | null => {
-    const kind = String(raw.type ?? "").toLowerCase();
-    if (kind !== "folder" && kind !== "file") {
-      return 'Invalid type: use "folder" or "file"';
-    }
-    const ids = normalizeIdList(raw.id);
-    if (ids.length === 0) {
-      return "Each group needs a non-empty id or id[]";
-    }
-    if (kind === "folder") folderIds.push(...ids);
-    else fileIds.push(...ids);
-    return null;
-  };
-
-  if (Array.isArray(body.items)) {
-    if (body.items.length === 0) {
-      return { error: "items must not be empty" };
-    }
-    for (const raw of body.items as MoveItemGroup[]) {
-      const err = pushGroup(raw);
-      if (err) return { error: err };
-    }
-  } else if (body.type != null && body.id != null) {
-    const err = pushGroup({ type: body.type, id: body.id });
-    if (err) return { error: err };
-  } else {
-    return {
-      error:
-        'Send items: [{ type: "folder"|"file", id: string | string[] }, ...] or { type, id }',
-    };
-  }
-
-  if (folderIds.length === 0 && fileIds.length === 0) {
-    return { error: "No folder or file ids to move" };
-  }
-  return { folderIds, fileIds };
-}
-
 export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
@@ -198,15 +88,66 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
     }
 
     const body = req.body ?? {};
-    const flat = flattenMoveItems(body as Record<string, unknown>);
-    if ("error" in flat) {
-      return res.status(400).json({ success: false, message: flat.error });
+    const folderIds: string[] = [];
+    const fileIds: string[] = [];
+
+    const normalizeIds = (raw: unknown): string[] => {
+      if (raw == null) return [];
+      if (Array.isArray(raw)) {
+        return [
+          ...new Set(raw.map((x) => String(x).trim()).filter((s) => s.length > 0)),
+        ];
+      }
+      const s = String(raw).trim();
+      return s ? [s] : [];
+    };
+
+    const items = Array.isArray((body as Record<string, unknown>).items)
+      ? ((body as Record<string, unknown>).items as { type?: unknown; id?: unknown }[])
+      : (body as Record<string, unknown>).type != null &&
+          (body as Record<string, unknown>).id != null
+        ? [
+            {
+              type: (body as Record<string, unknown>).type,
+              id: (body as Record<string, unknown>).id,
+            },
+          ]
+        : null;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Send items: [{ type: "folder"|"file", id: string | string[] }, ...] or { type, id }',
+      });
     }
 
-    const uniqueFolderIds = [...new Set(flat.folderIds)];
-    const uniqueFileIds = [...new Set(flat.fileIds)];
+    for (const item of items) {
+      const kind = String(item.type ?? "").toLowerCase();
+      if (kind !== "folder" && kind !== "file") {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid type: use "folder" or "file"',
+        });
+      }
+      const ids = normalizeIds(item.id);
+      if (ids.length === 0) {
+        continue;
+      }
+      if (kind === "folder") folderIds.push(...ids);
+      else fileIds.push(...ids);
+    }
 
-    const targetRaw = body.targetParentId ?? body.parentId;
+    const uniqueFolderIds = [...new Set(folderIds)];
+    const uniqueFileIds = [...new Set(fileIds)];
+
+    if (uniqueFolderIds.length === 0 && uniqueFileIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No folder or file ids to move" });
+    }
+
+    const targetRaw =
+      (body as Record<string, unknown>).targetParentId ??
+      (body as Record<string, unknown>).parentId;
     const atRoot =
       targetRaw === null ||
       targetRaw === undefined ||
@@ -226,7 +167,6 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
         targetFolderId = destFolder.id;
         destCustomerId = destFolder.customerId ?? null;
       } else {
-        // Drive-style: drop target can be a file → move into that file's parent (folder or customer root).
         const destFile = await prisma.file.findFirst({
           where: { id: tid, partnerId },
           select: { folderId: true, customerId: true },
@@ -237,6 +177,7 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
             message: "Target not found (use a folder id, file id, or null for drive root)",
           });
         }
+
         if (destFile.folderId) {
           const parent = await prisma.folder.findFirst({
             where: { id: destFile.folderId, partnerId },
@@ -280,19 +221,17 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
             where: { id: { in: uniqueFolderIds }, partnerId },
             select: { id: true, customerId: true },
           })
-        : Promise.resolve([] as { id: string; customerId: string | null }[]),
+        : ([] as { id: string; customerId: string | null }[]),
       uniqueFileIds.length
         ? prisma.file.findMany({
             where: { id: { in: uniqueFileIds }, partnerId },
             select: { id: true, customerId: true, folderId: true },
           })
-        : Promise.resolve(
-            [] as {
-              id: string;
-              customerId: string | null;
-              folderId: string | null;
-            }[],
-          ),
+        : ([] as {
+            id: string;
+            customerId: string | null;
+            folderId: string | null;
+          }[]),
     ]);
 
     if (foundFolders.length !== uniqueFolderIds.length) {
@@ -314,6 +253,7 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
         .map((r) => r.customerId)
         .filter((c): c is string => c != null && c !== "");
       const distinct = [...new Set(nonNull)];
+
       if (distinct.length > 1) {
         return res.status(400).json({
           success: false,
@@ -321,10 +261,11 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
             "Move-out (drive root): selected items belong to different customers; pass customerId or select one customer",
         });
       }
+
       if (distinct.length === 1) {
-        destCustomerId = distinct[0]!;
-      } else if (body.customerId) {
-        destCustomerId = String(body.customerId);
+        destCustomerId = distinct[0];
+      } else if ((body as Record<string, unknown>).customerId) {
+        destCustomerId = String((body as Record<string, unknown>).customerId);
       } else {
         return res.status(400).json({
           success: false,
@@ -332,15 +273,13 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
             "Move-out (drive root): pass customerId, or ensure items have customerId set",
         });
       }
+
       const cust = await prisma.customers.findFirst({
         where: { id: destCustomerId, partnerId },
         select: { id: true },
       });
       if (!cust) {
-        return res.status(404).json({
-          success: false,
-          message: "Customer not found",
-        });
+        return res.status(404).json({ success: false, message: "Customer not found" });
       }
     }
 
@@ -351,23 +290,49 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
           message: "Cannot use a folder as target while also moving that folder",
         });
       }
-      const bad = await targetInsideMovedFolderSubtrees(
-        partnerId,
-        uniqueFolderIds,
-        targetFolderId,
-      );
-      if (bad) {
-        return res.status(400).json({
-          success: false,
-          message: "Cannot move into a folder that is inside one of the folders being moved",
-        });
+
+      if (uniqueFolderIds.length > 0) {
+        const idSql = Prisma.join(uniqueFolderIds.map((fid) => Prisma.sql`${fid}`));
+        const inside = await prisma.$queryRaw<{ ok: number }[]>(Prisma.sql`
+          WITH RECURSIVE down AS (
+            SELECT f.id
+            FROM folder f
+            WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
+            UNION ALL
+            SELECT c.id
+            FROM folder c
+            INNER JOIN down d ON c."parentId" = d.id
+            WHERE c."partnerId" = ${partnerId}
+          )
+          SELECT 1 AS ok FROM down WHERE id = ${targetFolderId} LIMIT 1
+        `);
+        if (inside.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot move into a folder that is inside one of the folders being moved",
+          });
+        }
       }
     }
 
-    const subtreeIds =
-      uniqueFolderIds.length > 0
-        ? await subtreeFolderIds(partnerId, uniqueFolderIds)
-        : [];
+    let subtreeIds: string[] = [];
+    if (uniqueFolderIds.length > 0) {
+      const idSql = Prisma.join(uniqueFolderIds.map((id) => Prisma.sql`${id}`));
+      const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+        WITH RECURSIVE down AS (
+          SELECT f.id
+          FROM folder f
+          WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
+          UNION ALL
+          SELECT c.id
+          FROM folder c
+          INNER JOIN down d ON c."parentId" = d.id
+          WHERE c."partnerId" = ${partnerId}
+        )
+        SELECT DISTINCT id FROM down
+      `);
+      subtreeIds = rows.map((r) => r.id);
+    }
 
     const subtreeIdSet = new Set(subtreeIds);
     const fileById = new Map(foundFiles.map((f) => [f.id, f]));
@@ -378,45 +343,46 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
       return !subtreeIdSet.has(row.folderId);
     });
 
-    const result = await prisma.$transaction(async (tx) => {
+    const data = await prisma.$transaction(async (tx) => {
       let movedRootFolders = 0;
       let movedLooseFiles = 0;
       let subtreeFoldersCustomerSynced = 0;
       let subtreeFilesCustomerSynced = 0;
 
       if (subtreeIds.length > 0) {
-        const fAll = await tx.folder.updateMany({
+        const folderSync = await tx.folder.updateMany({
           where: { id: { in: subtreeIds }, partnerId },
           data: { customerId: destCustomerId },
         });
-        subtreeFoldersCustomerSynced = fAll.count;
-        const fl = await tx.file.updateMany({
+        subtreeFoldersCustomerSynced = folderSync.count;
+
+        const fileSync = await tx.file.updateMany({
           where: { folderId: { in: subtreeIds }, partnerId },
           data: { customerId: destCustomerId },
         });
-        subtreeFilesCustomerSynced = fl.count;
+        subtreeFilesCustomerSynced = fileSync.count;
       }
 
       if (uniqueFolderIds.length > 0) {
-        const r = await tx.folder.updateMany({
+        const folderMove = await tx.folder.updateMany({
           where: { id: { in: uniqueFolderIds }, partnerId },
           data: {
             parentId: targetFolderId,
             customerId: destCustomerId,
           },
         });
-        movedRootFolders = r.count;
+        movedRootFolders = folderMove.count;
       }
 
       if (fileIdsToReparent.length > 0) {
-        const r = await tx.file.updateMany({
+        const fileMove = await tx.file.updateMany({
           where: { id: { in: fileIdsToReparent }, partnerId },
           data: {
             folderId: targetFolderId,
             customerId: destCustomerId,
           },
         });
-        movedLooseFiles = r.count;
+        movedLooseFiles = fileMove.count;
       }
 
       return {
@@ -432,10 +398,187 @@ export const moveCustomerFolderOrFile = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       message: "Moved successfully",
-      data: result,
+      data,
     });
   } catch (error: unknown) {
     console.error("Move Customer Folder or File Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+export const deleteCustomerFolderOrFileItems = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const body = req.body ?? {};
+    const folderIds: string[] = [];
+    const fileIds: string[] = [];
+
+    const normalizeIds = (raw: unknown): string[] => {
+      if (raw == null) return [];
+      if (Array.isArray(raw)) {
+        return [
+          ...new Set(
+            raw.map((x) => String(x).trim()).filter((s) => s.length > 0),
+          ),
+        ];
+      }
+      const s = String(raw).trim();
+      return s ? [s] : [];
+    };
+
+    const items = Array.isArray((body as Record<string, unknown>).items)
+      ? ((body as Record<string, unknown>).items as { type?: unknown; id?: unknown }[])
+      : null;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Send items: [{ type: "folder"|"file", id: string | string[] }, ...]',
+      });
+    }
+
+    for (const item of items) {
+      const kind = String(item.type ?? "").toLowerCase();
+      if (kind !== "folder" && kind !== "file") {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid type: use "folder" or "file"',
+        });
+      }
+      const ids = normalizeIds(item.id);
+      if (ids.length === 0) {
+        continue;
+      }
+      if (kind === "folder") folderIds.push(...ids);
+      else fileIds.push(...ids);
+    }
+
+    const uniqueFolderIds = [...new Set(folderIds)];
+    const uniqueFileIds = [...new Set(fileIds)];
+
+    if (uniqueFolderIds.length === 0 && uniqueFileIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No folder or file ids to delete",
+      });
+    }
+
+    const [foundFolderCount, foundFileCount] = await Promise.all([
+      uniqueFolderIds.length
+        ? prisma.folder.count({
+            where: { id: { in: uniqueFolderIds }, partnerId },
+          })
+        : 0,
+      uniqueFileIds.length
+        ? prisma.file.count({
+            where: { id: { in: uniqueFileIds }, partnerId },
+          })
+        : 0,
+    ]);
+
+    if (foundFolderCount !== uniqueFolderIds.length) {
+      return res.status(404).json({
+        success: false,
+        message: "One or more folders not found",
+      });
+    }
+    if (foundFileCount !== uniqueFileIds.length) {
+      return res.status(404).json({
+        success: false,
+        message: "One or more files not found",
+      });
+    }
+
+    let subtreeFolderIds: string[] = [];
+    if (uniqueFolderIds.length > 0) {
+      const idSql = Prisma.join(uniqueFolderIds.map((rid) => Prisma.sql`${rid}`));
+      const rows = await prisma.$queryRaw<{ id: string }[]>(
+        Prisma.sql`
+          WITH RECURSIVE subtree AS (
+            SELECT f.id
+            FROM folder f
+            WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
+            UNION ALL
+            SELECT c.id
+            FROM folder c
+            INNER JOIN subtree s ON c."parentId" = s.id
+            WHERE c."partnerId" = ${partnerId}
+          )
+          SELECT DISTINCT id
+          FROM subtree
+        `,
+      );
+      subtreeFolderIds = rows.map((r) => r.id);
+    }
+
+    const fileWhere: Prisma.fileWhereInput =
+      subtreeFolderIds.length > 0 && uniqueFileIds.length > 0
+        ? {
+            OR: [
+              { folderId: { in: subtreeFolderIds } },
+              { id: { in: uniqueFileIds } },
+            ],
+          }
+        : subtreeFolderIds.length > 0
+          ? { folderId: { in: subtreeFolderIds } }
+          : { id: { in: uniqueFileIds } };
+
+    const fileRows = await prisma.file.findMany({
+      where: { ...fileWhere, partnerId },
+      select: { id: true, url: true },
+    });
+    const urls = [...new Set(fileRows.map((f) => f.url).filter(Boolean))] as string[];
+    if (urls.length > 0) {
+      await deleteMultipleFilesFromS3(urls);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.file.deleteMany({ where: { ...fileWhere, partnerId } });
+
+      if (uniqueFolderIds.length > 0) {
+        const idSql = Prisma.join(uniqueFolderIds.map((rid) => Prisma.sql`${rid}`));
+        await tx.$executeRaw(
+          Prisma.sql`
+            WITH RECURSIVE subtree AS (
+              SELECT f.id
+              FROM folder f
+              WHERE f."partnerId" = ${partnerId} AND f.id IN (${idSql})
+              UNION ALL
+              SELECT c.id
+              FROM folder c
+              INNER JOIN subtree s ON c."parentId" = s.id
+              WHERE c."partnerId" = ${partnerId}
+            )
+            DELETE FROM folder
+            WHERE "partnerId" = ${partnerId}
+              AND id IN (SELECT id FROM subtree)
+          `,
+        );
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Selected folders (with contents) and files deleted",
+      data: {
+        deletedFolderCount: subtreeFolderIds.length,
+        deletedFileCount: fileRows.length,
+      },
+    });
+  } catch (error: unknown) {
+    console.error("Delete Customer Folder/File Items Error:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
