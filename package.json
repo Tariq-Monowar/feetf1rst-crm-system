@@ -23,7 +23,8 @@
     "delete:store-admin-order-transitions": "ts-node scripts/delete-store-admin-order-transitions.ts",
     "delete:canceled-custom-shafts": "ts-node scripts/delete-canceled-custom-shafts.ts",
     "trim:timeline-analytics-per-partner": "ts-node scripts/trim-timeline-analytics-per-partner.ts",
-    "massschuhe_order:remove": "ts-node scripts/remove-all-massschuhe-order-data.ts"
+    "massschuhe_order:remove": "ts-node scripts/remove-all-massschuhe-order-data.ts",
+    "prevus-adjestmant": "ts-node ecript/prevus-adjestmant.ts"
   },
   "keywords": [],
   "author": "",
