@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import { Prisma, prisma } from "../../../../db";
 import { deleteFileFromS3 } from "../../../../utils/s3utils";
+import {
+  BODEN_STEP_UPLOAD_FIELD_KEYS,
+  MASST_STEP_UPLOAD_FIELD_KEYS,
+  scheduleMasschaftDrive,
+} from "./order_step_drive.util";
 
 function pickUploaded(files: Record<string, unknown>, field: string) {
   const f = files[field] as { location?: string } | { location?: string }[] | undefined;
@@ -96,6 +101,8 @@ export const manageMassschafterstellung = async (
       where: { id: orderId },
       select: {
         id: true,
+        customerId: true,
+        partnerId: true,
         massschafterstellung: {
           select: {
             id: true,
@@ -223,6 +230,16 @@ export const manageMassschafterstellung = async (
       deleteFileFromS3(prevPaint);
     }
 
+    if (order.customerId && order.partnerId) {
+      scheduleMasschaftDrive(res, {
+        partnerId: order.partnerId,
+        customerId: order.customerId,
+        category: "Massschafterstellung",
+        uploadFieldKeys: MASST_STEP_UPLOAD_FIELD_KEYS,
+        files,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Massschafterstellung saved for order",
@@ -286,6 +303,20 @@ export const getMassschafterstellungDetails = async (
           paintImage: null,
         };
 
+    const orderMeta = await prisma.shoe_order.findFirst({
+      where: { id: orderId },
+      select: { customerId: true, partnerId: true },
+    });
+    if (orderMeta?.customerId && orderMeta?.partnerId) {
+      scheduleMasschaftDrive(res, {
+        partnerId: orderMeta.partnerId,
+        customerId: orderMeta.customerId,
+        category: "Massschafterstellung",
+        uploadFieldKeys: MASST_STEP_UPLOAD_FIELD_KEYS,
+        files: undefined,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Shoe order fetched successfully",
@@ -346,6 +377,8 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       where: { id: orderId },
       select: {
         id: true,
+        customerId: true,
+        partnerId: true,
         bodenkonstruktion: {
           select: {
             id: true,
@@ -406,6 +439,16 @@ export const manageBodenkonstruktion = async (req: Request, res: Response) => {
       deleteFileFromS3(prevThreeD);
     }
 
+    if (order.customerId && order.partnerId) {
+      scheduleMasschaftDrive(res, {
+        partnerId: order.partnerId,
+        customerId: order.customerId,
+        category: "Bodenkonstruktion",
+        uploadFieldKeys: BODEN_STEP_UPLOAD_FIELD_KEYS,
+        files,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Bodenkonstruktion saved for order",
@@ -458,6 +501,20 @@ export const getBodenkonstruktionDetails = async (
           bodenkonstruktion_image: null,
           threeDFile: null,
         };
+
+    const orderMeta = await prisma.shoe_order.findFirst({
+      where: { id: orderId },
+      select: { customerId: true, partnerId: true },
+    });
+    if (orderMeta?.customerId && orderMeta?.partnerId) {
+      scheduleMasschaftDrive(res, {
+        partnerId: orderMeta.partnerId,
+        customerId: orderMeta.customerId,
+        category: "Bodenkonstruktion",
+        uploadFieldKeys: BODEN_STEP_UPLOAD_FIELD_KEYS,
+        files: undefined,
+      });
+    }
 
     return res.status(200).json({
       success: true,

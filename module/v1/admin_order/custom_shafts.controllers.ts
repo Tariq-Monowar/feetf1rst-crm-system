@@ -11,6 +11,11 @@ import {
   sendCustomShaftOrderNotification,
   sendLeistenerstellungAccessRequestEmail,
 } from "../../../utils/emailService.utils";
+import {
+  CUSTOM_BODENKONSTRUKTION_CREATE_UPLOAD_FIELD_KEYS,
+  CUSTOM_SHAFTS_CREATE_UPLOAD_FIELD_KEYS,
+  scheduleMasschaftDrive,
+} from "../../v2/shoe_orders/order_step/order_step_drive.util";
 
 const formatOrderCreatedAt = (d: Date) =>
   d.toLocaleDateString("de-DE", {
@@ -892,6 +897,19 @@ export const createTustomShafts = async (req, res) => {
       }
     })();
 
+    if (b.customerId && id) {
+      scheduleMasschaftDrive(res, {
+        partnerId: id,
+        customerId: String(b.customerId),
+        category:
+          category === "Komplettfertigung"
+            ? "Komplettfertigung"
+            : "Massschafterstellung",
+        uploadFieldKeys: CUSTOM_SHAFTS_CREATE_UPLOAD_FIELD_KEYS,
+        files: files as Record<string, any[]>,
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: "Custom shaft created successfully",
@@ -1252,6 +1270,16 @@ export const createCustomBodenkonstruktionOrder = async (
         console.error("Order notification/email background job failed:", err);
       }
     })();
+
+    if (customer?.id && id) {
+      scheduleMasschaftDrive(res, {
+        partnerId: id,
+        customerId: customer.id,
+        category: "Bodenkonstruktion",
+        uploadFieldKeys: CUSTOM_BODENKONSTRUKTION_CREATE_UPLOAD_FIELD_KEYS,
+        files: files as Record<string, any[]>,
+      });
+    }
 
     return res.status(200).json({
       success: true,
