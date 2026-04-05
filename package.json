@@ -24,7 +24,8 @@
     "delete:canceled-custom-shafts": "ts-node scripts/delete-canceled-custom-shafts.ts",
     "trim:timeline-analytics-per-partner": "ts-node scripts/trim-timeline-analytics-per-partner.ts",
     "massschuhe_order:remove": "ts-node scripts/remove-all-massschuhe-order-data.ts",
-    "prevus-adjestmant": "ts-node ecript/prevus-adjestmant.ts"
+    "prevus-adjestmant": "ts-node ecript/prevus-adjestmant.ts",
+    "prevus-shoe-adjestmant": "ts-node ecript/prevus-shoe-adjestmant.ts"
   },
   "keywords": [],
   "author": "",
