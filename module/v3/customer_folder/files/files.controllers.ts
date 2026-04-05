@@ -124,6 +124,7 @@ export const uploadFile = async (req: Request, res: Response) => {
         type = sub ? `.${sub}` : null;
       }
 
+      
       return {
         partnerId,
         name,
