@@ -544,6 +544,7 @@ export const deleteCustomerFolderOrFileItems = async (
       await deleteMultipleFilesFromS3(urls);
     }
 
+    
     await prisma.$transaction(async (tx) => {
       await tx.file.deleteMany({ where: { ...fileWhere, partnerId } });
 
