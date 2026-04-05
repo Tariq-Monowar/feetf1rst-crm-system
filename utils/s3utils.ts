@@ -1,4 +1,9 @@
-import { DeleteObjectCommand, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "stream";
 import s3 from "./s3client";
@@ -40,6 +45,50 @@ export const extractS3Key = (s3Url: string): string => {
   } catch (error) {
     // If URL parsing fails, assume it's already a key
     return s3Url;
+  }
+};
+
+/**
+ * Server-side copy into a new unique key. Result is a separate S3 object (new URL);
+ * deleting or replacing the source does not affect the copy.
+ */
+export const copyS3ObjectAsNewFile = async (
+  sourceS3UrlOrKey: string,
+  fileNameHint: string,
+  contentTypeHint?: string,
+): Promise<string> => {
+  const sourceKey = extractS3Key(sourceS3UrlOrKey);
+  const sanitizedName =
+    fileNameHint.replace(/\s+/g, "_").replace(/[^\w.-]/g, "") || "file";
+  const newKey = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${sanitizedName}`;
+
+  const region = process.env.AWS_REGION || "us-east-1";
+  const destUrl = `https://${BUCKET_NAME}.s3.${region}.amazonaws.com/${newKey}`;
+
+  // CopySource: bucket/key — encode key segments (slashes stay unencoded between segments)
+  const copySource = `${BUCKET_NAME}/${sourceKey.split("/").map(encodeURIComponent).join("/")}`;
+
+  try {
+    await s3.send(
+      new CopyObjectCommand({
+        Bucket: BUCKET_NAME,
+        CopySource: copySource,
+        Key: newKey,
+      }),
+    );
+    return destUrl;
+  } catch (copyErr) {
+    console.warn(
+      "S3 CopyObject failed, using download+upload fallback:",
+      sourceS3UrlOrKey,
+      copyErr,
+    );
+    const buf = await downloadFileFromS3(sourceS3UrlOrKey);
+    return await uploadFileToS3(
+      buf,
+      `${Math.random().toString(36).slice(2, 10)}-${sanitizedName}`,
+      contentTypeHint,
+    );
   }
 };
 

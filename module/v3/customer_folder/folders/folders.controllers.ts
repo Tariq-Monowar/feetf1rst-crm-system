@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { Prisma, prisma } from "../../../../db";
-import { deleteMultipleFilesFromS3 } from "../../../../utils/s3utils";
 
 export const createCustomerFolder = async (req: Request, res: Response) => {
   const language = process.env.LANGUAGE === "de";
@@ -385,90 +384,3 @@ export const updateFolder = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteFolder = async (req: Request, res: Response) => {
-  try {
-    const partnerId = req.user?.id;
-
-    const { folderId } = req.query;
-    if (!folderId) {
-      return res.status(400).json({
-        success: false,
-        message: "folderId query parameter is required",
-      });
-    }
-
-    const id = String(folderId);
-
-    const root = await prisma.folder.findFirst({
-      where: { id, partnerId },
-      select: { id: true },
-    });
-    if (!root) {
-      return res.status(404).json({
-        success: false,
-        message: "Folder not found",
-      });
-    }
-
-    const subtreeRows = await prisma.$queryRaw<{ id: string; depth: number }[]>(
-      Prisma.sql`
-      WITH RECURSIVE subtree AS (
-        SELECT f.id, 0 AS depth
-        FROM folder f
-        WHERE f.id = ${id} AND f."partnerId" = ${partnerId}
-        UNION ALL
-        SELECT c.id, s.depth + 1
-        FROM folder c
-        INNER JOIN subtree s ON c."parentId" = s.id
-        WHERE c."partnerId" = ${partnerId}
-      )
-      SELECT id, depth FROM subtree
-    `,
-    );
-
-    const folderIds = subtreeRows.map((r) => r.id);
-
-    const fileRows = await prisma.file.findMany({
-      where: { folderId: { in: folderIds } },
-      select: { url: true },
-    });
-    const urls = fileRows.map((f) => f.url).filter(Boolean) as string[];
-    if (urls.length > 0) {
-      await deleteMultipleFilesFromS3(urls);
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.file.deleteMany({ where: { folderId: { in: folderIds } } });
-
-      const byDepth = new Map<number, string[]>();
-      for (const row of subtreeRows) {
-        const list = byDepth.get(row.depth) ?? [];
-        list.push(row.id);
-        byDepth.set(row.depth, list);
-      }
-      const depthsDescending = [...byDepth.keys()].sort((a, b) => b - a);
-      for (const d of depthsDescending) {
-        const atDepth = byDepth.get(d);
-        if (atDepth?.length) {
-          await tx.folder.deleteMany({ where: { id: { in: atDepth } } });
-        }
-      }
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Folder and all nested folders and files deleted",
-      data: {
-        deletedFolderCount: folderIds.length,
-        deletedFileCount: fileRows.length,
-      },
-    });
-  } catch (error: unknown) {
-    console.error("Delete Folder Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-};

@@ -2,7 +2,6 @@ import express from "express";
 import { verifyUser } from "../../../../middleware/verifyUsers";
 import {
   createCustomerFolder,
-  deleteFolder,
   getAllCustomerFolders,
   getFolderPath,
 } from "./folders.controllers";
@@ -44,11 +43,6 @@ router.get(
  */
 router.get("/path", verifyUser("PARTNER", "EMPLOYEE"), getFolderPath);
 
-/*  delete folder + full subtree (all nested folders/files) and S3 objects for those files
- * @route DELETE {{_baseurl}}v3/folders/delete
- * @query folderId (required)
- */
-router.delete("/delete", verifyUser("PARTNER", "EMPLOYEE"), deleteFolder);
 
 
 

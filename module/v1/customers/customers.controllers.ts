@@ -9,6 +9,10 @@ import {
   deleteMultipleFilesFromS3,
   downloadFileFromS3,
 } from "../../../utils/s3utils";
+import {
+  collectScreenerDriveUploadRefs,
+  scheduleScreenerDriveCopy,
+} from "./customer.util";
 
 const COMPLETED_ORDER_STATUSES: any = [
   "Ausgeführte_Einlagen",
@@ -1796,6 +1800,15 @@ export const addScreenerFile = async (req: Request, res: Response) => {
     //     );
     //   }
     // }
+
+    const driveUploads = collectScreenerDriveUploadRefs(files);
+    if (driveUploads.length > 0) {
+      scheduleScreenerDriveCopy({
+        partnerId: customer.partnerId,
+        customerId,
+        uploads: driveUploads,
+      });
+    }
 
     res.status(201).json({
       success: true,
