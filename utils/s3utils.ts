@@ -77,12 +77,7 @@ export const copyS3ObjectAsNewFile = async (
       }),
     );
     return destUrl;
-  } catch (copyErr) {
-    console.warn(
-      "S3 CopyObject failed, using download+upload fallback:",
-      sourceS3UrlOrKey,
-      copyErr,
-    );
+  } catch {
     const buf = await downloadFileFromS3(sourceS3UrlOrKey);
     return await uploadFileToS3(
       buf,

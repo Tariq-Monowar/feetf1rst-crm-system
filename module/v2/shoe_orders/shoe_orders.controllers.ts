@@ -17,6 +17,11 @@ import {
   parseStepMaterialJson,
   shoeOrderSbDraftRedisKey,
 } from "./shoe_orders.controllers.helpers";
+import {
+  collectSchafBodenDraftUploadRefs,
+  collectShoeOrderMultipartFileRefs,
+  scheduleMasschuhauftraegeDriveCopy,
+} from "./shoe_order_drive.util";
 
 const MASS_EXTRA_IMAGE_KEYS = [
   "zipper_image",
@@ -824,6 +829,22 @@ export const createShoeOrder = async (req: Request, res: Response) => {
       },
     });
 
+    if (
+      sbDraft &&
+      newOrder.orderNumber != null &&
+      customerId
+    ) {
+      const masschuhDriveRefs = collectSchafBodenDraftUploadRefs(sbDraft);
+      if (masschuhDriveRefs.length > 0) {
+        scheduleMasschuhauftraegeDriveCopy(res, {
+          partnerId,
+          customerId,
+          orderNumber: newOrder.orderNumber,
+          uploads: masschuhDriveRefs,
+        });
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: "Shoe order created successfully",
@@ -1606,6 +1627,9 @@ export const updateShoeOrderStatus = async (req, res) => {
       where: orderWhere,
       select: {
         id: true,
+        partnerId: true,
+        customerId: true,
+        orderNumber: true,
         shoeOrderStep: {
           where: { status },
           take: 1,
@@ -1828,6 +1852,21 @@ export const updateShoeOrderStatus = async (req, res) => {
       }),
     ]);
 
+    const statusDriveRefs = collectShoeOrderMultipartFileRefs(fileList);
+    if (
+      statusDriveRefs.length > 0 &&
+      order.customerId &&
+      order.partnerId &&
+      order.orderNumber != null
+    ) {
+      scheduleMasschuhauftraegeDriveCopy(res, {
+        partnerId: order.partnerId,
+        customerId: order.customerId,
+        orderNumber: order.orderNumber,
+        uploads: statusDriveRefs,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: existingStep
@@ -1906,6 +1945,9 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
       where: orderWhereStep,
       select: {
         id: true,
+        partnerId: true,
+        customerId: true,
+        orderNumber: true,
         shoeOrderStep: {
           where: { status },
           take: 1,
@@ -2088,6 +2130,21 @@ export const updateShoeOrderStep = async (req: Request, res: Response) => {
         where: { orderId: id },
       }),
     ]);
+
+    const stepDriveRefs = collectShoeOrderMultipartFileRefs(fileList);
+    if (
+      stepDriveRefs.length > 0 &&
+      order.customerId &&
+      order.partnerId &&
+      order.orderNumber != null
+    ) {
+      scheduleMasschuhauftraegeDriveCopy(res, {
+        partnerId: order.partnerId,
+        customerId: order.customerId,
+        orderNumber: order.orderNumber,
+        uploads: stepDriveRefs,
+      });
+    }
 
     return res.status(200).json({
       success: true,

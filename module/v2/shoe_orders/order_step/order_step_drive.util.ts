@@ -13,7 +13,6 @@ import {
   deleteMultipleFilesFromS3,
 } from "../../../../utils/s3utils";
 
-const LOG = "[masschaft-drive]";
 const ROOT_NAME = "Maßschäfte";
 
 export type MasschaftDriveCategory =
@@ -213,7 +212,6 @@ export async function ensureMasschaftDriveFoldersOnly(params: {
       false,
     );
   });
-  console.log(`${LOG} ensured folders`, { customerId, category });
 }
 
 export async function archiveMasschaftStepUploadsToDrive(params: {
@@ -248,7 +246,6 @@ export async function archiveMasschaftStepUploadsToDrive(params: {
       newUrls.push(r.value);
       continue;
     }
-    console.error(`${LOG} S3 copy failed`, uploads[i]?.fieldKey, r.reason);
     if (newUrls.length) await deleteMultipleFilesFromS3(newUrls);
     throw r.reason instanceof Error ? r.reason : new Error(String(r.reason));
   }
@@ -278,7 +275,6 @@ export async function archiveMasschaftStepUploadsToDrive(params: {
       }
       await tx.file.createMany({ data: rows });
     });
-    console.log(`${LOG} archived uploads`, { customerId, category, count: n });
   } catch (dbErr) {
     await deleteMultipleFilesFromS3(newUrls);
     throw dbErr;
@@ -322,14 +318,12 @@ export function scheduleMasschaftDrive(
       const uploadSnapshot = uploads.map((u) => ({ ...u }));
 
       if (uploadSnapshot.length === 0) {
-        void ensureMasschaftDriveFoldersOnly(payload).catch((err) =>
-          console.error(`${LOG} ensure folders failed`, err),
-        );
+        void ensureMasschaftDriveFoldersOnly(payload).catch(() => {});
       } else {
         void archiveMasschaftStepUploadsToDrive({
           ...payload,
           uploads: uploadSnapshot,
-        }).catch((err) => console.error(`${LOG} archive failed`, err));
+        }).catch(() => {});
       }
     });
   });

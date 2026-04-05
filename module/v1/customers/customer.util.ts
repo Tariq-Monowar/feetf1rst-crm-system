@@ -2,7 +2,12 @@
  * Customer drive (`folder` / `file` in schema) is separate from `screener_file`.
  * Scanner uploads are copied to new S3 keys; we only INSERT generic `folder` + `file`
  * rows (url, customerId, partnerId). No screener FK on those models by design.
+ *
+ * Schedulers (`scheduleScreenerDriveCopy`, `scheduleCustomerSignatureDriveCopy`) only attach
+ * `res.once("finish")` before your handler returns; S3/Prisma run after the response is sent
+ * inside `setImmediate`, so they do not add latency to JSON generation or the wire.
  */
+import type { Response } from "express";
 import path from "path";
 import { prisma, type Prisma } from "../../../db";
 import {
@@ -10,24 +15,10 @@ import {
   deleteMultipleFilesFromS3,
 } from "../../../utils/s3utils";
 
-const LOG = "[screener-drive]";
 const FUSSCANNING_ROOT_NAME = "Fußscanning";
-
-function logInfo(msg: string, extra?: Record<string, unknown>) {
-  if (extra) console.log(`${LOG} ${msg}`, extra);
-  else console.log(`${LOG} ${msg}`);
-}
-
-function logErr(msg: string, err: unknown, extra?: Record<string, unknown>) {
-  const e = err as { message?: string; code?: string; meta?: unknown };
-  console.error(`${LOG} ${msg}`, {
-    message: e?.message,
-    code: e?.code,
-    meta: e?.meta,
-    ...extra,
-    err,
-  });
-}
+/** Customer signature / PDF copies in drive (v2 customers_sign). */
+export const KUNDENUNTERSCHRIFT_ROOT_NAME = "Kundenunterschrift";
+export const CUSTOMER_SIGN_DRIVE_FIELD_KEYS = ["sign", "pdf"] as const;
 
 /** Stable field order for multipart screener uploads (single pass, no object key churn). */
 export const SCREENER_DRIVE_FIELD_KEYS = [
@@ -95,13 +86,7 @@ function typeFromUploadRef(ref: ScreenerDriveUploadRef): string | null {
 export function collectScreenerDriveUploadRefs(
   files: Record<string, any[]> | undefined | null,
 ): ScreenerDriveUploadRef[] {
-  if (!files || typeof files !== "object" || Array.isArray(files)) {
-    logInfo("collect: skip — req.files missing or not an object map", {
-      typeofFiles: typeof files,
-      isArray: Array.isArray(files),
-    });
-    return [];
-  }
+  if (!files || typeof files !== "object" || Array.isArray(files)) return [];
   const keys = SCREENER_DRIVE_FIELD_KEYS;
   const out: ScreenerDriveUploadRef[] = [];
   for (let i = 0; i < keys.length; i++) {
@@ -117,56 +102,39 @@ export function collectScreenerDriveUploadRefs(
       mimetype: f.mimetype,
     });
   }
-  logInfo("collect: done", {
-    refCount: out.length,
-    fields: out.map((r) => r.fieldKey),
-    multerKeys: Object.keys(files),
-  });
-  if (out.length === 0 && Object.keys(files).length > 0) {
-    logInfo(
-      "collect: multer has file keys but no S3 url — check .location / .key on each part",
-      {
-        sample: Object.fromEntries(
-          Object.entries(files).slice(0, 3).map(([k, arr]) => [
-            k,
-            arr?.[0]
-              ? {
-                  hasLocation: !!arr[0].location,
-                  hasKey: !!arr[0].key,
-                  keys: Object.keys(arr[0]).slice(0, 12),
-                }
-              : null,
-          ]),
-        ),
-      },
-    );
+  return out;
+}
+
+/** Multer fields `sign` / `pdf` for v2 customers_sign → drive copies. */
+export function collectCustomerSignDriveUploadRefs(
+  files: Record<string, any[]> | undefined | null,
+): ScreenerDriveUploadRef[] {
+  if (!files || typeof files !== "object" || Array.isArray(files)) return [];
+  const out: ScreenerDriveUploadRef[] = [];
+  for (const key of CUSTOMER_SIGN_DRIVE_FIELD_KEYS) {
+    const f = files[key]?.[0];
+    const location = s3UrlFromMulterPart(f);
+    if (!location) continue;
+    out.push({
+      fieldKey: key,
+      location,
+      originalname: f.originalname,
+      size: typeof f.size === "number" ? f.size : undefined,
+      mimetype: f.mimetype,
+    });
   }
   return out;
 }
 
-/**
- * Copies each screener upload to a new S3 object, then ensures `Fußscanning / YYYY-MM-DD`
- * and inserts `file` rows with those new URLs only. Drive files are independent copies:
- * no shared key/URL with `screener_file` and safe if screener assets are replaced or removed.
- */
-export async function archiveScreenerUploadsToCustomerDrive(params: {
+async function archiveCustomerDriveRootDateUploads(params: {
   partnerId: string;
   customerId: string;
+  rootFolderName: string;
   uploads: ScreenerDriveUploadRef[];
 }): Promise<void> {
-  const { partnerId, customerId, uploads } = params;
+  const { partnerId, customerId, rootFolderName, uploads } = params;
   const n = uploads.length;
-  if (n === 0) {
-    logInfo("archive: skip — empty uploads[]");
-    return;
-  }
-
-  logInfo("archive: start (S3 copy → folder/file DB)", {
-    partnerId,
-    customerId,
-    fileCount: n,
-    fields: uploads.map((u) => u.fieldKey),
-  });
+  if (n === 0) return;
 
   const names: string[] = new Array(n);
   const types: (string | null)[] = new Array(n);
@@ -190,14 +158,9 @@ export async function archiveScreenerUploadsToCustomerDrive(params: {
       newUrls.push(r.value);
       continue;
     }
-    logErr(`S3 copy failed for field index ${i}`, r.reason, {
-      fieldKey: uploads[i]?.fieldKey,
-    });
     if (newUrls.length) await deleteMultipleFilesFromS3(newUrls);
     throw r.reason instanceof Error ? r.reason : new Error(String(r.reason));
   }
-
-  logInfo("archive: all S3 copies OK", { newObjectCount: newUrls.length });
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -206,23 +169,20 @@ export async function archiveScreenerUploadsToCustomerDrive(params: {
           partnerId,
           customerId,
           parentId: null,
-          name: FUSSCANNING_ROOT_NAME,
+          name: rootFolderName,
         },
         select: { id: true },
       });
       if (!root) {
         root = await tx.folder.create({
           data: {
-            name: FUSSCANNING_ROOT_NAME,
+            name: rootFolderName,
             partnerId,
             customerId,
             parentId: null,
           },
           select: { id: true },
         });
-        logInfo("archive: created root folder Fußscanning", { id: root.id });
-      } else {
-        logInfo("archive: using existing Fußscanning folder", { id: root.id });
       }
 
       const dateName = ymdLocal(new Date());
@@ -245,15 +205,6 @@ export async function archiveScreenerUploadsToCustomerDrive(params: {
           },
           select: { id: true },
         });
-        logInfo("archive: created date folder", {
-          name: dateName,
-          id: dayFolder.id,
-        });
-      } else {
-        logInfo("archive: using existing date folder", {
-          name: dateName,
-          id: dayFolder.id,
-        });
       }
 
       const folderId = dayFolder.id;
@@ -271,43 +222,116 @@ export async function archiveScreenerUploadsToCustomerDrive(params: {
         };
       }
 
-      const created = await tx.file.createMany({ data: rows });
-      logInfo("archive: prisma file.createMany OK", { count: created.count });
+      await tx.file.createMany({ data: rows });
     });
-    logInfo("archive: finished OK", { customerId, partnerId });
   } catch (dbErr) {
-    logErr("archive: DB transaction failed — rolled back folder+file rows; cleaning new S3 copies", dbErr);
     await deleteMultipleFilesFromS3(newUrls);
     throw dbErr;
   }
 }
 
 /**
- * Runs after the current tick (`setImmediate`). Pass **snapshots** from
- * `collectScreenerDriveUploadRefs(files)` before `res.json()` so URLs are not lost.
+ * Copies each screener upload to a new S3 object, then ensures `Fußscanning / YYYY-MM-DD`
+ * and inserts `file` rows with those new URLs only. Drive files are independent copies:
+ * no shared key/URL with `screener_file` and safe if screener assets are replaced or removed.
  */
-export function scheduleScreenerDriveCopy(ctx: {
+export async function archiveScreenerUploadsToCustomerDrive(params: {
   partnerId: string;
   customerId: string;
   uploads: ScreenerDriveUploadRef[];
-}): void {
-  if (ctx.uploads.length === 0) return;
-
-  logInfo("schedule: queued background job (setImmediate)", {
-    partnerId: ctx.partnerId,
-    customerId: ctx.customerId,
-    uploadCount: ctx.uploads.length,
+}): Promise<void> {
+  return archiveCustomerDriveRootDateUploads({
+    ...params,
+    rootFolderName: FUSSCANNING_ROOT_NAME,
   });
+}
 
-  const payload = {
+/** Same as screener archive but under `Kundenunterschrift` (sign / PDF copies). */
+export async function archiveCustomerSignatureUploadsToCustomerDrive(params: {
+  partnerId: string;
+  customerId: string;
+  uploads: ScreenerDriveUploadRef[];
+}): Promise<void> {
+  return archiveCustomerDriveRootDateUploads({
+    ...params,
+    rootFolderName: KUNDENUNTERSCHRIFT_ROOT_NAME,
+  });
+}
+
+/**
+ * Registers only `res.once("finish")` on the request path. After the response is fully
+ * sent, `setImmediate` collects refs and runs S3/Prisma — no extra work before `res.json()`.
+ */
+export function scheduleScreenerDriveCopy(
+  res: Response,
+  ctx: {
+    partnerId: string;
+    customerId: string;
+    files: Record<string, any[]> | undefined | null;
+  },
+): void {
+  const { files } = ctx;
+  if (!files || typeof files !== "object" || Array.isArray(files)) return;
+  if (Object.keys(files).length === 0) return;
+
+  const frozen = {
     partnerId: ctx.partnerId,
     customerId: ctx.customerId,
-    uploads: ctx.uploads.map((u) => ({ ...u })),
+    files,
   };
 
-  setImmediate(() => {
-    void archiveScreenerUploadsToCustomerDrive(payload).catch((err) => {
-      logErr("schedule: background archive rejected", err);
+  res.once("finish", () => {
+    setImmediate(() => {
+      const uploads = collectScreenerDriveUploadRefs(frozen.files);
+      if (uploads.length === 0) return;
+      void archiveScreenerUploadsToCustomerDrive({
+        partnerId: frozen.partnerId,
+        customerId: frozen.customerId,
+        uploads,
+      }).catch(() => {});
+    });
+  });
+}
+
+/**
+ * Request path: only `res.once("finish")`. Collects multer + optional base64 sign URL
+ * after send, then `setImmediate` → S3 copy + DB.
+ */
+export function scheduleCustomerSignatureDriveCopy(
+  res: Response,
+  ctx: {
+    partnerId: string;
+    customerId: string;
+    files?: Record<string, any[]> | null | undefined;
+    signFromBase64Url?: string | null;
+  },
+): void {
+  const frozen = {
+    partnerId: ctx.partnerId,
+    customerId: ctx.customerId,
+    files: ctx.files,
+    signFromBase64Url: ctx.signFromBase64Url ?? null,
+  };
+
+  res.once("finish", () => {
+    setImmediate(() => {
+      const uploads = collectCustomerSignDriveUploadRefs(frozen.files);
+      if (
+        frozen.signFromBase64Url &&
+        !uploads.some((u) => u.fieldKey === "sign")
+      ) {
+        uploads.push({
+          fieldKey: "sign",
+          location: frozen.signFromBase64Url,
+          mimetype: "image/png",
+        });
+      }
+      if (uploads.length === 0) return;
+      void archiveCustomerSignatureUploadsToCustomerDrive({
+        partnerId: frozen.partnerId,
+        customerId: frozen.customerId,
+        uploads,
+      }).catch(() => {});
     });
   });
 }

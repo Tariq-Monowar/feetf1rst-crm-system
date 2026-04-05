@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { prisma } from "../../../db";
 import { deleteFileFromS3, uploadFileToS3 } from "../../../utils/s3utils";
+import { scheduleCustomerSignatureDriveCopy } from "../../v1/customers/customer.util";
 import { randomUUID } from "crypto";
 import path from "path";
 
@@ -239,7 +240,7 @@ export const manageCustomerSign = async (req: Request, res: Response) => {
 
     const customer = await prisma.customers.findUnique({
       where: { id: customerId },
-      select: { id: true },
+      select: { id: true, partnerId: true },
     });
 
     if (!customer) {
@@ -281,6 +282,20 @@ export const manageCustomerSign = async (req: Request, res: Response) => {
 
     if (existingCustomerSign?.pdf && pdfFile?.location) {
       await deleteFileFromS3(existingCustomerSign.pdf);
+    }
+
+    const filesMap = (req.files as Record<string, any[]>) || {};
+    if (customer.partnerId) {
+      const hasMulterSignOrPdf = !!(signFile?.location || pdfFile?.location);
+      const hasBase64Sign = !!(signBase64Url && !signFile?.location);
+      if (hasMulterSignOrPdf || hasBase64Sign) {
+        scheduleCustomerSignatureDriveCopy(res, {
+          partnerId: customer.partnerId,
+          customerId,
+          files: filesMap,
+          signFromBase64Url: hasBase64Sign ? signBase64Url : null,
+        });
+      }
     }
 
     res.status(existingCustomerSign ? 200 : 201).json({
