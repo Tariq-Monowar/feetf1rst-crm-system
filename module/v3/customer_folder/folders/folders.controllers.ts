@@ -58,6 +58,35 @@ export const createCustomerFolder = async (req: Request, res: Response) => {
   }
 };
 
+function pickInsideFolderId(query: Request["query"]): string | null {
+  const candidates = [query.folder, query.folderId, query.parentId];
+  for (const raw of candidates) {
+    if (raw == null || raw === "") continue;
+    const s = String(raw).trim();
+    if (!s || s === "null" || s === "undefined") continue;
+    return s;
+  }
+  return null;
+}
+
+function pickFileCursor(query: Request["query"]): string | undefined {
+  const raw = query.fileCursor ?? query.cursor;
+  if (raw == null || raw === "") return undefined;
+  const s = String(raw).trim();
+  if (!s || s === "null" || s === "undefined") return undefined;
+  return s;
+}
+
+/** Smaller JSON + skips per-folder _count subqueries (faster on large lists). */
+function wantsLightList(query: Request["query"]): boolean {
+  const v = query.light ?? query.minimal;
+  if (v == null) return false;
+  const s = String(v).toLowerCase();
+  return s === "1" || s === "true" || s === "yes";
+}
+
+const customerExistsSelect = { id: true } as const;
+
 export const getAllCustomerFolders = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
@@ -65,7 +94,9 @@ export const getAllCustomerFolders = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    const { customerId, search, parentId, limit, fileCursor } = req.query;
+    const { customerId, search, limit } = req.query;
+    const fileCursor = pickFileCursor(req.query);
+    const light = wantsLightList(req.query);
 
     if (!customerId) {
       return res.status(400).json({
@@ -76,80 +107,119 @@ export const getAllCustomerFolders = async (req: Request, res: Response) => {
 
     const custId = String(customerId);
 
-    const customer = await prisma.customers.findFirst({
-      where: { id: custId, partnerId },
-      select: { id: true },
-    });
-
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: "Customer not found",
-      });
-    }
-
     const rawLimit = parseInt(String(limit ?? "20"), 10);
     const take = Math.min(
       Math.max(Number.isFinite(rawLimit) ? rawLimit : 20, 1),
       100,
     );
 
-    const atCustomerRoot = !parentId || parentId === "null" || parentId === "";
+    const insideFolderId = pickInsideFolderId(req.query);
 
-    const whereCondition: any = {
-      partnerId,
-      customerId: custId,
-    };
+    let whereCondition: Prisma.folderWhereInput;
+    let fileWhere: Prisma.fileWhereInput;
 
-    if (search) {
-      whereCondition.name = {
-        contains: String(search),
-        mode: "insensitive",
+    if (!insideFolderId) {
+      const customer = await prisma.customers.findFirst({
+        where: { id: custId, partnerId },
+        select: customerExistsSelect,
+      });
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer not found",
+        });
+      }
+
+      whereCondition = {
+        partnerId,
+        customerId: custId,
+        parentId: null,
+      };
+      fileWhere = {
+        partnerId,
+        folderId: null,
+        customerId: custId,
+      };
+    } else {
+      const [customer, parent] = await Promise.all([
+        prisma.customers.findFirst({
+          where: { id: custId, partnerId },
+          select: customerExistsSelect,
+        }),
+        prisma.folder.findFirst({
+          where: { id: insideFolderId, partnerId },
+          select: { id: true, customerId: true },
+        }),
+      ]);
+
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer not found",
+        });
+      }
+      if (!parent) {
+        return res.status(404).json({
+          success: false,
+          message: "Folder not found",
+        });
+      }
+      if (
+        parent.customerId != null &&
+        parent.customerId !== custId
+      ) {
+        return res.status(404).json({
+          success: false,
+          message: "Folder not found",
+        });
+      }
+
+      whereCondition = {
+        partnerId,
+        parentId: insideFolderId,
+        ...(parent.customerId
+          ? { customerId: parent.customerId }
+          : {}),
+      };
+      fileWhere = {
+        partnerId,
+        folderId: insideFolderId,
       };
     }
 
-    if (atCustomerRoot) {
-      whereCondition.parentId = null;
-    } else {
-      whereCondition.parentId = String(parentId);
-    }
-
-    const fileWhere: any = {
-      partnerId,
-    };
-
-    if (atCustomerRoot) {
-      fileWhere.folderId = null;
-      fileWhere.customerId = custId;
-    } else {
-      fileWhere.folderId = String(parentId);
-    }
-
     if (search) {
-      fileWhere.name = {
+      const nameFilter = {
         contains: String(search),
-        mode: "insensitive",
+        mode: "insensitive" as const,
       };
+      whereCondition.name = nameFilter;
+      fileWhere.name = nameFilter;
     }
 
-    const [folders, files] = await Promise.all([
-      prisma.folder.findMany({
-        where: whereCondition,
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        select: {
+    const folderSelect = light
+      ? ({
+          id: true,
+          name: true,
+          parentId: true,
+        } satisfies Prisma.folderSelect)
+      : ({
           id: true,
           name: true,
           parentId: true,
           createdAt: true,
           _count: { select: { children: true, files: true } },
-        },
-      }),
-      prisma.file.findMany({
-        where: fileWhere,
-        take: take + 1,
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        ...(fileCursor ? { cursor: { id: String(fileCursor) }, skip: 1 } : {}),
-        select: {
+        } satisfies Prisma.folderSelect);
+
+    const fileSelect = light
+      ? ({
+          id: true,
+          name: true,
+          type: true,
+          size: true,
+          folderId: true,
+          createdAt: true,
+        } satisfies Prisma.fileSelect)
+      : ({
           id: true,
           name: true,
           type: true,
@@ -158,7 +228,20 @@ export const getAllCustomerFolders = async (req: Request, res: Response) => {
           folderId: true,
           customerId: true,
           createdAt: true,
-        },
+        } satisfies Prisma.fileSelect);
+
+    const [folders, files] = await Promise.all([
+      prisma.folder.findMany({
+        where: whereCondition,
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        select: folderSelect,
+      }),
+      prisma.file.findMany({
+        where: fileWhere,
+        take: take + 1,
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        ...(fileCursor ? { cursor: { id: fileCursor }, skip: 1 } : {}),
+        select: fileSelect,
       }),
     ]);
 
@@ -176,6 +259,7 @@ export const getAllCustomerFolders = async (req: Request, res: Response) => {
       nextFileCursor: hasNextFilesPage
         ? (fileRows[fileRows.length - 1]?.id ?? null)
         : null,
+      ...(light ? { light: true } : {}),
     });
   } catch (error: unknown) {
     console.error("Get All Customer Folders Error:", error);
@@ -187,110 +271,73 @@ export const getAllCustomerFolders = async (req: Request, res: Response) => {
   }
 };
 
-/** Same payload as get-all, but for one folder: all its subfolders + paginated files in that folder. */
-export const getSingleFolder = async (req: Request, res: Response) => {
+/** Root → … → current folder (one recursive query). */
+async function folderBreadcrumbFromRoot(
+  partnerId: string,
+  folderId: string,
+): Promise<{ id: string; name: string | null }[]> {
+  const rows = await prisma.$queryRaw<{ id: string; name: string | null }[]>(
+    Prisma.sql`
+    WITH RECURSIVE up AS (
+      SELECT f.id, f.name, f."parentId"
+      FROM folder f
+      WHERE f.id = ${folderId} AND f."partnerId" = ${partnerId}
+      UNION ALL
+      SELECT p.id, p.name, p."parentId"
+      FROM folder p
+      INNER JOIN up ON p.id = up."parentId"
+      WHERE p."partnerId" = ${partnerId}
+    )
+    SELECT id, name FROM up
+  `,
+  );
+  return rows.slice().reverse();
+}
+
+/** Breadcrumb only: root → current folder [{ id, name }, …]. */
+export const getFolderPath = async (req: Request, res: Response) => {
   try {
     const partnerId = req.user?.id;
+    if (!partnerId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
-    const { folderId, search, limit, fileCursor } = req.query;
-    if (!folderId) {
-      return res.status(400).json({
-        success: false,
-        message: "folderId query parameter is required",
+    const rawFolderId = req.query.folderId;
+    const id =
+      rawFolderId == null || rawFolderId === ""
+        ? ""
+        : String(rawFolderId).trim();
+    if (
+      !id ||
+      id === "null" ||
+      id === "undefined"
+    ) {
+      return res.status(200).json({
+        success: true,
+        message: "No folder selected",
+        data: { path: [] },
       });
     }
 
-    const parentId = String(folderId);
-
-    const parent = await prisma.folder.findFirst({
-      where: { id: parentId, partnerId },
-      select: { id: true, customerId: true },
+    const exists = await prisma.folder.findFirst({
+      where: { id, partnerId },
+      select: { id: true },
     });
-    if (!parent) {
+    if (!exists) {
       return res.status(404).json({
         success: false,
         message: "Folder not found",
       });
     }
 
-    const rawLimit = parseInt(String(limit ?? "20"), 10);
-    const take = Math.min(
-      Math.max(Number.isFinite(rawLimit) ? rawLimit : 20, 1),
-      100,
-    );
-
-    const whereCondition: any = {
-      partnerId,
-      parentId,
-    };
-    if (parent.customerId) {
-      whereCondition.customerId = parent.customerId;
-    }
-    if (search) {
-      whereCondition.name = {
-        contains: String(search),
-        mode: "insensitive",
-      };
-    }
-
-    const fileWhere: any = {
-      partnerId,
-      folderId: parentId,
-    };
-    if (search) {
-      fileWhere.name = {
-        contains: String(search),
-        mode: "insensitive",
-      };
-    }
-
-    const [folders, files] = await Promise.all([
-      prisma.folder.findMany({
-        where: whereCondition,
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        select: {
-          id: true,
-          name: true,
-          parentId: true,
-          createdAt: true,
-          _count: { select: { children: true, files: true } },
-        },
-      }),
-      prisma.file.findMany({
-        where: fileWhere,
-        take: take + 1,
-        orderBy: [{ name: "asc" }, { id: "asc" }],
-        ...(fileCursor ? { cursor: { id: String(fileCursor) }, skip: 1 } : {}),
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          size: true,
-          url: true,
-          folderId: true,
-          customerId: true,
-          createdAt: true,
-        },
-      }),
-    ]);
-
-    const hasNextFilesPage = files.length > take;
-    const fileRows = hasNextFilesPage ? files.slice(0, take) : files;
-
+    const path = await folderBreadcrumbFromRoot(partnerId, id);
     return res.status(200).json({
       success: true,
-      message: "Folders and files fetched successfully",
-      data: {
-        folders,
-        files: fileRows,
-      },
-      hasNextFilesPage,
-      nextFileCursor: hasNextFilesPage
-        ? (fileRows[fileRows.length - 1]?.id ?? null)
-        : null,
+      message: "Folder path fetched successfully",
+      data: { path },
     });
   } catch (error: unknown) {
-    console.error("Get Single Folder Error:", error);
+    console.error("Get Folder Path Error:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",

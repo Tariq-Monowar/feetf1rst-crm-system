@@ -4,7 +4,7 @@ import {
   createCustomerFolder,
   deleteFolder,
   getAllCustomerFolders,
-  getSingleFolder,
+  getFolderPath,
 } from "./folders.controllers";
 
 const router = express.Router();
@@ -12,8 +12,7 @@ const router = express.Router();
 /*
  *---------MASTE PLAN-----------
  * create customer folder
- * get all folders
- * get single folder
+ * get all folders (root or folder=…)
  * delete folder
  * move folder
  * (rename: POST v3/customer-folder/update)
@@ -27,9 +26,11 @@ const router = express.Router();
  */
 router.post("/create", verifyUser("PARTNER", "EMPLOYEE"), createCustomerFolder);
 
-/*  One directory level: child folders + files (Drive-style). Root = omit parentId or parentId=null.
+/*  One directory level: customer drive root OR inside a folder (same response shape).
  * @route GET {{_baseurl}}v3/folders/get-all
- * @query customerId (required), parentId?, limit? & fileCursor? (files only), search?
+ * @query customerId (required)
+ *  folder | folderId | parentId — optional; when set, list that folder’s children + files in it.
+ * limit, fileCursor | cursor (files pagination), search?
  */
 router.get(
   "/get-all",
@@ -37,11 +38,11 @@ router.get(
   getAllCustomerFolders,
 );
 
-/*  Inside one folder: same as get-all (all subfolders + paginated files). folderId = current folder.
- * @route GET {{_baseurl}}v3/folders/get-one
- * @query folderId (required), limit?, fileCursor?, search?
+/*  Breadcrumb only: root → current folder (use with get-all).
+ * @route GET {{_baseurl}}v3/folders/path
+ * @query folderId (optional). Omit / empty → 200 { success, data: { path: [] } } (no error).
  */
-router.get("/get-one", verifyUser("PARTNER", "EMPLOYEE"), getSingleFolder);
+router.get("/path", verifyUser("PARTNER", "EMPLOYEE"), getFolderPath);
 
 /*  delete folder + full subtree (all nested folders/files) and S3 objects for those files
  * @route DELETE {{_baseurl}}v3/folders/delete
