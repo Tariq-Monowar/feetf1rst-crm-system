@@ -100,6 +100,8 @@ model User {
   documentsAndClaims          documents_and_claims[]
   inventorySuppliers          inventory_supplier[]
   indsoleRequireFields        indsole_require_fields[]
+  folders                     folder[]
+  files                       file[]
 
   @@index([name]) // For search optimization
   @@index([email]) // Already unique, but explicit index helps
@@ -771,6 +773,8 @@ model customers {
   prescriptions            prescription[]
   customersSigns           customers_sign[]
   customerKvaPdfs          customer_kva_pdf[]
+  folder                   folder[]
+  customerDriveFiles       file[]
 
   @@unique([partnerId, customerNumber]) // Unique per partner
   @@index([partnerId, vorname, nachname]) // Search: filter by partner + order by name
@@ -2461,6 +2465,18 @@ model custom_shafts {
    * /**
    * /**
    * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * kategorie String?
    * // এখানে লেদার টাইপ এর উপর ভিত্তি করে ইমেইজ হবে আর একটা json হবে
    * ledertyp              String?
@@ -2484,6 +2500,18 @@ model custom_shafts {
 
   //------------------------second page------------------------
   /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
+   * /**
    * /**
    * /**
    * /**
@@ -3686,4 +3714,55 @@ model sponsor_players {
 
   @@index([createdAt])
   @@index([name])
+}
+
+//====================== File System (GOOGLE DRIVE) ======================
+
+model folder {
+  id   String  @id @default(cuid())
+  name String?
+
+  createdAt DateTime @default(now())
+
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  parentId String?
+
+  parent   folder?  @relation("Folders", fields: [parentId], references: [id])
+  children folder[] @relation("Folders")
+
+  files file[]
+
+  @@index([partnerId])
+  @@index([parentId])
+  @@index([partnerId, parentId])
+  @@index([name])
+}
+
+model file {
+  id String @id @default(cuid())
+
+  name String? //name original file name
+  type String? //type of file .pdf .png ect
+  size Int?
+  url  String? //s3 url of the file
+
+  createdAt DateTime @default(now())
+
+  partnerId String
+  partner   User   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  folderId String?
+  folder   folder? @relation(fields: [folderId], references: [id])
+
+  /// Set when file sits at customer "drive" root (folderId null); required to scope loose files per customer.
+  customerId String?
+  customer   customers? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId, customerId])
+  @@index([partnerId, folderId])
 }

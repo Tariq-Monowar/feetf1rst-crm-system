@@ -5,6 +5,7 @@ import http from "http";
 
 import v1 from "./module/v1/index";
 import v2 from "./module/v2/index";
+import v3 from "./module/v3/index";
 import sponsor_models from "./sponsor_models/v1/index";
 import path from "path";
 import { searchLocation } from "./utils/location";
@@ -51,7 +52,7 @@ export const allowedOrigins = [
   "https://boc-diet-hartford-featured.trycloudflare.com",
   "https://2rn0d13r-3003.asse.devtunnels.ms",
   "https://hollow-bicycle-favorites-warrant.trycloudflare.com",
-  "https://ranging-counties-nec-joan.trycloudflare.com"
+  "https://ranging-counties-nec-joan.trycloudflare.com",
 ];
 
 app.use(
@@ -71,6 +72,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/", v1);
 app.use("/v2", v2);
+app.use("/v3", v3);
 app.use("/location", searchLocation);
 app.use("/sponsor", sponsor_models);
 

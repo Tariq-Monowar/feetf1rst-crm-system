@@ -281,6 +281,14 @@ export const getWerkstattzettelSheetPdf = async (
 
         private_payed: true,
         insurance_payed: true,
+        partner: {
+          select: {
+            name: true,
+            busnessName: true,
+            phone: true,
+            image: true,
+          },
+        },
 
         employee: {
           select: {
@@ -357,6 +365,12 @@ export const getWerkstattzettelSheetPdf = async (
           ? "Werkstattzetteldaten erfolgreich abgerufen"
           : "Werkstattzettel sheet data fetched successfully",
       data: {
+        partnerInfo: {
+          name: order?.partner?.name,
+          busnessName: order?.partner?.busnessName,
+          phone: order?.partner?.phone,
+          image: order?.partner?.image,
+        },
         customerInfo: {
           firstName: order?.customer?.vorname,
           lastName: order?.customer?.nachname,
@@ -393,7 +407,7 @@ export const getWerkstattzettelSheetPdf = async (
             discount: order?.discount,
             total_price: order?.total_price,
             vat_rate: order?.vat_rate,
-            Netto: "nai 😐😐😐",
+            Netto: "-",
           },
         },
         employeeInfo: order?.employee,
